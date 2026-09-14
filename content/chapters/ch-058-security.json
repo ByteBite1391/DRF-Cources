@@ -1,0 +1,209 @@
+{
+  "id": "ch-058",
+  "slug": "security",
+  "title": "امنیت",
+  "kicker": "فصل ۵۸",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 55,
+  "lead": "امنیت در API از روز اول ضروری است، نه بعد از حادثه. این فصل OWASP Top 10 و سخت‌سازی کامل را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "owasp",
+      "title": "OWASP API Top 10",
+      "blocks": [
+        { "type": "table", "headers": ["#", "خطر", "نمونه"], "rows": [
+          ["1", "Broken Object Level Authorization (IDOR)", "کاربر A فاکتور B را می‌بیند"],
+          ["2", "Broken Authentication", "توکن ضعیف، بدون انقضا"],
+          ["3", "Broken Object Property Level Authorization", "کاربر role خود را تغییر می‌دهد"],
+          ["4", "Unrestricted Resource Consumption", "بدون Rate Limit"],
+          ["5", "Broken Function Level Authorization", "کاربر عادی به Endpoint ادمین"],
+          ["6", "Unrestricted Access to Sensitive Business Flows", "سفارش انبوه بدون بررسی"],
+          ["7", "Server Side Request Forgery (SSRF)", "آپلود URL که به سرویس داخلی می‌رود"],
+          ["8", "Security Misconfiguration", "DEBUG=True، CORS باز"],
+          ["9", "Improper Inventory Management", "API v1 فراموش‌شده"],
+          ["10", "Unsafe Consumption of APIs", "اعتماد به API خارجی بدون بررسی"]
+        ]},
+        { "type": "note", "variant": "danger", "title": "منبع", "text": "[OWASP API Security Top 10](https://owasp.org/API-Security/)" }
+      ]
+    },
+    {
+      "id": "broken-object",
+      "title": "Broken Object Level Authorization (IDOR)",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# ❌ خطرناک — هر کسی با pk دلخواه\nclass NoteDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Note.objects.all()\n    serializer_class = NoteSerializer\n    # user A می‌تواند note B را حذف کند\n\n# ✅ امن\nclass NoteDetailView(generics.RetrieveUpdateDestroyAPIView):\n    serializer_class = NoteSerializer\n    permission_classes = [IsAuthenticated, IsOwner]\n\n    def get_queryset(self):\n        return Note.objects.filter(owner=self.request.user)\n    # اگر یادداشت متعلق به کاربر نباشد، 404" },
+        { "type": "note", "variant": "tip", "title": "دو لایه", "text": "فیلتر در `get_queryset` + مجوز `has_object_permission`. با هر دو، امن‌ترین حالت." }
+      ]
+    },
+    {
+      "id": "mass-assignment",
+      "title": "Mass Assignment",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# ❌ خطرناک — کلاینت می‌تواند is_staff را true کند\nclass UserSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = [\"id\", \"username\", \"email\", \"is_staff\", \"is_superuser\"]\n\n# ✅ امن\nclass UserSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = [\"id\", \"username\", \"email\"]\n        read_only_fields = [\"id\"]" }
+      ]
+    },
+    {
+      "id": "secrets",
+      "title": "مدیریت Secretها",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "# .env\nSECRET_KEY=very-long-random-string\nDATABASE_URL=postgres://user:pass@host/db\nJWT_SIGNING_KEY=another-long-random\nAWS_ACCESS_KEY_ID=...\nAWS_SECRET_ACCESS_KEY=..." },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "import os\nfrom dotenv import load_dotenv\n\nload_dotenv()\n\nSECRET_KEY = os.environ[\"SECRET_KEY\"]\nDEBUG = os.environ.get(\"DEBUG\", \"False\") == \"True\"\nALLOWED_HOSTS = os.environ.get(\"ALLOWED_HOSTS\", \"\").split(\",\")" },
+        { "type": "code", "lang": "bash", "code": "pip install python-dotenv" },
+        { "type": "note", "variant": "danger", "title": "هرگز", "text": "Secretها را در کد نگذارید. `.env` را در `.gitignore` بگذارید. از Vault یا Secrets Manager در تولید." }
+      ]
+    },
+    {
+      "id": "https",
+      "title": "HTTPS و Security Headers",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "# فقط در تولید\nif not DEBUG:\n    # HTTPS\n    SECURE_SSL_REDIRECT = True\n    SECURE_PROXY_SSL_HEADER = (\"HTTP_X_FORWARDED_PROTO\", \"https\")\n\n    # HSTS\n    SECURE_HSTS_SECONDS = 31536000   # ۱ سال\n    SECURE_HSTS_INCLUDE_SUBDOMAINS = True\n    SECURE_HSTS_PRELOAD = True\n\n    # Cookies\n    SESSION_COOKIE_SECURE = True\n    CSRF_COOKIE_SECURE = True\n    SESSION_COOKIE_HTTPONLY = True\n    SESSION_COOKIE_SAMESITE = \"Lax\"\n\n    # سایر\n    SECURE_CONTENT_TYPE_NOSNIFF = True\n    SECURE_BROWSER_XSS_FILTER = True\n    X_FRAME_OPTIONS = \"DENY\"\n    SECURE_REFERRER_POLICY = \"same-origin\"" }
+      ]
+    },
+    {
+      "id": "csrf-xss",
+      "title": "CSRF و XSS",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**CSRF:** برای SessionAuthentication ضروری. برای JWT (Bearer header) معمولاً نیازی نیست.",
+          "**XSS:** همیشه خروجی را escape کنید. Django خودکار escape می‌کند مگر `|safe` یا `mark_safe`.",
+          "**CSP:** Content Security Policy در هدرها.",
+          "**SVG و HTML آپلودی:** با `Content-Disposition: attachment` سرو کنید."
+        ]},
+        { "type": "code", "lang": "python", "code": "# DRF برای SessionAuthentication خودکار CSRF را فعال می‌کند\nfrom rest_framework.authentication import SessionAuthentication\n\n\nclass CsrfExemptSessionAuthentication(SessionAuthentication):\n    \"\"\"فقط اگر کلاینت کاملاً قابل اعتماد است.\"\"\"\n    def enforce_csrf(self, request):\n        return" }
+      ]
+    },
+    {
+      "id": "cors",
+      "title": "CORS",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install django-cors-headers" },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "INSTALLED_APPS = [\"corsheaders\", ...]\n\nMIDDLEWARE = [\n    \"corsheaders.middleware.CorsMiddleware\",\n    \"django.middleware.common.CommonMiddleware\",\n    # ...\n]\n\n# فقط دامنه‌های مشخص\nCORS_ALLOWED_ORIGINS = [\n    \"https://app.example.com\",\n    \"https://admin.example.com\",\n]\n\nCORS_ALLOW_CREDENTIALS = True   # اگر کوکی می‌فرستید\n\nCORS_ALLOW_METHODS = [\"GET\", \"POST\", \"PUT\", \"PATCH\", \"DELETE\", \"OPTIONS\"]\n\nCORS_ALLOW_HEADERS = [\n    \"accept\", \"authorization\", \"content-type\",\n    \"x-csrftoken\", \"x-request-id\",\n]" },
+        { "type": "note", "variant": "danger", "title": "هرگز", "text": "`CORS_ALLOW_ALL_ORIGINS = True` در تولید. اگر `CORS_ALLOW_CREDENTIALS` هم true باشد، مرگبار است." }
+      ]
+    },
+    {
+      "id": "rate-limit",
+      "title": "Rate Limiting چندلایه",
+      "blocks": [
+        { "type": "table", "headers": ["لایه", "ابزار", "نقش"], "rows": [
+          ["CDN/WAF", "Cloudflare", "IP-based"],
+          ["Nginx", "limit_req", "IP-based"],
+          ["DRF", "Throttling", "User-based"],
+          ["View", "Scoped Throttle", "Endpoint-based"]
+        ]},
+        { "type": "code", "lang": "python", "code": "REST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"1000/day\",\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n    },\n}" }
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "امنیت وابستگی‌ها",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "# بررسی آسیب‌پذیری\npip install pip-audit\npip-audit\n\n# یا\npip install safety\nsafety check\n\n# بروزرسانی\npip list --outdated" },
+        { "type": "note", "variant": "tip", "title": "در CI", "text": "هر هفته `pip-audit` را در CI اجرا کنید. اگر آسیب‌پذیری جدید بود، هشدار می‌دهد." }
+      ]
+    },
+    {
+      "id": "logging-monitoring",
+      "title": "لاگ امنیتی و مانیتورینگ",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import logging\nlogger = logging.getLogger(\"api.security\")\n\n\n# لاگ کردن رویدادهای امنیتی\ndef log_security_event(event, user=None, request=None, **extra):\n    logger.warning(\n        f\"Security: {event}\",\n        extra={\n            \"event\": event,\n            \"user_id\": getattr(user, \"id\", None),\n            \"ip\": request.META.get(\"REMOTE_ADDR\") if request else None,\n            \"path\": request.path if request else None,\n            **extra,\n        },\n    )\n\n\n# استفاده\nlog_security_event(\"login_failed\", request=request, username=username)\nlog_security_event(\"permission_denied\", user=request.user, request=request)" },
+        { "type": "list", "ordered": false, "items": [
+          "**Login failed** — تلاش‌های ناموفق",
+          "**Permission denied** — دسترسی‌های رد‌شده",
+          "**Password change** — تغییر رمز",
+          "**Role change** — تغییر نقش",
+          "**Bulk operations** — عملیات گروهی",
+          "**Suspicious patterns** — الگوهای مشکوک"
+        ]}
+      ]
+    },
+    {
+      "id": "file-security",
+      "title": "امنیت فایل",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import magic\n\n\nclass SafeFileSerializer(serializers.Serializer):\n    file = serializers.FileField()\n\n    def validate_file(self, value):\n        # ۱. حجم\n        if value.size > 5 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم فایل بیش از ۵ مگابایت.\")\n\n        # ۲. نوع واقعی\n        mime = magic.from_buffer(value.read(2048), mime=True)\n        value.seek(0)\n        if mime not in {\"application/pdf\", \"image/jpeg\", \"image/png\"}:\n            raise serializers.ValidationError(f\"فرمت {mime} پشتیبانی نمی‌شود.\")\n\n        # ۳. پسوند\n        import os\n        ext = os.path.splitext(value.name)[1].lower()\n        if ext in {\".php\", \".py\", \".sh\", \".exe\", \".html\", \".svg\"}:\n            raise serializers.ValidationError(\"این پسوند مجاز نیست.\")\n\n        return value" }
+      ]
+    },
+    {
+      "id": "checklist",
+      "title": "چک‌لیست امنیتی",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**✓** `DEBUG = False` در تولید",
+          "**✓** `SECRET_KEY` از env",
+          "**✓** `ALLOWED_HOSTS` محدود",
+          "**✓** HTTPS اجباری + HSTS",
+          "**✓** Cookies با Secure و HttpOnly",
+          "**✓** CORS محدود به دامنه‌های مشخص",
+          "**✓** Throttling روی login و register",
+          "**✓** JWT با Rotation و Blacklist",
+          "**✓** مجوز سطح شیء برای همه منابع",
+          "**✓** اجتناب از Mass Assignment با `read_only_fields`",
+          "**✓** اعتبارسنجی فایل (حجم، نوع، پسوند)",
+          "**✓** لاگ رویدادهای امنیتی",
+          "**✓** `pip-audit` در CI",
+          "**✓** پکیج‌ها بروز",
+          "**✓** مستندات OpenAPI محدود به admin",
+          "**✓** آپلود فایل روی S3 با ACL محدود",
+          "**✓** CSRF برای SessionAuthentication",
+          "**✓** XSS: escape خروجی",
+          "**✓** SQL: همیشه از ORM",
+          "**✓** بدون `raw()` یا `extra()` ناامن",
+          "**✓** Rate Limiting چندلایه",
+          "**✓** Backup و Disaster Recovery",
+          "**✓** مانیتورینگ و هشدار برای رخدادهای امنیتی"
+        ]},
+        { "type": "callout-level", "basic": "بدون توجه به امنیت.", "better": "HTTPS + Throttle + مجوز.", "production": "چک‌لیست کامل بالا + Audit + Pentest دوره‌ای." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "IDOR", "why": "کاربر به منابع دیگران دسترسی دارد.", "when": "نبود `has_object_permission` یا فیلتر queryset.", "fix": "دو لایه: `get_queryset` + `has_object_permission`." },
+        { "type": "anti-pattern", "title": "Mass Assignment", "why": "کلاینت فیلدهای حساس را تغییر می‌دهد.", "when": "فیلدهای حساس در `fields`.", "fix": "`read_only_fields` صریح." },
+        { "type": "anti-pattern", "title": "DEBUG=True در تولید", "why": "افشای stack trace، تنظیمات، مسیرها.", "when": "فراموشی تنظیمات محیطی.", "fix": "تنظیمات جدا برای هر محیط." },
+        { "type": "anti-pattern", "title": "CORS_ALLOW_ALL_ORIGINS", "why": "هر سایتی می‌تواند به API درخواست بدهد.", "when": "برای راحتی توسعه.", "fix": "لیست صریح دامنه‌ها." },
+        { "type": "anti-pattern", "title": "Basic روی HTTP", "why": "رمز خوانده می‌شود.", "when": "در تست محلی و فراموشی.", "fix": "همیشه HTTPS." },
+        { "type": "anti-pattern", "title": "نبود Throttle روی login", "why": "Brute-force.", "when": "همیشه.", "fix": "ScopedRateThrottle 5/min." },
+        { "type": "anti-pattern", "title": "JWT بدون Rotation", "why": "توکن لو رفته تا انقضا معتبر.", "when": "فراموشی تنظیمات.", "fix": "ROTATE + BLACKLIST." },
+        { "type": "anti-pattern", "title": "Secret در کد", "why": "افشا در Git.", "when": "برای سرعت.", "fix": "متغیرهای محیطی." },
+        { "type": "anti-pattern", "title": "آپلود فایل بدون بررسی", "why": "RCE، XSS، DoS.", "when": "اعتماد به content_type.", "fix": "بررسی حجم، نوع واقعی (magic)، پسوند." },
+        { "type": "anti-pattern", "title": "نبود لاگ امنیتی", "why": "نمی‌فهمید حمله رخ داده.", "when": "همیشه.", "fix": "لاگ رویدادهای امنیتی + SIEM." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-058-q1", "tag": "کوییز", "question": "IDOR چیست؟", "options": [
+      { "text": "حمله DoS", "correct": false },
+      { "text": "دسترسی به منابع دیگران با تغییر شناسه.", "correct": true, "explanation": "Broken Object Level Authorization." },
+      { "text": "سرقت کوکی", "correct": false }
+    ]},
+    { "id": "ch-058-q2", "tag": "کوییز", "question": "چرا CORS_ALLOW_ALL_ORIGINS خطرناک است؟", "options": [
+      { "text": "چون کند است.", "correct": false },
+      { "text": "چون هر سایتی می‌تواند به API درخواست بدهد (به‌ویژه با credentials).", "correct": true, "explanation": "درخواست Cross-Origin با کوکی." },
+      { "text": "چون Django اجازه نمی‌دهد.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-058-ex1", "title": "تمرین — رفع Mass Assignment", "problem": "کد زیر را امن کنید تا کلاینت نتواند `is_staff` یا `is_superuser` را تغییر دهد:\n\n```python\nclass UserSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = \"__all__\"\n```", "hints": ["فیلدها را صریح لیست کنید.", "`read_only_fields` بگذارید."], "solution": "```python\nclass UserSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = [\"id\", \"username\", \"email\", \"first_name\", \"last_name\", \"is_active\"]\n        read_only_fields = [\"id\", \"is_active\"]\n\n\nclass UserAdminSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = [\n            \"id\", \"username\", \"email\", \"first_name\", \"last_name\",\n            \"is_active\", \"is_staff\", \"is_superuser\",\n        ]\n        read_only_fields = [\"id\"]\n\n# در ViewSet\nclass UserViewSet(viewsets.ModelViewSet):\n    def get_serializer_class(self):\n        if self.request.user.is_staff:\n            return UserAdminSerializer\n        return UserSerializer\n```", "explanation": "سریالایزرهای جدا برای کاربر عادی و ادمین، امنیت را تضمین می‌کند." }
+  ],
+  "summary": [
+    "OWASP API Top 10 را بشناسید.",
+    "IDOR: `get_queryset` + `has_object_permission`.",
+    "Mass Assignment: `read_only_fields` صریح.",
+    "Secret در env.",
+    "HTTPS + HSTS + Secure Cookies.",
+    "CORS محدود.",
+    "Throttle چندلایه.",
+    "JWT Rotation + Blacklist.",
+    "اعتبارسنجی فایل با magic.",
+    "لاگ امنیتی + pip-audit.",
+    "چک‌لیست امنیتی همه‌جا."
+  ],
+  "resources": [
+    { "title": "OWASP API Security Top 10", "url": "https://owasp.org/API-Security/", "official": true },
+    { "title": "Django — Security", "url": "https://docs.djangoproject.com/en/stable/topics/security/", "official": true },
+    { "title": "Django — Deployment checklist", "url": "https://docs.djangoproject.com/en/stable/howto/deployment/checklist/", "official": true }
+  ]
+}
