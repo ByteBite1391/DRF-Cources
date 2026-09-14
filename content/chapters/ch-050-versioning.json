@@ -1,0 +1,385 @@
+{
+  "id": "ch-050",
+  "slug": "versioning",
+  "title": "نسخه‌بندی (Versioning)",
+  "kicker": "فصل ۵۰",
+  "level": "advanced",
+  "estimatedMinutes": 40,
+  "lead": "API شما تغییر خواهد کرد. نسخه‌بندی راهی است که کلاینت‌های قدیمی نشکنند در حالی که شما توسعه می‌دهید.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا نسخه‌بندی؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**تغییرات شکننده:** فیلد را حذف می‌کنید، کلاینت قدیمی می‌شکند.",
+            "**کلاینت‌های ناهمزمان:** موبایل نصب‌شده، سرویس‌های داخلی، شرکای خارجی.",
+            "**توسعه موازی:** نسخه جدید توسعه، قدیمی پایدار.",
+            "**مهاجرت تدریجی:** کلاینت‌ها آرام‌آرام مهاجرت می‌کنند.",
+            "**شفافیت:** کلاینت می‌داند کدام نسخه را مصرف می‌کند."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی نسخه‌بندی کنیم؟",
+          "text": "از روز اول! اضافه کردن نسخه‌بندی بعد از انتشار عمومی، دردناک است. حتی اگر فقط v1 دارید، از اول مسیر را داشته باشید."
+        }
+      ]
+    },
+    {
+      "id": "strategies",
+      "title": "استراتژی‌های نسخه‌بندی",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["روش", "نمونه", "مزیت", "عیب"],
+          "rows": [
+            ["URL path", "`/api/v1/books/`", "واضح، قابل کشف", "URL طولانی‌تر"],
+            ["Query param", "`/api/books/?version=v1`", "بدون تغییر URL", "قابل فراموشی"],
+            ["Accept header", "`Accept: application/json; version=1`", "URL تمیز", "پیچیده برای دیباگ"],
+            ["Host", "`v1.api.example.com`", "کامل جدا", "زیرساخت پیچیده"],
+            ["Namespace", "با `include()`", "مثل URL path", "پیچیدگی زیاد"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "URL path (`/api/v1/`).",
+          "better": "URL path + مستندسازی.",
+          "production": "URL path + Deprecation policy + تست هر نسخه + مستندات جداگانه."
+        }
+      ]
+    },
+    {
+      "id": "url-path",
+      "title": "URLPathVersioning",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "رایج‌ترین و خوانا‌ترین روش. نسخه در مسیر URL مشخص است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_VERSIONING_CLASS\": \"rest_framework.versioning.URLPathVersioning\",\n    \"DEFAULT_VERSION\": \"v1\",\n    \"ALLOWED_VERSIONS\": [\"v1\", \"v2\"],\n    \"VERSION_PARAM\": \"version\",\n}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "from django.urls import path, include\n\nurlpatterns = [\n    path(\"api/v1/\", include(\"catalog.urls.v1\")),\n    path(\"api/v2/\", include(\"catalog.urls.v2\")),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET /api/v1/books/\nGET /api/v2/books/\nGET /api/v1/books/42/\nGET /api/v2/books/42/"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n\n    def get_serializer_class(self):\n        if self.request.version == \"v2\":\n            return BookV2Serializer\n        return BookV1Serializer"
+        }
+      ]
+    },
+    {
+      "id": "query-param",
+      "title": "QueryParameterVersioning",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_VERSIONING_CLASS\": \"rest_framework.versioning.QueryParameterVersioning\",\n    \"DEFAULT_VERSION\": \"v1\",\n    \"ALLOWED_VERSIONS\": [\"v1\", \"v2\"],\n}"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET /api/books/?version=v1\nGET /api/books/?version=v2"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "چالش",
+          "text": "کلاینت‌ها ممکن است `version` را فراموش کنند. اگر `DEFAULT_VERSION` تنظیم نباشد، خطا می‌گیرند. اما اگر تنظیم باشد، ممکن است به‌طور ناخواسته نسخه اشتباه بگیرند."
+        }
+      ]
+    },
+    {
+      "id": "accept-header",
+      "title": "AcceptHeaderVersioning",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_VERSIONING_CLASS\": \"rest_framework.versioning.AcceptHeaderVersioning\",\n    \"DEFAULT_VERSION\": \"v1\",\n    \"ALLOWED_VERSIONS\": [\"v1\", \"v2\"],\n}"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "Accept: application/json; version=1.0\nAccept: application/json; version=2.0"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "curl -H \"Accept: application/json; version=2.0\" \\\n  http://api/books/"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "مزیت و عیب",
+          "text": "URL تمیز می‌ماند (مناسب اگر URL بخشی از قرارداد است). اما دیباگ سخت‌تر است چون هدر Accept دیده نمی‌شود."
+        }
+      ]
+    },
+    {
+      "id": "host",
+      "title": "HostNameVersioning",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_VERSIONING_CLASS\": \"rest_framework.versioning.HostNameVersioning\",\n    \"DEFAULT_VERSION\": \"v1\",\n    \"ALLOWED_VERSIONS\": [\"v1\", \"v2\"],\n}"
+        },
+        {
+          "type": "text",
+          "code": "GET http://v1.api.example.com/books/\nGET http://v2.api.example.com/books/"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی؟",
+          "text": "برای پروژه‌های بزرگ با زیرساخت پیچیده که می‌خواهند هر نسخه کاملاً جدا باشد (DNS، SSL جداگانه)."
+        }
+      ]
+    },
+    {
+      "id": "namespace",
+      "title": "NamespaceVersioning",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_VERSIONING_CLASS\": \"rest_framework.versioning.NamespaceVersioning\",\n}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "urlpatterns = [\n    path(\"api/v1/\", include((\"catalog.urls\", \"catalog\"), namespace=\"v1\")),\n    path(\"api/v2/\", include((\"catalog.urls\", \"catalog\"), namespace=\"v2\")),\n]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "تفاوت با URLPathVersioning",
+          "text": "از URL برای استخراج نسخه استفاده می‌کند اما از namespace. معمولاً برای جداسازی فایل‌های URL در تیم‌های بزرگ."
+        }
+      ]
+    },
+    {
+      "id": "in-view",
+      "title": "استفاده در View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n\n    def get_serializer_class(self):\n        if self.request.version == \"v2\":\n            return BookV2Serializer\n        return BookV1Serializer\n\n    def list(self, request, *args, **kwargs):\n        response = super().list(request, *args, **kwargs)\n        response.data[\"api_version\"] = request.version\n        return response\n\n    def get_queryset(self):\n        qs = Book.objects.all()\n        # در v2، فیلد is_deleted حذف شده\n        if self.request.version == \"v1\":\n            qs = qs.filter(is_deleted=False)\n        return qs"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در سریالایزر\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"price\"]\n\n    def to_representation(self, instance):\n        data = super().to_representation(instance)\n        version = self.context[\"request\"].version\n        if version == \"v2\":\n            data[\"author\"] = instance.author.full_name\n        return data"
+        }
+      ]
+    },
+    {
+      "id": "breaking-changes",
+      "title": "تغییرات شکننده و ناشکننده",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["نوع تغییر", "شکننده؟", "راه‌حل"],
+          "rows": [
+            ["افزودن فیلد جدید به پاسخ", "خیر", "مستقیم"],
+            ["افزودن فیلد اختیاری به ورودی", "خیر", "مستقیم"],
+            ["حذف فیلد از پاسخ", "بله", "نسخه جدید"],
+            ["تغییر نوع فیلد", "بله", "نسخه جدید"],
+            ["تغییر نام فیلد", "بله", "نسخه جدید"],
+            ["تغییر URL", "بله", "نسخه جدید"],
+            ["تغییر کد وضعیت", "بله", "نسخه جدید"],
+            ["تغییر فرمت تاریخ", "بله", "نسخه جدید"],
+            ["افزودن فیلد اجباری به ورودی", "بله", "نسخه جدید"],
+            ["تغییر معنای فیلد موجود", "بله", "نسخه جدید"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده طلایی",
+          "text": "افزودن، معمولاً ناشکننده. حذف و تغییر، شکننده. اگر شک دارید، نسخه جدید بسازید."
+        }
+      ]
+    },
+    {
+      "id": "deprecation",
+      "title": "Deprecation و Sunset",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی نسخه قدیمی را بازنشسته می‌کنید، به کلاینت‌ها اطلاع دهید."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "Deprecation: true\nSunset: Sat, 31 Dec 2025 23:59:59 GMT\nLink: <https://api.example.com/v2/>; rel=\"successor-version\"\nWarning: 299 - \"Deprecated API. Use v2.\""
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/middleware.py",
+          "code": "from datetime import datetime\n\n\nclass DeprecationNoticeMiddleware:\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        response = self.get_response(request)\n\n        # اگر درخواست به v1 بود، هدر هشدار اضافه کن\n        if request.path.startswith(\"/api/v1/\"):\n            response[\"Deprecation\"] = \"true\"\n            response[\"Sunset\"] = \"Sat, 31 Dec 2025 23:59:59 GMT\"\n            response[\"Link\"] = '</api/v2/>; rel=\"successor-version\"'\n            response[\"Warning\"] = '299 - \"Deprecated API. Use /api/v2/ instead.\"'\n\n        return response"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "Sunset header",
+          "text": "تاریخ بازنشستگی را در هدر `Sunset` بگذارید. کلاینت‌ها می‌توانند برنامه‌ریزی کنند."
+        }
+      ]
+    },
+    {
+      "id": "best-practices",
+      "title": "بهترین شیوه‌ها",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**از اول نسخه‌بندی:** حتی در نسخه اول.",
+            "**URL path ساده‌تر:** `/api/v1/` واضح‌ترین است.",
+            "**مستندسازی جدا:** هر نسخه مستندات خودش.",
+            "**تست هر نسخه:** در CI، هر نسخه را تست کنید.",
+            "**Deprecation policy مشخص:** چند ماه مهلت.",
+            "**Sunset header:** اعلام رسمی.",
+            "**مکانیزم migration:** راهنمای مهاجرت v1→v2.",
+            "**برنامه بازنشستگی:** نسخه‌های قدیمی هر N سال."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون نسخه‌بندی.",
+          "better": "URLPathVersioning با v1 و v2.",
+          "production": "URLPathVersioning + مستندات جدا + تست هر نسخه در CI + Sunset headers + راهنمای مهاجرت."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "افزودن نسخه‌بندی بعد از انتشار",
+          "why": "کلاینت‌ها به URLهای بدون نسخه عادت کرده‌اند.",
+          "when": "وقتی فکر می‌کنید نیاز نیست.",
+          "fix": "از روز اول `/api/v1/`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نسخه‌بندی بدون مستندسازی",
+          "why": "کلاینت نمی‌داند چه چیزی تغییر کرده.",
+          "when": "وقتی فقط کد را نسخه‌بندی می‌کنید.",
+          "fix": "CHANGELOG + مستندات مخصوص هر نسخه."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Deprecation بدون مهلت",
+          "why": "کلاینت‌ها غافلگیر می‌شوند.",
+          "when": "وقتی نسخه قدیمی را ناگهانی می‌بندید.",
+          "fix": "حداقل ۶ ماه مهلت + هدر Sunset."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "تغییر در نسخه قدیمی",
+          "why": "کلاینت قدیمی می‌شکند.",
+          "when": "وقتی می‌خواهید سریع باشد.",
+          "fix": "تغییرات را فقط در نسخه جدید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نگهداری بی‌پایان نسخه قدیمی",
+          "why": "بار نگهداری زیاد.",
+          "when": "وقتی نمی‌خواهید کلاینت‌ها ناراضی شوند.",
+          "fix": "سیاست بازنشستگی مشخص (مثلاً هر ۱۸ ماه)."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نسخه در Accept header بدون مستندات",
+          "why": "کلاینت نمی‌داند کدام نسخه را بفرستد.",
+          "when": "وقتی با URL path نیست.",
+          "fix": "مستندات واضح + نمونه‌های curl."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-050-q1",
+      "tag": "کوییز",
+      "question": "کدام روش نسخه‌بندی رایج‌ترین و خوانا‌ترین است؟",
+      "options": [
+        { "text": "Accept header", "correct": false },
+        { "text": "URL path (`/api/v1/`)", "correct": true, "explanation": "واضح، قابل کشف، قابل کش در CDN." },
+        { "text": "Query param", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-050-q2",
+      "tag": "کوییز",
+      "question": "کدام تغییر شکننده (breaking) است؟",
+      "options": [
+        { "text": "افزودن فیلد جدید به پاسخ", "correct": false },
+        { "text": "حذف فیلد از پاسخ", "correct": true, "explanation": "کلاینت‌ها به آن فیلد وابسته‌اند. نیاز به نسخه جدید." },
+        { "text": "افزودن فیلد اختیاری به ورودی", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-050-q3",
+      "tag": "کوییز",
+      "question": "هدر Sunset چه می‌گوید؟",
+      "options": [
+        { "text": "زمان انقضای توکن", "correct": false },
+        { "text": "تاریخ بازنشستگی نسخه فعلی API.", "correct": true, "explanation": "کلاینت‌ها می‌توانند برنامه‌ریزی کنند." },
+        { "text": "زمان آخرین بروزرسانی", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-050-ex1",
+      "title": "تمرین — نسخه‌بندی v1 و v2",
+      "problem": "یک API با دو نسخه بسازید:\n- v1: فیلد `author` به‌صورت id.\n- v2: فیلد `author` به‌صورت object کامل + فیلد جدید `average_rating`.\n- نسخه در URL.\n- تست هر دو نسخه.",
+      "hints": ["از URLPathVersioning.", "دو سریالایزر جدا.", "دو فایل urls.py در زیرپوشه‌ها."],
+      "solution": "```python\n# settings.py\nREST_FRAMEWORK = {\n    \"DEFAULT_VERSIONING_CLASS\": \"rest_framework.versioning.URLPathVersioning\",\n    \"DEFAULT_VERSION\": \"v1\",\n    \"ALLOWED_VERSIONS\": [\"v1\", \"v2\"],\n    \"VERSION_PARAM\": \"version\",\n}\n\n\n# serializers.py\nclass BookV1Serializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"price\"]\n\n\nclass AuthorSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"bio\"]\n\n\nclass BookV2Serializer(serializers.ModelSerializer):\n    author = AuthorSerializer(read_only=True)\n    average_rating = serializers.FloatField(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"price\", \"average_rating\"]\n\n\n# views.py\nclass BookViewSet(viewsets.ModelViewSet):\n    def get_queryset(self):\n        qs = Book.objects.select_related(\"author\")\n        if self.request.version == \"v2\":\n            qs = qs.annotate(average_rating=Avg(\"reviews__rating\"))\n        return qs\n\n    def get_serializer_class(self):\n        if self.request.version == \"v2\":\n            return BookV2Serializer\n        return BookV1Serializer\n\n\n# urls.py (اصلی)\nfrom django.urls import path, include\n\nurlpatterns = [\n    path(\"api/v1/\", include(\"catalog.urls.v1\")),\n    path(\"api/v2/\", include(\"catalog.urls.v2\")),\n]\n\n\n# catalog/urls/v1.py\nfrom rest_framework.routers import DefaultRouter\nfrom catalog.views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\nurlpatterns = router.urls\n\n\n# catalog/urls/v2.py\nfrom rest_framework.routers import DefaultRouter\nfrom catalog.views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\nurlpatterns = router.urls\n```\n\n**تست:**\n```bash\ncurl http://api/v1/books/   # author: 5\ncurl http://api/v2/books/   # author: {id: 5, ...}, average_rating: 4.5\n```",
+      "explanation": "این الگو به شما اجازه می‌دهد بدون شکستن کلاینت‌های قدیمی، API را تکامل دهید."
+    }
+  ],
+  "summary": [
+    "نسخه‌بندی از روز اول.",
+    "روش‌ها: URL path، Query param، Accept header، Host، Namespace.",
+    "URL path (URLPathVersioning) رایج‌ترین.",
+    "`request.version` برای تصمیم در View.",
+    "تغییرات شکننده نیاز به نسخه جدید.",
+    "`Deprecation` و `Sunset` headers برای اعلام.",
+    "مستندات + تست هر نسخه.",
+    "سیاست بازنشستگی مشخص."
+  ],
+  "resources": [
+    { "title": "DRF — Versioning", "url": "https://www.django-rest-framework.org/api-guide/versioning/", "official": true },
+    { "title": "Sunset Header — RFC 8594", "url": "https://datatracker.ietf.org/doc/html/rfc8594", "official": true }
+  ]
+}

@@ -1,0 +1,321 @@
+{
+  "id": "ch-034",
+  "slug": "user-system",
+  "title": "سیستم کاربر",
+  "kicker": "فصل ۳۴",
+  "level": "advanced",
+  "estimatedMinutes": 50,
+  "lead": "در این فصل یک سیستم کاربر کامل می‌سازیم: ثبت‌نام، ورود، خروج، پروفایل، تغییر رمز و بازیابی رمز.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "نمای کلی",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["Endpoint", "متد", "کار", "Auth لازم"],
+          "rows": [
+            ["`/auth/register/`", "POST", "ثبت‌نام", "خیر"],
+            ["`/auth/login/`", "POST", "ورود (JWT)", "خیر"],
+            ["`/auth/logout/`", "POST", "خروج", "بله"],
+            ["`/auth/token/refresh/`", "POST", "رفرش توکن", "خیر (با refresh)"],
+            ["`/auth/me/`", "GET/PATCH", "پروفایل خود", "بله"],
+            ["`/auth/change-password/`", "POST", "تغییر رمز", "بله"],
+            ["`/auth/password-reset/`", "POST", "درخواست بازیابی", "خیر"],
+            ["`/auth/password-reset/confirm/`", "POST", "تأیید بازیابی", "خیر"],
+            ["`/auth/verify-email/`", "POST", "تأیید ایمیل", "خیر"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "model",
+      "title": "مدل کاربر",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "دو راه دارید: استفاده از `User` پیش‌فرض Django، یا ساخت مدل سفارشی. برای پروژه‌های واقعی، مدل سفارشی توصیه می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/models.py",
+          "code": "from django.contrib.auth.models import AbstractUser\nfrom django.db import models\n\n\nclass User(AbstractUser):\n    email = models.EmailField(unique=True)\n    is_email_verified = models.BooleanField(default=False)\n    avatar = models.ImageField(upload_to=\"avatars/\", blank=True, null=True)\n    bio = models.TextField(blank=True)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    USERNAME_FIELD = \"username\"\n    REQUIRED_FIELDS = [\"email\"]\n\n    def __str__(self):\n        return self.username"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "AUTH_USER_MODEL = \"users.User\""
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "قبل از اولین مایگریشن",
+          "text": "مدل سفارشی را حتماً قبل از اولین `migrate` بسازید. اگر بعد از `migrate` تغییر دهید، با مشکل جدول و روابط روبرو می‌شوید."
+        }
+      ]
+    },
+    {
+      "id": "register",
+      "title": "ثبت‌نام",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/serializers.py",
+          "code": "from django.contrib.auth import get_user_model\nfrom django.contrib.auth.password_validation import validate_password\nfrom rest_framework import serializers\n\nUser = get_user_model()\n\n\nclass RegisterSerializer(serializers.ModelSerializer):\n    password = serializers.CharField(\n        write_only=True,\n        required=True,\n        validators=[validate_password],\n    )\n    password_confirm = serializers.CharField(write_only=True, required=True)\n\n    class Meta:\n        model = User\n        fields = [\"username\", \"email\", \"password\", \"password_confirm\", \"first_name\", \"last_name\"]\n\n    def validate_email(self, value):\n        if User.objects.filter(email__iexact=value).exists():\n            raise serializers.ValidationError(\"این ایمیل قبلاً ثبت شده است.\")\n        return value.lower()\n\n    def validate(self, attrs):\n        if attrs[\"password\"] != attrs[\"password_confirm\"]:\n            raise serializers.ValidationError(\n                {\"password_confirm\": \"رمزها یکسان نیستند.\"}\n            )\n        return attrs\n\n    def create(self, validated_data):\n        validated_data.pop(\"password_confirm\")\n        user = User.objects.create_user(**validated_data)\n        user.is_active = True\n        user.save(update_fields=[\"is_active\"])\n        return user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom rest_framework.permissions import AllowAny\nfrom rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework_simplejwt.tokens import RefreshToken\nfrom .serializers import RegisterSerializer\n\n\nclass RegisterView(APIView):\n    permission_classes = [AllowAny]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"register\"\n\n    def post(self, request):\n        serializer = RegisterSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        user = serializer.save()\n\n        refresh = RefreshToken.for_user(user)\n        return Response({\n            \"user\": {\n                \"id\": user.id,\n                \"username\": user.username,\n                \"email\": user.email,\n            },\n            \"access\": str(refresh.access_token),\n            \"refresh\": str(refresh),\n        }, status=status.HTTP_201_CREATED)"
+        }
+      ]
+    },
+    {
+      "id": "login",
+      "title": "ورود",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "از `TokenObtainPairView` SimpleJWT استفاده می‌کنیم و Throttling اضافه می‌کنیم."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from rest_framework_simplejwt.views import TokenObtainPairView\nfrom rest_framework.throttling import ScopedRateThrottle\n\n\nclass LoginView(TokenObtainPairView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"login\""
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "curl -X POST http://127.0.0.1:8000/api/auth/login/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": \"sara\", \"password\": \"s3cret!\"}'\n\n# پاسخ:\n# {\n#   \"access\": \"eyJhbGci...\",\n#   \"refresh\": \"eyJhbGci...\"\n# }"
+        }
+      ]
+    },
+    {
+      "id": "profile",
+      "title": "پروفایل",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/serializers.py",
+          "code": "class ProfileSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = [\n            \"id\", \"username\", \"email\", \"first_name\", \"last_name\",\n            \"avatar\", \"bio\", \"is_email_verified\", \"created_at\",\n        ]\n        read_only_fields = [\"id\", \"username\", \"email\", \"is_email_verified\", \"created_at\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from rest_framework.generics import RetrieveUpdateAPIView\nfrom rest_framework.permissions import IsAuthenticated\nfrom .serializers import ProfileSerializer\n\n\nclass ProfileView(RetrieveUpdateAPIView):\n    serializer_class = ProfileSerializer\n    permission_classes = [IsAuthenticated]\n\n    def get_object(self):\n        return self.request.user"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# دریافت پروفایل\ncurl -H \"Authorization: Bearer eyJ...\" \\\n  http://127.0.0.1:8000/api/auth/me/\n\n# ویرایش پروفایل\ncurl -X PATCH http://127.0.0.1:8000/api/auth/me/ \\\n  -H \"Authorization: Bearer eyJ...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"first_name\": \"Sara\", \"bio\": \"Developer\"}'"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "get_object ساده",
+          "text": "به‌جای تعریف `queryset`، کافی است `get_object` را بازنویسی کنید و کاربر جاری را برگردانید."
+        }
+      ]
+    },
+    {
+      "id": "change-password",
+      "title": "تغییر رمز عبور",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/serializers.py",
+          "code": "from django.contrib.auth.password_validation import validate_password\nfrom rest_framework import serializers\n\n\nclass ChangePasswordSerializer(serializers.Serializer):\n    old_password = serializers.CharField(required=True)\n    new_password = serializers.CharField(\n        required=True,\n        validators=[validate_password],\n    )\n    new_password_confirm = serializers.CharField(required=True)\n\n    def validate_old_password(self, value):\n        user = self.context[\"request\"].user\n        if not user.check_password(value):\n            raise serializers.ValidationError(\"رمز عبور فعلی نادرست است.\")\n        return value\n\n    def validate(self, attrs):\n        if attrs[\"new_password\"] != attrs[\"new_password_confirm\"]:\n            raise serializers.ValidationError(\n                {\"new_password_confirm\": \"رمزهای جدید یکسان نیستند.\"}\n            )\n        return attrs\n\n    def save(self):\n        user = self.context[\"request\"].user\n        user.set_password(self.validated_data[\"new_password\"])\n        user.save()\n        return user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "class ChangePasswordView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        serializer = ChangePasswordSerializer(\n            data=request.data,\n            context={\"request\": request},\n        )\n        serializer.is_valid(raise_exception=True)\n        serializer.save()\n        return Response(\n            {\"detail\": \"رمز عبور با موفقیت تغییر کرد.\"},\n            status=status.HTTP_200_OK,\n        )"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "پس از تغییر رمز",
+          "text": "بهتر است همه توکن‌های Refresh کاربر را blacklist کنید تا از دستگاه‌های دیگر خارج شود."
+        }
+      ]
+    },
+    {
+      "id": "password-reset",
+      "title": "بازیابی رمز عبور",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فرآیند دو مرحله‌ای: درخواست بازیابی (ارسال ایمیل با توکن) + تأیید (تعیین رمز جدید)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/serializers.py",
+          "code": "class PasswordResetRequestSerializer(serializers.Serializer):\n    email = serializers.EmailField()\n\n    def validate_email(self, value):\n        # همیشه موفق برگردان (جلوگیری از user enumeration)\n        return value.lower()\n\n\nclass PasswordResetConfirmSerializer(serializers.Serializer):\n    uid = serializers.CharField()\n    token = serializers.CharField()\n    new_password = serializers.CharField(\n        validators=[validate_password],\n    )\n    new_password_confirm = serializers.CharField()\n\n    def validate(self, attrs):\n        if attrs[\"new_password\"] != attrs[\"new_password_confirm\"]:\n            raise serializers.ValidationError(\n                {\"new_password_confirm\": \"رمزها یکسان نیستند.\"}\n            )\n        return attrs"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from django.contrib.auth.tokens import default_token_generator\nfrom django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode\nfrom django.utils.encoding import force_bytes, force_str\nfrom django.core.mail import send_mail\nfrom django.conf import settings\n\n\nclass PasswordResetRequestView(APIView):\n    permission_classes = [AllowAny]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"password_reset\"\n\n    def post(self, request):\n        serializer = PasswordResetRequestSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        email = serializer.validated_data[\"email\"]\n\n        try:\n            user = User.objects.get(email__iexact=email)\n        except User.DoesNotExist:\n            # به دلایل امنیتی، همیشه موفق برگردان\n            return Response({\"detail\": \"اگر ایمیل ثبت شده باشد، لینک ارسال می‌شود.\"})\n\n        uid = urlsafe_base64_encode(force_bytes(user.pk))\n        token = default_token_generator.make_token(user)\n\n        reset_url = f\"{settings.FRONTEND_URL}/reset-password/{uid}/{token}/\"\n        send_mail(\n            subject=\"بازیابی رمز عبور\",\n            message=f\"برای بازیابی رمز عبور به این لینک بروید:\\n{reset_url}\",\n            from_email=settings.DEFAULT_FROM_EMAIL,\n            recipient_list=[user.email],\n        )\n\n        return Response({\"detail\": \"اگر ایمیل ثبت شده باشد، لینک ارسال می‌شود.\"})\n\n\nclass PasswordResetConfirmView(APIView):\n    permission_classes = [AllowAny]\n\n    def post(self, request):\n        serializer = PasswordResetConfirmSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n\n        try:\n            uid = force_str(urlsafe_base64_decode(serializer.validated_data[\"uid\"]))\n            user = User.objects.get(pk=uid)\n        except (User.DoesNotExist, ValueError, TypeError):\n            return Response(\n                {\"detail\": \"لینک نامعتبر است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n\n        if not default_token_generator.check_token(user, serializer.validated_data[\"token\"]):\n            return Response(\n                {\"detail\": \"توکن نامعتبر یا منقضی است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n\n        user.set_password(serializer.validated_data[\"new_password\"])\n        user.save()\n        return Response({\"detail\": \"رمز عبور بازیابی شد.\"})"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "جلوگیری از User Enumeration",
+          "text": "در endpoint درخواست بازیابی، همیشه پیام موفق برگردانید — حتی اگر ایمیل وجود ندارد. این کار از افشای وجود/عدم وجود ایمیل جلوگیری می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "DEFAULT_FROM_EMAIL = \"noreply@example.com\"\nFRONTEND_URL = \"https://app.example.com\"\n\n# برای توسعه: چاپ ایمیل در کنسول\nEMAIL_BACKEND = \"django.core.mail.backends.console.EmailBackend\"\n\n# برای تولید: SMTP\n# EMAIL_BACKEND = \"django.core.mail.backends.smtp.EmailBackend\"\n# EMAIL_HOST = \"smtp.example.com\"\n# EMAIL_PORT = 587\n# EMAIL_USE_TLS = True"
+        }
+      ]
+    },
+    {
+      "id": "email-verify",
+      "title": "تأیید ایمیل",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پس از ثبت‌نام، ایمیل تأیید ارسال می‌کنیم. کاربر با کلیک روی لینک، ایمیلش تأیید می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "class VerifyEmailView(APIView):\n    permission_classes = [AllowAny]\n\n    def post(self, request):\n        uid = request.data.get(\"uid\")\n        token = request.data.get(\"token\")\n\n        try:\n            user_id = force_str(urlsafe_base64_decode(uid))\n            user = User.objects.get(pk=user_id)\n        except (User.DoesNotExist, ValueError, TypeError):\n            return Response(\n                {\"detail\": \"لینک نامعتبر است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n\n        if not default_token_generator.check_token(user, token):\n            return Response(\n                {\"detail\": \"توکن نامعتبر یا منقضی است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n\n        user.is_email_verified = True\n        user.save(update_fields=[\"is_email_verified\"])\n        return Response({\"detail\": \"ایمیل تأیید شد.\"})"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/services.py",
+          "code": "from django.core.mail import send_mail\nfrom django.conf import settings\nfrom django.utils.http import urlsafe_base64_encode\nfrom django.utils.encoding import force_bytes\nfrom django.contrib.auth.tokens import default_token_generator\n\n\ndef send_verification_email(user):\n    uid = urlsafe_base64_encode(force_bytes(user.pk))\n    token = default_token_generator.make_token(user)\n    verify_url = f\"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/\"\n    send_mail(\n        subject=\"تأیید ایمیل\",\n        message=f\"برای تأیید ایمیل به این لینک بروید:\\n{verify_url}\",\n        from_email=settings.DEFAULT_FROM_EMAIL,\n        recipient_list=[user.email],\n    )\n\n\n# در RegisterView پس از ساخت کاربر:\n# send_verification_email(user)"
+        }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "مسیرها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/urls.py",
+          "code": "from django.urls import path\nfrom rest_framework_simplejwt.views import TokenRefreshView\nfrom .views import (\n    RegisterView, LoginView, LogoutView, ProfileView,\n    ChangePasswordView, PasswordResetRequestView,\n    PasswordResetConfirmView, VerifyEmailView,\n)\n\nurlpatterns = [\n    path(\"register/\", RegisterView.as_view(), name=\"register\"),\n    path(\"login/\", LoginView.as_view(), name=\"login\"),\n    path(\"logout/\", LogoutView.as_view(), name=\"logout\"),\n    path(\"token/refresh/\", TokenRefreshView.as_view(), name=\"token-refresh\"),\n    path(\"me/\", ProfileView.as_view(), name=\"profile\"),\n    path(\"change-password/\", ChangePasswordView.as_view(), name=\"change-password\"),\n    path(\"password-reset/\", PasswordResetRequestView.as_view(), name=\"password-reset\"),\n    path(\"password-reset/confirm/\", PasswordResetConfirmView.as_view(), name=\"password-reset-confirm\"),\n    path(\"verify-email/\", VerifyEmailView.as_view(), name=\"verify-email\"),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "urlpatterns = [\n    path(\"admin/\", admin.site.urls),\n    path(\"api/auth/\", include(\"users.urls\")),\n    path(\"api/\", include(\"catalog.urls\")),\n]"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "بازگرداندن پیام مشخص برای ایمیل ناموجود",
+          "why": "User Enumeration — حمله‌کننده می‌فهمد کدام ایمیل‌ها ثبت شده‌اند.",
+          "when": "در endpoint بازیابی رمز.",
+          "fix": "همیشه پیام موفق برگردانید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود Throttling روی ثبت‌نام و ورود",
+          "why": "حمله brute-force و اسپم ثبت‌نام.",
+          "when": "همیشه.",
+          "fix": "ScopedRateThrottle با نرخ کم روی `register`, `login`, `password_reset`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازگرداندن `is_email_verified` در پاسخ ثبت‌نام",
+          "why": "کلاینت می‌تواند آن را دستکاری کند.",
+          "when": "وقتی این فیلد را در سریالایزر می‌گذارید.",
+          "fix": "`read_only=True` یا حذف کامل."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود CSRF محافظت از کوکی‌ها",
+          "why": "اگر از SessionAuthentication استفاده می‌کنید، CSRF لازم است.",
+          "when": "وقتی فقط JWT دارید و فکر می‌کنید امنید.",
+          "fix": "اگر Cookie برای Refresh استفاده می‌کنید، CSRF را فعال کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازگرداندن `password` در هر پاسخ",
+          "why": "لو رفتن رمز.",
+          "when": "وقتی سریالایزر User را می‌سازید.",
+          "fix": "`write_only=True` یا حذف کامل از fields."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `select_related` در User Profile",
+          "why": "اگر پروفایل جدا دارید، N+1.",
+          "when": "وقتی مدل Profile جدا دارید.",
+          "fix": "`User.objects.select_related(\"profile\")`"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-034-q1",
+      "tag": "کوییز",
+      "question": "در endpoint بازیابی رمز، اگر ایمیل وجود نداشت، چه کاری درست است؟",
+      "options": [
+        { "text": "پاسخ 404 برگردان", "correct": false },
+        { "text": "پاسخ موفق برگردان (برای جلوگیری از User Enumeration)", "correct": true, "explanation": "این روش از افشای وجود یا عدم وجود ایمیل جلوگیری می‌کند." },
+        { "text": "بپرس که آیا می‌خواهد ثبت‌نام کند", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-034-q2",
+      "tag": "کوییز",
+      "question": "کدام فیلدها باید در پروفایل `read_only` باشند؟",
+      "options": [
+        { "text": "`first_name`, `last_name`", "correct": false },
+        { "text": "`id`, `username`, `email`, `is_email_verified`, `created_at`", "correct": true, "explanation": "این فیلدها را کلاینت نباید دستکاری کند." },
+        { "text": "`bio`, `avatar`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-034-ex1",
+      "title": "تمرین — سیستم کاربر کامل",
+      "problem": "یک سیستم کاربر کامل بسازید با Endpointهای:\n- `/api/auth/register/` (ثبت‌نام + بازگرداندن JWT)\n- `/api/auth/login/`\n- `/api/auth/me/` (خواندن و ویرایش پروفایل)\n- `/api/auth/change-password/`\n- `/api/auth/password-reset/` و `/api/auth/password-reset/confirm/`\n\nروی ثبت‌نام، ورود و بازیابی، Throttling فعال کنید.",
+      "hints": ["از `validate_password` برای اعتبارسنجی رمز.", "از `check_password` برای تأیید رمز فعلی.", "از `default_token_generator` برای توکن بازیابی.", "روی ایمیل از `__iexact` استفاده کنید."],
+      "solution": "همه کدها در این فصل آمده‌اند. کافی است بخش‌ها را کنار هم بگذارید:\n- `RegisterSerializer` + `RegisterView`\n- `LoginView` با Throttling\n- `ProfileSerializer` + `ProfileView`\n- `ChangePasswordSerializer` + `ChangePasswordView`\n- `PasswordResetRequestSerializer` + `PasswordResetConfirmSerializer` + Viewها\n\nسپس urls.py را با همه Endpointها بسازید و تست کنید:\n```bash\n# ثبت‌نام\ncurl -X POST http://127.0.0.1:8000/api/auth/register/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\":\"sara\",\"email\":\"sara@example.com\",\"password\":\"S3cret!Pass\",\"password_confirm\":\"S3cret!Pass\"}'\n\n# ویرایش پروفایل\ncurl -X PATCH http://127.0.0.1:8000/api/auth/me/ \\\n  -H \"Authorization: Bearer <access>\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"first_name\": \"Sara\", \"bio\": \"Backend Developer\"}'\n```",
+      "explanation": "این ترکیب، ۹۰٪ نیازهای احراز هویت پروژه‌های واقعی را پوشش می‌دهد."
+    }
+  ],
+  "summary": [
+    "مدل سفارشی `User` را قبل از اولین `migrate` بسازید.",
+    "ثبت‌نام: `RegisterSerializer` + `validate_password`.",
+    "ورود: `TokenObtainPairView` با Throttling.",
+    "پروفایل: `RetrieveUpdateAPIView` با `get_object` = `request.user`.",
+    "تغییر رمز: `check_password` + `set_password`.",
+    "بازیابی رمز: `default_token_generator` + ایمیل + endpoint تأیید.",
+    "تأیید ایمیل: توکن در URL + تغییر `is_email_verified`.",
+    "Throttling روی register، login و password_reset.",
+    "از User Enumeration جلوگیری کنید (پیام موفق برای همه)."
+  ],
+  "resources": [
+    { "title": "Django — Custom User Model", "url": "https://docs.djangoproject.com/en/stable/topics/auth/customizing/", "official": true },
+    { "title": "DRF — Authentication", "url": "https://www.django-rest-framework.org/api-guide/authentication/", "official": true }
+  ]
+}

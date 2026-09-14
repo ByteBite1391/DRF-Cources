@@ -1,0 +1,31 @@
+{
+  "id": "resources",
+  "slug": "resources",
+  "title": "منابع",
+  "kicker": "Resources",
+  "level": "beginner",
+  "estimatedMinutes": 5,
+  "lead": "منابع رسمی و معتبر برای یادگیری بیشتر.",
+  "sections": [
+    {
+      "id": "official",
+      "title": "منابع رسمی",
+      "blocks": [
+        {
+          "type": "resources",
+          "items": [
+            { "title": "Django REST Framework", "url": "https://www.django-rest-framework.org/", "official": true },
+            { "title": "Django", "url": "https://docs.djangoproject.com/", "official": true },
+            { "title": "Python", "url": "https://docs.python.org/3/", "official": true },
+            { "title": "OpenAPI Specification", "url": "https://spec.openapis.org/", "official": true },
+            { "title": "PostgreSQL", "url": "https://www.postgresql.org/docs/", "official": true },
+            { "title": "Redis", "url": "https://redis.io/docs/", "official": true },
+            { "title": "Docker", "url": "https://docs.docker.com/", "official": true },
+            { "title": "pytest", "url": "https://docs.pytest.org/", "official": true },
+            { "title": "Celery", "url": "https://docs.celeryq.dev/", "official": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

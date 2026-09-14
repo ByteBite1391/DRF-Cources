@@ -1,0 +1,362 @@
+{
+  "id": "ch-038",
+  "slug": "django-filter",
+  "title": "django-filter",
+  "kicker": "فصل ۳۸",
+  "level": "intermediate",
+  "estimatedMinutes": 45,
+  "lead": "برای فیلترهای پیچیده، django-filter استاندارد صنعت است. با چند خط کد، فیلترهای قدرتمند و مستند می‌سازید.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا django-filter؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**اعتبارسنجی خودکار:** نوع فیلدها (عدد، تاریخ، Boolean) بررسی می‌شود.",
+            "**پیام خطای استاندارد:** به‌جای try/except دستی.",
+            "**قابل استفاده مجدد:** FilterSet را در چند View استفاده کنید.",
+            "**مستندسازی:** خودکار در OpenAPI ظاهر می‌شود.",
+            "**ترکیب فیلترها:** با منطق OR/AND.",
+            "**سفارشی‌سازی:** متدهای فیلتر برای منطق پیچیده."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "فیلتر دستی در `get_queryset`.",
+          "better": "`filterset_fields` ساده.",
+          "production": "`FilterSet` سفارشی با متدها + `MethodFilter` + `ChoiceFilter` + مستندسازی OpenAPI."
+        }
+      ]
+    },
+    {
+      "id": "install",
+      "title": "نصب و تنظیمات",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "pip install django-filter"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"django_filters\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_FILTER_BACKENDS\": [\n        \"django_filters.rest_framework.DjangoFilterBackend\",\n    ],\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "تنظیم سراسری",
+          "text": "با تنظیم سراسری، همه ViewSetها و ListAPIViewها خودکار فیلتر می‌شوند. نیاز نیست در هر View تکرار کنید."
+        }
+      ]
+    },
+    {
+      "id": "simple",
+      "title": "روش ساده — filterset_fields",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django_filters.rest_framework import DjangoFilterBackend\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [DjangoFilterBackend]\n    filterset_fields = [\"category\", \"is_active\", \"author\"]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# همه کتاب‌های فعال در دسته fiction\nGET /api/books/?category=fiction&is_active=true\n\n# کتاب‌های نویسنده با id=7\nGET /api/books/?author=7"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نوع فیلد",
+          "text": "django-filter خودش نوع فیلد مدل را می‌فهمد. `category` (ForeignKey) → فیلتر با id. `is_active` (Boolean) → فیلتر با true/false."
+        }
+      ]
+    },
+    {
+      "id": "filterset",
+      "title": "FilterSet سفارشی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/filters.py",
+          "code": "import django_filters\nfrom .models import Book\n\n\nclass BookFilter(django_filters.FilterSet):\n    # فیلترهای پیشرفته‌تر از فیلدهای مدل\n    min_price = django_filters.NumberFilter(\n        field_name=\"price\",\n        lookup_expr=\"gte\",\n        label=\"حداقل قیمت\",\n    )\n    max_price = django_filters.NumberFilter(\n        field_name=\"price\",\n        lookup_expr=\"lte\",\n        label=\"حداکثر قیمت\",\n    )\n    title = django_filters.CharFilter(\n        field_name=\"title\",\n        lookup_expr=\"icontains\",\n        label=\"جستجو در عنوان\",\n    )\n    author_name = django_filters.CharFilter(\n        field_name=\"author__full_name\",\n        lookup_expr=\"icontains\",\n        label=\"نام نویسنده\",\n    )\n    created_after = django_filters.DateFilter(\n        field_name=\"created_at\",\n        lookup_expr=\"date__gte\",\n    )\n    created_before = django_filters.DateFilter(\n        field_name=\"created_at\",\n        lookup_expr=\"date__lte\",\n    )\n    is_new = django_filters.BooleanFilter(\n        method=\"filter_is_new\",\n        label=\"کتاب‌های جدید (۳۰ روز اخیر)\",\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"category\", \"is_active\", \"author\"]\n\n    def filter_is_new(self, queryset, name, value):\n        if not value:\n            return queryset\n        from datetime import date, timedelta\n        cutoff = date.today() - timedelta(days=30)\n        return queryset.filter(created_at__date__gte=cutoff)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\", \"category\")\n    serializer_class = BookSerializer\n    filter_backends = [DjangoFilterBackend]\n    filterset_class = BookFilter"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# فیلترهای ترکیبی\nGET /api/books/?min_price=10&max_price=50&author_name=Martin&is_new=true"
+        }
+      ]
+    },
+    {
+      "id": "lookups",
+      "title": "Lookups پرکاربرد",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["Lookup", "معنی", "مثال فیلتر"],
+          "rows": [
+            ["`exact`", "برابری (پیش‌فرض)", "`field_name=\"id\"`"],
+            ["`iexact`", "برابری بدون حساسیت", "`lookup_expr=\"iexact\"`"],
+            ["`contains`", "شامل", "`lookup_expr=\"contains\"`"],
+            ["`icontains`", "شامل بدون حساسیت", "`lookup_expr=\"icontains\"`"],
+            ["`in`", "در لیست", "`lookup_expr=\"in\"`"],
+            ["`gt` / `gte`", "بزرگ‌تر / بزرگ‌تر مساوی", "`lookup_expr=\"gte\"`"],
+            ["`lt` / `lte`", "کوچک‌تر / کوچک‌تر مساوی", "`lookup_expr=\"lte\"`"],
+            ["`startswith`", "شروع با", "`lookup_expr=\"startswith\"`"],
+            ["`istartswith`", "شروع با (بدون حساسیت)", "`lookup_expr=\"istartswith\"`"],
+            ["`endswith`", "پایان با", "`lookup_expr=\"endswith\"`"],
+            ["`range`", "در بازه", "`lookup_expr=\"range\"`"],
+            ["`date`", "قسمت تاریخ", "`lookup_expr=\"date\"`"],
+            ["`year` / `month` / `day`", "سال / ماه / روز", "`lookup_expr=\"year\"`"],
+            ["`isnull`", "تهی است", "`lookup_expr=\"isnull\"`"],
+            ["`regex`", "regex", "`lookup_expr=\"regex\"`"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookFilter(django_filters.FilterSet):\n    title_contains = django_filters.CharFilter(\n        field_name=\"title\", lookup_expr=\"icontains\",\n    )\n    price_range = django_filters.RangeFilter(field_name=\"price\")\n    # ?price_range_min=10&price_range_max=50\n\n    isbn = django_filters.CharFilter(field_name=\"isbn\", lookup_expr=\"exact\")\n    published_year = django_filters.NumberFilter(\n        field_name=\"published_at\", lookup_expr=\"year\",\n    )"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "RangeFilter",
+          "text": "`RangeFilter` دو پارامتر می‌سازد: `<name>_min` و `<name>_max`. برای قیمت، امتیاز، تاریخ عالی است."
+        }
+      ]
+    },
+    {
+      "id": "field-types",
+      "title": "انواع فیلد filter",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["فیلد", "کاربرد", "نمونه ورودی"],
+          "rows": [
+            ["`CharFilter`", "رشته", "`?title=Clean`"],
+            ["`NumberFilter`", "عدد", "`?min_price=10`"],
+            ["`BooleanFilter`", "Boolean", "`?in_stock=true`"],
+            ["`DateFilter`", "تاریخ", "`?created_after=2024-01-01`"],
+            ["`DateTimeFilter`", "تاریخ و زمان", "`?created_after=2024-01-01T10:00:00Z`"],
+            ["`TimeFilter`", "زمان", "`?slot=14:00`"],
+            ["`ChoiceFilter`", "انتخاب از لیست", "`?status=published`"],
+            ["`MultipleChoiceFilter`", "چند مقدار", "`?status=draft&status=published`"],
+            ["`ModelChoiceFilter`", "ForeignKey با queryset", "`?author=7`"],
+            ["`ModelMultipleChoiceFilter`", "ManyToMany", "`?tags=django&tags=drf`"],
+            ["`RangeFilter`", "بازه", "`?price_min=10&price_max=50`"],
+            ["`IsoDateTimeFilter`", "ISO 8601", "`?created=2024-01-01T10:00:00Z`"],
+            ["`UUIDFilter`", "UUID", "`?uid=550e8400-...`"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class OrderFilter(django_filters.FilterSet):\n    status = django_filters.MultipleChoiceFilter(\n        choices=[\n            (\"pending\", \"در انتظار\"),\n            (\"paid\", \"پرداخت‌شده\"),\n            (\"shipped\", \"ارسال‌شده\"),\n            (\"cancelled\", \"لغو‌شده\"),\n        ],\n    )\n    min_total = django_filters.NumberFilter(\n        field_name=\"total\", lookup_expr=\"gte\",\n    )\n    created_after = django_filters.IsoDateTimeFilter(\n        field_name=\"created_at\", lookup_expr=\"gte\",\n    )\n\n    class Meta:\n        model = Order\n        fields = [\"status\", \"customer\"]"
+        }
+      ]
+    },
+    {
+      "id": "multiple-choice",
+      "title": "MultipleChoiceFilter",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookFilter(django_filters.FilterSet):\n    status = django_filters.MultipleChoiceFilter(\n        choices=[\n            (\"draft\", \"پیش‌نویس\"),\n            (\"published\", \"منتشرشده\"),\n            (\"archived\", \"بایگانی\"),\n        ],\n        method=\"filter_status\",\n    )\n\n    def filter_status(self, queryset, name, value):\n        if not value:\n            return queryset\n        # value یک لیست است\n        return queryset.filter(status__in=value)"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# همه با status draft یا archived\nGET /api/books/?status=draft&status=archived"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "distinct برای ManyToMany",
+          "text": "اگر روی ManyToMany فیلتر می‌کنید، از `.distinct()` استفاده کنید تا نتایج تکراری نگیرید."
+        }
+      ]
+    },
+    {
+      "id": "method-filter",
+      "title": "MethodFilter و منطق سفارشی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookFilter(django_filters.FilterSet):\n    available = django_filters.BooleanFilter(method=\"filter_available\")\n    in_price_range = django_filters.CharFilter(method=\"filter_price_range\")\n    owner = django_filters.CharFilter(method=\"filter_by_owner\")\n\n    class Meta:\n        model = Book\n        fields = []\n\n    def filter_available(self, queryset, name, value):\n        if value:\n            return queryset.filter(stock__gt=0, is_active=True)\n        return queryset\n\n    def filter_price_range(self, queryset, name, value):\n        \"\"\"?in_price_range=10-50\"\"\"\n        try:\n            min_p, max_p = value.split(\"-\")\n            return queryset.filter(price__gte=min_p, price__lte=max_p)\n        except (ValueError, AttributeError):\n            return queryset\n\n    def filter_by_owner(self, queryset, name, value):\n        \"\"\"?owner=me → کتاب‌های کاربر جاری\"\"\"\n        if value == \"me\":\n            user = self.request.user\n            if user.is_authenticated:\n                return queryset.filter(owner=user)\n            return queryset.none()\n        return queryset.filter(owner__username=value)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "دسترسی به request",
+          "text": "در متدهای filter می‌توانید از `self.request` استفاده کنید — مفید برای فیلترهای وابسته به کاربر."
+        }
+      ]
+    },
+    {
+      "id": "combining-backends",
+      "title": "ترکیب با SearchFilter و OrderingFilter",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import filters\nfrom django_filters.rest_framework import DjangoFilterBackend\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\", \"category\")\n    serializer_class = BookSerializer\n    filter_backends = [\n        DjangoFilterBackend,\n        filters.SearchFilter,\n        filters.OrderingFilter,\n    ]\n    filterset_class = BookFilter\n    search_fields = [\"title\", \"description\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\", \"title\"]\n    ordering = [\"-created_at\"]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# فیلتر + جستجو + مرتب‌سازی + صفحه‌بندی\nGET /api/books/?category=fiction&min_price=20&search=clean&ordering=-price&page=2"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "ترتیب Backendها مهم است",
+          "text": "Backendها به ترتیب لیست اعمال می‌شوند. اول `DjangoFilterBackend`، بعد Search، در نهایت Ordering — این ترتیب منطقی است."
+        }
+      ]
+    },
+    {
+      "id": "openapi",
+      "title": "مستندسازی خودکار",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "django-filter با drf-spectacular ترکیب می‌شود و پارامترهای فیلتر خودکار در Swagger/ReDoc ظاهر می‌شوند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "SPECTACULAR_SETTINGS = {\n    \"COMPONENT_SPLIT_REQUEST\": True,\n    \"ENUM_NAME_OVERRIDES\": {\n        \"BookStatus\": \"catalog.models.Book.STATUS_CHOICES\",\n    },\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "label",
+          "text": "با `label` روی فیلترها، توضیح فارسی در مستندات ظاهر می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `.distinct()`",
+          "why": "روی ManyToMany، نتایج تکراری می‌شوند.",
+          "when": "وقتی روی رابطه چند-به-چند فیلتر می‌کنید.",
+          "fix": "`.distinct()` در انتهای QuerySet."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فیلتر روی فیلد بدون index",
+          "why": "کوئری کند در دیتابیس بزرگ.",
+          "when": "وقتی فیلترهای متنی روی فیلدهای حجیم.",
+          "fix": "`db_index=True` یا ایندکس ترکیبی."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود محدودیت در RangeFilter",
+          "why": "کاربر می‌تواند بازه‌های بسیار بزرگ بدهد.",
+          "when": "وقتی RangeFilter روی فیلدهای گران است.",
+          "fix": "در متد `filter_*` محدودیت بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از icontains روی فیلدهای بزرگ",
+          "why": "کوئری کند با %...% در ابتدا.",
+          "when": "وقتی روی description طولانی می‌فیلترید.",
+          "fix": "از Full-Text Search استفاده کنید یا `startswith` با index."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "تکرار filterset_fields در هر View",
+          "why": "کد تکراری، نگهداری سخت.",
+          "when": "وقتی چند View فیلتر مشترک دارند.",
+          "fix": "از `filterset_class` مشترک استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `select_related` در queryset",
+          "why": "N+1 وقتی فیلتر روی رابطه‌هاست.",
+          "when": "وقتی سریالایزر به author دسترسی دارد.",
+          "fix": "`queryset = Book.objects.select_related(\"author\")`"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-038-q1",
+      "tag": "کوییز",
+      "question": "برای فیلتر بازه قیمت با django-filter، کدام فیلد مناسب است؟",
+      "options": [
+        { "text": "`NumberFilter`", "correct": false },
+        { "text": "`RangeFilter`", "correct": true, "explanation": "RangeFilter دو پارامتر min و max می‌سازد." },
+        { "text": "`CharFilter`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-038-q2",
+      "tag": "کوییز",
+      "question": "برای فیلتر روی ManyToMany، چرا `.distinct()` لازم است؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون بدون آن، ممکن است نتایج تکراری برگردند.", "correct": true, "explanation": "JOIN با M2M می‌تواند رکورد تکراری بسازد." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-038-q3",
+      "tag": "کوییز",
+      "question": "در متد فیلتر سفارشی، دسترسی به کاربر جاری از کجاست؟",
+      "options": [
+        { "text": "`self.user`", "correct": false },
+        { "text": "`self.request.user`", "correct": true, "explanation": "FilterSet به request دسترسی دارد." },
+        { "text": "به‌طور پیش‌فرض نداریم", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-038-ex1",
+      "title": "تمرین — FilterSet کامل",
+      "problem": "برای مدل `Product` یک `ProductFilter` بسازید با:\n- `category` (اسلاگ)\n- `min_price`, `max_price`\n- `brand` (اسلاگ)\n- `in_stock` (Boolean)\n- `search` در نام و توضیحات\n- `created_after`\n- `has_discount` (فیلتر سفارشی)",
+      "hints": [
+        "از `CharFilter` با `field_name=\"category__slug\"`.",
+        "برای search، از `CharFilter` با `method` استفاده کنید.",
+        "برای has_discount، منطق خودتان را بنویسید."
+      ],
+      "solution": "```python\nimport django_filters\nfrom django.db.models import Q, F\nfrom .models import Product\n\n\nclass ProductFilter(django_filters.FilterSet):\n    category = django_filters.CharFilter(\n        field_name=\"category__slug\",\n        label=\"دسته‌بندی\",\n    )\n    brand = django_filters.CharFilter(\n        field_name=\"brand__slug\",\n        label=\"برند\",\n    )\n    min_price = django_filters.NumberFilter(\n        field_name=\"price\", lookup_expr=\"gte\", label=\"حداقل قیمت\",\n    )\n    max_price = django_filters.NumberFilter(\n        field_name=\"price\", lookup_expr=\"lte\", label=\"حداکثر قیمت\",\n    )\n    in_stock = django_filters.BooleanFilter(\n        method=\"filter_in_stock\", label=\"موجود در انبار\",\n    )\n    search = django_filters.CharFilter(method=\"filter_search\")\n    created_after = django_filters.DateFilter(\n        field_name=\"created_at\", lookup_expr=\"date__gte\",\n    )\n    has_discount = django_filters.BooleanFilter(\n        method=\"filter_has_discount\", label=\"دارای تخفیف\",\n    )\n\n    class Meta:\n        model = Product\n        fields = []\n\n    def filter_in_stock(self, queryset, name, value):\n        if value:\n            return queryset.filter(stock__gt=0)\n        return queryset.filter(stock=0)\n\n    def filter_search(self, queryset, name, value):\n        if not value:\n            return queryset\n        return queryset.filter(\n            Q(name__icontains=value) |\n            Q(description__icontains=value)\n        )\n\n    def filter_has_discount(self, queryset, name, value):\n        if value:\n            return queryset.filter(discount_price__isnull=False, discount_price__lt=F(\"price\"))\n        return queryset.filter(Q(discount_price__isnull=True) | Q(discount_price__gte=F(\"price\")))\n```",
+      "explanation": "این FilterSet هم فیلترهای ساده دارد، هم متد سفارشی، هم جستجوی ترکیبی. الگوی رایج در پروژه‌های واقعی."
+    }
+  ],
+  "summary": [
+    "django-filter استاندارد فیلترهای پیچیده در DRF.",
+    "`filterset_fields` روش ساده، `FilterSet` روش پیشرفته.",
+    "انواع: `CharFilter`, `NumberFilter`, `BooleanFilter`, `DateFilter`, `ChoiceFilter`, `MultipleChoiceFilter`, `RangeFilter`.",
+    "`lookup_expr` برای gt/gte/lt/lte/icontains/in و... .",
+    "`method` برای منطق سفارشی.",
+    "دسترسی به `self.request` در متدها.",
+    "ترکیب با `SearchFilter` و `OrderingFilter`.",
+    "برای ManyToMany، `.distinct()` فراموش نشود."
+  ],
+  "resources": [
+    { "title": "django-filter — مستندات", "url": "https://django-filter.readthedocs.io/", "official": true },
+    { "title": "DRF — Filtering", "url": "https://www.django-rest-framework.org/api-guide/filtering/", "official": true }
+  ]
+}

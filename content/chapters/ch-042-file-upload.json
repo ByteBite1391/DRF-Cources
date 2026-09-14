@@ -1,0 +1,380 @@
+{
+  "id": "ch-042",
+  "slug": "file-upload",
+  "title": "آپلود فایل (File Upload)",
+  "kicker": "فصل ۴۲",
+  "level": "intermediate",
+  "estimatedMinutes": 45,
+  "lead": "آپلود فایل یکی از پرکاربردترین و در عین حال پرخطرترین قابلیت‌های API است. این فصل از پایه تا تولید را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "basics",
+      "title": "اصول آپلود فایل",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای آپلود فایل، کلاینت معمولاً از `multipart/form-data` استفاده می‌کند که هم فایل و هم فیلدهای دیگر را در یک درخواست می‌فرستد."
+        },
+        {
+          "type": "flow",
+          "steps": ["Client", "multipart/form-data", "MultiPartParser", "request.data + request.FILES", "Serializer"]
+        },
+        {
+          "type": "table",
+          "headers": ["Content-Type", "کاربرد", "پارسر"],
+          "rows": [
+            ["`application/json`", "داده ساختاریافته (بدون فایل)", "`JSONParser`"],
+            ["`multipart/form-data`", "فایل + فیلد", "`MultiPartParser`"],
+            ["`application/x-www-form-urlencoded`", "فرم بدون فایل", "`FormParser`"],
+            ["`application/octet-stream`", "فایل خام", "`FileUploadParser`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا multipart؟",
+          "text": "JSON نمی‌تواند فایل باینری را حمل کند. `multipart/form-data` اجازه می‌دهد فایل و فیلدها با هم فرستاده شوند."
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "تنظیمات پایه",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "import os\nfrom pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\n# مسیر ذخیره فایل‌های مدیا\nMEDIA_URL = \"/media/\"\nMEDIA_ROOT = os.path.join(BASE_DIR, \"media\")\n\n# حداکثر حجم آپلود (۱۰ مگابایت)\nDATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024\nFILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024\n\n# برای فایل‌های بزرگ، stream به دیسک\nFILE_UPLOAD_HANDLERS = [\n    \"django.core.files.uploadhandler.TemporaryFileUploadHandler\",\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "from django.conf import settings\nfrom django.conf.urls.static import static\n\nurlpatterns = [\n    # ...\n]\n\nif settings.DEBUG:\n    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "در تولید",
+          "text": "در محیط تولید، فایل‌های مدیا را سرور وب (Nginx) یا سرویس ابری (S3) سرو می‌کند، نه Django. `static()` فقط در `DEBUG=True` کار می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "model-field",
+      "title": "فیلد فایل در مدل",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/models.py",
+          "code": "from django.db import models\n\n\ndef book_cover_path(instance, filename):\n    \"\"\"مسیر ذخیره: media/books/covers/<isbn>/<filename>\"\"\"\n    return f\"books/covers/{instance.isbn}/{filename}\"\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    isbn = models.CharField(max_length=13, unique=True)\n    cover = models.ImageField(\n        upload_to=\"books/covers/\",\n        blank=True,\n        null=True,\n    )\n    document = models.FileField(\n        upload_to=\"books/documents/\",\n        blank=True,\n        null=True,\n    )\n\n\nclass UserAvatar(models.Model):\n    user = models.OneToOneField(\"auth.User\", on_delete=models.CASCADE)\n    avatar = models.ImageField(upload_to=\"avatars/%Y/%m/\")"
+        },
+        {
+          "type": "table",
+          "headers": ["فیلد", "کاربرد"],
+          "rows": [
+            ["`FileField`", "هر فایلی"],
+            ["`ImageField`", "تصاویر (نیاز به Pillow)"],
+            ["`upload_to`", "پوشه یا تابع تولید مسیر"],
+            ["`blank=True`", "اجباری نیست"],
+            ["`null=True`", "می‌تواند در دیتابیس null باشد"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install Pillow   # برای ImageField"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "upload_to",
+          "text": "اگر رشته ساده بدهید، فایل در آن پوشه ذخیره می‌شود. اگر تابع بدهید، مسیر پویا می‌سازید (مثلاً بر اساس id)."
+        }
+      ]
+    },
+    {
+      "id": "serializer",
+      "title": "سریالایزر برای فایل",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "from rest_framework import serializers\nfrom .models import Book\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"isbn\", \"cover\", \"document\"]\n\n    def validate_cover(self, value):\n        if value is None:\n            return value\n\n        # حجم\n        max_size = 5 * 1024 * 1024\n        if value.size > max_size:\n            raise serializers.ValidationError(\n                \"حجم تصویر نمی‌تواند بیشتر از ۵ مگابایت باشد.\"\n            )\n\n        # نوع فایل\n        allowed = [\"image/jpeg\", \"image/png\", \"image/webp\"]\n        if value.content_type not in allowed:\n            raise serializers.ValidationError(\n                \"فرمت تصویر باید JPEG، PNG یا WebP باشد.\"\n            )\n\n        # پسوند\n        valid_exts = [\".jpg\", \".jpeg\", \".png\", \".webp\"]\n        ext = \"\"\n        for e in valid_exts:\n            if value.name.lower().endswith(e):\n                ext = e\n                break\n        if not ext:\n            raise serializers.ValidationError(\n                \"پسوند فایل نامعتبر است.\"\n            )\n\n        return value\n\n    def validate_document(self, value):\n        if value is None:\n            return value\n\n        max_size = 10 * 1024 * 1024\n        if value.size > max_size:\n            raise serializers.ValidationError(\n                \"حجم سند نمی‌تواند بیشتر از ۱۰ مگابایت باشد.\"\n            )\n\n        allowed = [\"application/pdf\", \"application/msword\"]\n        if value.content_type not in allowed:\n            raise serializers.ValidationError(\n                \"فرمت سند باید PDF یا DOC باشد.\"\n            )\n\n        return value"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هرگز بر content_type تنها تکیه نکنید",
+          "text": "`content_type` از سمت کلاینت می‌آید و قابل جعل است. پسوند فایل و محتوای واقعی (با `python-magic`) را هم بررسی کنید."
+        }
+      ]
+    },
+    {
+      "id": "view",
+      "title": "ویو و پارسرها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework import viewsets\nfrom rest_framework.parsers import MultiPartParser, FormParser, JSONParser\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    parser_classes = [MultiPartParser, FormParser, JSONParser]\n\n    # برای همه ViewSetها\n    # یا در settings.py به‌صورت سراسری:\n    # REST_FRAMEWORK = {\n    #     \"DEFAULT_PARSER_CLASSES\": [\n    #         \"rest_framework.parsers.JSONParser\",\n    #         \"rest_framework.parsers.MultiPartParser\",\n    #         \"rest_framework.parsers.FormParser\",\n    #     ],\n    # }"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# آپلود با curl (فقط فایل)\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Authorization: Bearer <token>\" \\\n  -F \"title=Clean Code\" \\\n  -F \"isbn=9780132350884\" \\\n  -F \"cover=@cover.jpg\"\n\n# آپلود با چند فایل\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Authorization: Bearer <token>\" \\\n  -F \"title=Clean Code\" \\\n  -F \"isbn=9780132350884\" \\\n  -F \"cover=@cover.jpg\" \\\n  -F \"document=@book.pdf\""
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "نکته curl",
+          "text": "با `-F`، curl خودکار `Content-Type: multipart/form-data` را تنظیم می‌کند. نیازی به تنظیم دستی نیست."
+        }
+      ]
+    },
+    {
+      "id": "multiple-files",
+      "title": "چند فایل در یک درخواست",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید چند فایل در یک Endpoint بپذیرید — مثل گالری تصاویر."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/models.py",
+          "code": "class Gallery(models.Model):\n    title = models.CharField(max_length=200)\n    owner = models.ForeignKey(\"auth.User\", on_delete=models.CASCADE)\n\n\nclass GalleryImage(models.Model):\n    gallery = models.ForeignKey(\n        Gallery, on_delete=models.CASCADE, related_name=\"images\"\n    )\n    image = models.ImageField(upload_to=\"galleries/%Y/%m/\")\n    caption = models.CharField(max_length=200, blank=True)\n    order = models.PositiveIntegerField(default=0)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "class GalleryImageSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = GalleryImage\n        fields = [\"id\", \"image\", \"caption\", \"order\"]\n\n\nclass GalleryCreateSerializer(serializers.ModelSerializer):\n    images = GalleryImageSerializer(many=True)\n\n    class Meta:\n        model = Gallery\n        fields = [\"id\", \"title\", \"images\"]\n\n    def validate_images(self, value):\n        if not value:\n            raise serializers.ValidationError(\"حداقل یک تصویر لازم است.\")\n        if len(value) > 20:\n            raise serializers.ValidationError(\"حداکثر ۲۰ تصویر.\")\n        return value\n\n    def create(self, validated_data):\n        images_data = validated_data.pop(\"images\")\n        gallery = Gallery.objects.create(**validated_data)\n        GalleryImage.objects.bulk_create([\n            GalleryImage(gallery=gallery, **img)\n            for img in images_data\n        ])\n        return gallery"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# آپلود گالری با چند فایل\ncurl -X POST http://127.0.0.1:8000/api/galleries/ \\\n  -H \"Authorization: Bearer <token>\" \\\n  -F \"title=My Gallery\" \\\n  -F \"images[0]image=@img1.jpg\" \\\n  -F \"images[0]caption=First\" \\\n  -F \"images[1]image=@img2.jpg\" \\\n  -F \"images[1]caption=Second\""
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "شکل داده",
+          "text": "DRF از کلیدهای تودرتو (مثل `images[0]image`) پشتیبانی می‌کند اما در فرانت‌اند ممکن است پیچیده شود. برای پروژه‌های واقعی، Endpoint جدا برای هر فایل را در نظر بگیرید."
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "نکات امنیتی حیاتی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "آپلود فایل یکی از پرخطرترین قابلیت‌های API است. این نکات را جدی بگیرید:"
+        },
+        {
+          "type": "table",
+          "headers": ["خطر", "راه‌حل"],
+          "rows": [
+            ["حجم زیاد (DoS)", "محدودیت در `settings` + validate"],
+            ["اجرای کد (RCE)", "هرگز پسوند `.php`, `.exe`, `.py`, `.sh` را قبول نکنید"],
+            ["XSS", "فایل‌های HTML و SVG را با `Content-Disposition: attachment` سرو کنید"],
+            ["Path Traversal", "نام فایل را با `os.path.basename()` بگیرید"],
+            ["مخفی بودن مسیر", "از UUID برای نام فایل استفاده کنید"],
+            ["سرقت محتوا", "فایل‌های حساس را با توکن دسترسی سرو کنید"],
+            ["ویروس", "اسکن فایل‌های آپلودی (ClamAV)"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "import os\nimport uuid\nfrom django.utils.deconstruct import deconstructible\n\n\ndef safe_upload_path(instance, filename):\n    \"\"\"مسیر امن: نام فایل به UUID تبدیل می‌شود.\"\"\"\n    ext = os.path.splitext(filename)[1].lower()\n    if ext not in {\".jpg\", \".jpeg\", \".png\", \".webp\", \".pdf\"}:\n        ext = \".bin\"\n    new_name = f\"{uuid.uuid4().hex}{ext}\"\n    return f\"uploads/{new_name}\"\n\n\nclass SafeDocument(models.Model):\n    file = models.FileField(upload_to=safe_upload_path)\n    original_name = models.CharField(max_length=255, blank=True)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "import magic   # python-magic\nfrom rest_framework import serializers\n\n\nclass SafeDocumentSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = SafeDocument\n        fields = [\"id\", \"file\", \"original_name\"]\n        read_only_fields = [\"id\", \"original_name\"]\n\n    def validate_file(self, value):\n        # ۱. حجم\n        if value.size > 10 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم فایل بیش از ۱۰ مگابایت.\")\n\n        # ۲. نوع محتوای واقعی (نه فقط content_type)\n        mime = magic.from_buffer(value.read(2048), mime=True)\n        value.seek(0)   # بازگرداندن موقعیت فایل\n\n        allowed = {\n            \"application/pdf\",\n            \"image/jpeg\",\n            \"image/png\",\n        }\n        if mime not in allowed:\n            raise serializers.ValidationError(\n                f\"فرمت {mime} پشتیبانی نمی‌شود.\"\n            )\n\n        return value\n\n    def create(self, validated_data):\n        file = validated_data[\"file\"]\n        validated_data[\"original_name\"] = file.name[:255]\n        return super().create(validated_data)"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "چرا python-magic؟",
+          "text": "`value.content_type` از سمت کلاینت می‌آید. `python-magic` محتوای باینری فایل را می‌خواند و نوع واقعی را تشخیص می‌دهد. مهاجم نمی‌تواند آن را جعل کند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install python-magic\n# در لینوکس: apt install libmagic1\n# در ویندوز: کتابخانه python-magic-bin"
+        }
+      ]
+    },
+    {
+      "id": "image-processing",
+      "title": "پردازش تصویر",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بعد از آپلود، معمولاً می‌خواهید تصویر را تغییر اندازه دهید (thumbnail، resize)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "from PIL import Image\nfrom io import BytesIO\nfrom django.core.files.base import ContentFile\nfrom rest_framework import serializers\n\n\nclass AvatarSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = UserAvatar\n        fields = [\"id\", \"avatar\"]\n        read_only_fields = [\"id\"]\n\n    def validate_avatar(self, value):\n        if value.size > 2 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم تصویر بیش از ۲ مگابایت.\")\n\n        try:\n            img = Image.open(value)\n            img.verify()   # بررسی که واقعاً تصویر است\n        except Exception:\n            raise serializers.ValidationError(\"فایل تصویر معتبر نیست.\")\n\n        value.seek(0)\n        return value\n\n    def create(self, validated_data):\n        avatar = validated_data[\"avatar\"]\n\n        # باز کردن تصویر\n        img = Image.open(avatar)\n        img = img.convert(\"RGB\")\n\n        # تغییر اندازه به حداکثر ۵۰۰x۵۰۰ (نگه‌داشتن نسبت)\n        img.thumbnail((500, 500), Image.LANCZOS)\n\n        # ذخیره به بایت\n        buffer = BytesIO()\n        img.save(buffer, format=\"JPEG\", quality=85, optimize=True)\n\n        # جایگزینی فایل با نسخه بهینه\n        optimized = ContentFile(buffer.getvalue())\n        validated_data[\"avatar\"].save(\n            name=f\"{avatar.name.rsplit('.', 1)[0]}.jpg\",\n            content=optimized,\n            save=False,\n        )\n\n        return super().create(validated_data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چرا resize سمت سرور؟",
+          "text": "کلاینت ممکن است تصویر خام ۵ مگابایتی بفرستد. اگر ذخیره کنید، فضا و پهنای باند هدر می‌رود. resize سمت سرور، امن‌تر و بهینه‌تر است."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "title": "ذخیره‌سازی در S3",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در تولید، ذخیره فایل روی دیسک سرور مناسب نیست. از S3 یا مشابه آن استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install django-storages boto3"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"storages\",\n]\n\n# ذخیره‌سازی پیش‌فرض\nSTORAGES = {\n    \"default\": {\n        \"BACKEND\": \"storages.backends.s3.S3Storage\",\n        \"OPTIONS\": {\n            \"bucket_name\": os.environ[\"AWS_S3_BUCKET\"],\n            \"region_name\": os.environ.get(\"AWS_REGION\", \"us-east-1\"),\n            \"access_key\": os.environ[\"AWS_ACCESS_KEY_ID\"],\n            \"secret_key\": os.environ[\"AWS_SECRET_ACCESS_KEY\"],\n            \"querystring_auth\": True,     # URL امضاشده\n            \"querystring_expire\": 3600,   # یک ساعت\n            \"file_overwrite\": False,      # نام‌های تکراری بازنویسی نشوند\n            \"default_acl\": None,          # private\n        },\n    },\n    \"staticfiles\": {\n        \"BACKEND\": \"django.contrib.staticfiles.storage.StaticFilesStorage\",\n    },\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "URL امضاشده",
+          "text": "با `querystring_auth=True`، فایل‌ها خصوصی می‌مانند و هر URL فقط برای مدت محدود کار می‌کند. برای فایل‌های حساس، این تنظیم ضروری است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# تولید URL موقت برای فایل خصوصی\nfrom django.core.files.storage import default_storage\n\nurl = default_storage.url(\"path/to/file.pdf\")\n# URL امضاشده با اعتبار یک ساعت"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "اعتماد به content_type کلاینت",
+          "why": "کلاینت می‌تواند هر content_type را جعل کند.",
+          "when": "وقتی فقط content_type را چک می‌کنید.",
+          "fix": "با python-magic محتوای واقعی را بررسی کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ذخیره نام اصلی فایل",
+          "why": "نام تکراری، Path Traversal، حساسیت به حروف.",
+          "when": "وقتی از `upload_to=\"uploads/\"` ساده استفاده می‌کنید.",
+          "fix": "UUID برای نام فایل + ذخیره نام اصلی در فیلد جدا."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود محدودیت حجم",
+          "why": "حمله DoS با آپلود فایل‌های بزرگ.",
+          "when": "وقتی settings و serializer را تنظیم نمی‌کنید.",
+          "fix": "`DATA_UPLOAD_MAX_MEMORY_SIZE` + validate در serializer."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "سرو کردن فایل‌های آپلودی از همان دامنه",
+          "why": "اگر HTML یا SVG آپلود شود، XSS رخ می‌دهد.",
+          "when": "وقتی فایل‌های کاربر را از دامنه اصلی سرو می‌کنید.",
+          "fix": "از زیردامنه جدا (user-content.example.com) یا `Content-Disposition: attachment`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ذخیره در دیسک سرور در تولید",
+          "why": "در چند سرور، فایل‌ها سینک نیستند. با هر deploy از دست می‌روند.",
+          "when": "وقتی از `MEDIA_ROOT` در تولید استفاده می‌کنید.",
+          "fix": "S3 یا مشابه."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود اسکن ویروس",
+          "why": "فایل آلوده به مشتریان شما می‌رسد.",
+          "when": "وقتی فایل‌های آپلودی به کاربران دیگر نمایش داده می‌شوند.",
+          "fix": "ClamAV یا سرویس اسکن."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-042-q1",
+      "tag": "کوییز",
+      "question": "چرا فقط به `content_type` نمی‌توان اعتماد کرد؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون از سمت کلاینت می‌آید و قابل جعل است.", "correct": true, "explanation": "باید محتوای باینری فایل را بررسی کرد (python-magic)." },
+        { "text": "چون DRF پشتیبانی نمی‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-042-q2",
+      "tag": "کوییز",
+      "question": "چرا در تولید فایل‌ها را در دیسک سرور ذخیره نمی‌کنیم؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون در چند سرور سینک نیستند و با هر deploy از دست می‌روند.", "correct": true, "explanation": "S3 یا مشابه راه‌حل صحیح است." },
+        { "text": "چون Django پشتیبانی نمی‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-042-q3",
+      "tag": "کوییز",
+      "question": "کدام پارسر برای آپلود فایل لازم است؟",
+      "options": [
+        { "text": "`JSONParser`", "correct": false },
+        { "text": "`MultiPartParser`", "correct": true, "explanation": "multipart/form-data را پارس می‌کند." },
+        { "text": "`FormParser`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-042-ex1",
+      "title": "تمرین — آپلود امن تصویر",
+      "problem": "یک Endpoint برای آپلود آواتار کاربر بسازید که:\n- فقط JPEG، PNG، WebP بپذیرد.\n- حداکثر ۲ مگابایت.\n- نوع واقعی را با python-magic بررسی کند.\n- تصویر را به ۳۰۰x۳۰۰ resize کند.\n- نام فایل را به UUID تبدیل کند.\n- فقط کاربر خودش بتواند آواتارش را تغییر دهد.",
+      "hints": ["از `ImageField` در مدل.", "در serializer از `validate_avatar`.", "در `create` از Pillow برای resize.", "با `HasObjectPermission` یا `get_queryset` مالکیت را چک کنید."],
+      "solution": "```python\n# models.py\nimport uuid\nimport os\nfrom django.db import models\nfrom django.conf import settings\n\n\ndef avatar_upload_path(instance, filename):\n    ext = os.path.splitext(filename)[1].lower()\n    return f\"avatars/{uuid.uuid4().hex}{ext}\"\n\n\nclass UserProfile(models.Model):\n    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name=\"profile\")\n    avatar = models.ImageField(upload_to=avatar_upload_path, blank=True)\n\n\n# serializers.py\nimport magic\nfrom io import BytesIO\nfrom PIL import Image\nfrom django.core.files.base import ContentFile\nfrom rest_framework import serializers\nfrom .models import UserProfile\n\n\nclass AvatarUploadSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = UserProfile\n        fields = [\"avatar\"]\n\n    def validate_avatar(self, value):\n        if value.size > 2 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم تصویر بیش از ۲ مگابایت.\")\n\n        mime = magic.from_buffer(value.read(2048), mime=True)\n        value.seek(0)\n        allowed = {\"image/jpeg\", \"image/png\", \"image/webp\"}\n        if mime not in allowed:\n            raise serializers.ValidationError(\"فرمت تصویر پشتیبانی نمی‌شود.\")\n\n        try:\n            img = Image.open(value)\n            img.verify()\n        except Exception:\n            raise serializers.ValidationError(\"فایل تصویر معتبر نیست.\")\n        value.seek(0)\n        return value\n\n    def update(self, instance, validated_data):\n        avatar = validated_data[\"avatar\"]\n        img = Image.open(avatar).convert(\"RGB\")\n        img.thumbnail((300, 300), Image.LANCZOS)\n\n        buffer = BytesIO()\n        img.save(buffer, format=\"JPEG\", quality=85, optimize=True)\n        validated_data[\"avatar\"].save(\n            name=f\"{avatar.name.rsplit('.', 1)[0]}.jpg\",\n            content=ContentFile(buffer.getvalue()),\n            save=False,\n        )\n        return super().update(instance, validated_data)\n\n\n# views.py\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework.parsers import MultiPartParser\nfrom rest_framework.permissions import IsAuthenticated\nfrom .models import UserProfile\nfrom .serializers import AvatarUploadSerializer\n\n\nclass AvatarUploadView(APIView):\n    parser_classes = [MultiPartParser]\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        profile, _ = UserProfile.objects.get_or_create(user=request.user)\n        serializer = AvatarUploadSerializer(\n            profile, data=request.data, partial=True\n        )\n        serializer.is_valid(raise_exception=True)\n        serializer.save()\n        return Response({\"avatar\": request.build_absolute_uri(profile.avatar.url)})\n```",
+      "explanation": "این Endpoint تمام نکات امنیتی و بهینه‌سازی را در یک جا جمع می‌کند."
+    }
+  ],
+  "summary": [
+    "برای آپلود، از `MultiPartParser` استفاده کنید.",
+    "`MEDIA_URL` و `MEDIA_ROOT` را تنظیم کنید.",
+    "فیلدها: `FileField` و `ImageField`.",
+    "`upload_to` می‌تواند تابع پویا باشد.",
+    "همیشه حجم، نوع و پسوند را اعتبارسنجی کنید.",
+    "content_type قابل جعل است — با python-magic بررسی کنید.",
+    "نام فایل را به UUID تبدیل کنید.",
+    "در تولید از S3 یا مشابه استفاده کنید.",
+    "تصاویر را با Pillow resize کنید.",
+    "فایل‌های آپلودی را از زیردامنه جدا سرو کنید."
+  ],
+  "resources": [
+    { "title": "Django — File Uploads", "url": "https://docs.djangoproject.com/en/stable/topics/http/file-uploads/", "official": true },
+    { "title": "DRF — Parsers", "url": "https://www.django-rest-framework.org/api-guide/parsers/", "official": true },
+    { "title": "django-storages", "url": "https://django-storages.readthedocs.io/", "official": true },
+    { "title": "OWASP — File Upload Cheat Sheet", "url": "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html", "official": true }
+  ]
+}

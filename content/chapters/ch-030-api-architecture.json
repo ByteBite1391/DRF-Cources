@@ -1,0 +1,337 @@
+{
+  "id": "ch-030",
+  "slug": "api-architecture",
+  "title": "معماری API",
+  "kicker": "فصل ۳۰",
+  "level": "advanced",
+  "estimatedMinutes": 40,
+  "lead": "بعد از یادگیری همه لایه‌ها، باید بدانید چه زمانی از کدام استفاده کنید. این فصل راهنمای تصمیم‌گیری است.",
+  "sections": [
+    {
+      "id": "layers",
+      "title": "لایه‌های معماری",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "یک پروژه DRF معمولی این لایه‌ها را دارد. درک نقش هر لایه، به سازمان‌دهی کد کمک می‌کند."
+        },
+        {
+          "type": "flow",
+          "steps": ["URLs", "Views", "Serializers", "Services", "Models"]
+        },
+        {
+          "type": "table",
+          "headers": ["لایه", "مسئولیت", "جای قرارگیری"],
+          "rows": [
+            ["URLs", "مسیریابی", "`urls.py`"],
+            ["Views / ViewSets", "دریافت درخواست، هماهنگی", "`views.py`"],
+            ["Serializers", "تبدیل داده، اعتبارسنجی", "`serializers.py`"],
+            ["Permissions", "کنترل دسترسی", "`permissions.py`"],
+            ["Filters", "فیلتر QuerySet", "`filters.py`"],
+            ["Services (اختیاری)", "منطق کسب‌وکار پیچیده", "`services.py`"],
+            ["Selectors (اختیاری)", "خواندن‌های پیچیده", "`selectors.py`"],
+            ["Models", "ساختار داده، منطق سطح مدل", "`models.py`"],
+            ["Validators", "قواعد قابل استفاده مجدد", "`validators.py`"],
+            ["Pagination", "کنترل خروجی لیست", "`pagination.py`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "thin-views",
+      "title": "نماهای نازک، سریالایزرهای نازک",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اصل طلایی: **هر لایه، فقط کار خودش را انجام دهد.** نما نباید منطق دامنه داشته باشد. سریالایزر نباید منطق کسب‌وکار داشته باشد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ❌ بد — منطق کسب‌وکار در View\nclass OrderCreateView(generics.CreateAPIView):\n    def create(self, request):\n        serializer = self.get_serializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n\n        # منطق پیچیده\n        items = serializer.validated_data[\"items\"]\n        total = 0\n        for item in items:\n            product = Product.objects.get(pk=item[\"product\"].id)\n            if product.stock < item[\"quantity\"]:\n                return Response({\"detail\": \"موجودی ناکافی\"}, status=400)\n            product.stock -= item[\"quantity\"]\n            product.save()\n            total += product.price * item[\"quantity\"]\n\n        order = Order.objects.create(\n            user=request.user,\n            total=total,\n            status=\"pending\",\n        )\n        OrderItem.objects.bulk_create([...])\n\n        # ارسال ایمیل\n        send_order_email(order)\n        return Response({\"id\": order.id}, status=201)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "orders/services.py",
+          "code": "# ✅ خوب — منطق در Service\nfrom django.db import transaction\nfrom django.core.exceptions import ValidationError\nfrom .models import Order, OrderItem, Product\nfrom .tasks import send_order_email\n\n\ndef create_order(user, items_data):\n    \"\"\"\n    منطق ساخت سفارش با بررسی موجودی و محاسبه قیمت.\n    \"\"\"\n    with transaction.atomic():\n        total = 0\n        order = Order.objects.create(user=user, total=0, status=\"pending\")\n        order_items = []\n\n        for item_data in items_data:\n            product = Product.objects.select_for_update().get(\n                pk=item_data[\"product\"].id\n            )\n            if product.stock < item_data[\"quantity\"]:\n                raise ValidationError(\n                    f\"موجودی «{product.name}» کافی نیست.\"\n                )\n            product.stock -= item_data[\"quantity\"]\n            product.save(update_fields=[\"stock\"])\n\n            line_total = product.price * item_data[\"quantity\"]\n            total += line_total\n            order_items.append(OrderItem(\n                order=order,\n                product=product,\n                quantity=item_data[\"quantity\"],\n                unit_price=product.price,\n                line_total=line_total,\n            ))\n\n        OrderItem.objects.bulk_create(order_items)\n        order.total = total\n        order.save(update_fields=[\"total\"])\n\n        # ارسال ایمیل در پس‌زمینه\n        send_order_email.delay(order.id)\n\n        return order"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "orders/views.py",
+          "code": "class OrderCreateView(generics.CreateAPIView):\n    serializer_class = OrderCreateSerializer\n    permission_classes = [IsAuthenticated]\n\n    def create(self, request, *args, **kwargs):\n        serializer = self.get_serializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n\n        # View فقط هماهنگ می‌کند\n        order = create_order(\n            user=request.user,\n            items_data=serializer.validated_data[\"items\"],\n        )\n        return Response({\"id\": order.id}, status=201)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "مزیت Service Layer",
+          "text": "۱) تست‌پذیر: می‌توانید Service را مستقل تست کنید. ۲) قابل استفاده مجدد: از View، Celery task، مدیریت ادمین و... . ۳) واضح: View فقط هماهنگ می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "when-service",
+      "title": "چه زمانی Service Layer؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**منطق پیچیده:** چند مرحله، چند مدل، چند بررسی.",
+            "**استفاده مجدد:** از چند View، Celery، ادمین.",
+            "**تراکنش:** عملیاتی که باید اتمیک باشند.",
+            "**تست:** منطق نیاز به تست مستقل دارد.",
+            "**هماهنگی سرویس‌های خارجی:** Stripe، ارسال ایمیل، S3."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "همه چیز در View.",
+          "better": "View + Serializer — منطق ساده در Serializer.",
+          "production": "View (هماهنگی) + Serializer (تبدیل) + Service (منطق) + Selector (خواندن پیچیده)."
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "زیاده‌روی نکنید",
+          "text": "اگر پروژه کوچک است و منطق ساده، Service Layer اضافه است. فقط وقتی نیاز واقعی دارید."
+        }
+      ]
+    },
+    {
+      "id": "selectors",
+      "title": "Selector Pattern",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای خواندن‌های پیچیده (تجمیع، فیلتر، پیوند)، از Selector استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/selectors.py",
+          "code": "from django.db.models import Avg, Count, Q\nfrom .models import Book\n\n\ndef get_book_list(*, filters=None, user=None):\n    \"\"\"لیست کتاب‌ها با فیلتر و بهینه‌سازی.\"\"\"\n    filters = filters or {}\n    qs = (\n        Book.objects\n        .select_related(\"author\", \"category\")\n        .prefetch_related(\"categories\")\n        .annotate(\n            reviews_count=Count(\"reviews\", distinct=True),\n            average_rating=Avg(\"reviews__rating\"),\n        )\n    )\n\n    if user and not user.is_staff:\n        qs = qs.filter(Q(is_published=True) | Q(owner=user))\n    else:\n        qs = qs.filter(is_published=True)\n\n    if \"category\" in filters:\n        qs = qs.filter(category__slug=filters[\"category\"])\n    if \"min_rating\" in filters:\n        qs = qs.filter(average_rating__gte=filters[\"min_rating\"])\n    if \"search\" in filters:\n        qs = qs.filter(\n            Q(title__icontains=filters[\"search\"]) |\n            Q(description__icontains=filters[\"search\"])\n        )\n\n    return qs.order_by(\"-published_at\")\n\n\ndef get_book_detail(*, slug):\n    \"\"\"جزئیات یک کتاب با همه روابط پیش‌بارگذاری‌شده.\"\"\"\n    return (\n        Book.objects\n        .select_related(\"author\", \"category\")\n        .prefetch_related(\"categories\", \"reviews__user\")\n        .annotate(\n            reviews_count=Count(\"reviews\", distinct=True),\n            average_rating=Avg(\"reviews__rating\"),\n        )\n        .get(slug=slug)\n    )"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "class BookViewSet(viewsets.ReadOnlyModelViewSet):\n    serializer_class = BookSerializer\n    lookup_field = \"slug\"\n\n    def get_queryset(self):\n        if self.action == \"list\":\n            return get_book_list(\n                filters=self.request.query_params,\n                user=self.request.user,\n            )\n        return get_book_detail(slug=self.kwargs[\"slug\"])"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "مزیت Selector",
+          "text": "کوئری‌های پیچیده در یک جا. تست‌پذیر. View تمیز. `select_related` و `prefetch_related` همیشه فراموش نمی‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "domain-errors",
+      "title": "خطاهای دامنه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "خطاهای کسب‌وکار را در Service تعریف کنید و در View به پاسخ تبدیل کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "orders/exceptions.py",
+          "code": "from rest_framework.exceptions import APIException\nfrom rest_framework import status\n\n\nclass InsufficientStock(APIException):\n    status_code = status.HTTP_409_CONFLICT\n    default_detail = \"موجودی انبار کافی نیست.\"\n    default_code = \"insufficient_stock\"\n\n\nclass PaymentFailed(APIException):\n    status_code = status.HTTP_402_PAYMENT_REQUIRED\n    default_detail = \"پرداخت ناموفق بود.\"\n    default_code = \"payment_failed\"\n\n\nclass OrderAlreadyPaid(APIException):\n    status_code = status.HTTP_409_CONFLICT\n    default_detail = \"این سفارش قبلاً پرداخت شده است.\"\n    default_code = \"order_already_paid\""
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "orders/services.py",
+          "code": "def create_order(user, items_data):\n    with transaction.atomic():\n        for item_data in items_data:\n            product = Product.objects.select_for_update().get(pk=item_data[\"product\"].id)\n            if product.stock < item_data[\"quantity\"]:\n                raise InsufficientStock(\n                    f\"موجودی «{product.name}» کافی نیست.\"\n                )\n        # ..."
+        }
+      ]
+    },
+    {
+      "id": "serializer-scope",
+      "title": "سریالایزر چه کاری نباید بکند؟",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "منطق کسب‌وکار در Serializer",
+          "why": "سریالایزر باید تبدیل و اعتبارسنجی کند، نه منطق دامنه.",
+          "when": "وقتی `create` پیچیده می‌شود.",
+          "fix": "منطق را به Service منتقل کنید و سریالایزر فقط `save()` کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ❌ بد — منطق کسب‌وکار در create()\nclass OrderSerializer(serializers.ModelSerializer):\n    def create(self, validated_data):\n        items_data = validated_data.pop(\"items\")\n        total = 0\n        for item in items_data:\n            product = Product.objects.get(pk=item[\"product\"].id)\n            if product.stock < item[\"quantity\"]:\n                raise ValidationError(\"موجودی ناکافی\")\n            product.stock -= item[\"quantity\"]\n            product.save()\n            total += product.price * item[\"quantity\"]\n        return Order.objects.create(total=total, **validated_data)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ✅ خوب — سریالایزر نازک\nclass OrderSerializer(serializers.ModelSerializer):\n    items = OrderItemInputSerializer(many=True)\n\n    class Meta:\n        model = Order\n        fields = [\"id\", \"items\", \"status\", \"created_at\"]\n        read_only_fields = [\"id\", \"status\", \"created_at\"]\n\n    def create(self, validated_data):\n        items_data = validated_data.pop(\"items\")\n        # فقط Service را صدا بزن\n        return create_order(\n            user=self.context[\"request\"].user,\n            items_data=items_data,\n        )"
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "title": "ساختار پروژه پیشنهادی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "library_api/\n├── library_api/\n│   ├── settings/\n│   │   ├── base.py\n│   │   ├── dev.py\n│   │   └── prod.py\n│   ├── urls.py\n│   ├── wsgi.py\n│   └── asgi.py\n│\n├── catalog/\n│   ├── migrations/\n│   ├── models.py\n│   ├── serializers.py\n│   ├── views.py\n│   ├── urls.py\n│   ├── permissions.py\n│   ├── filters.py\n│   ├── pagination.py\n│   ├── validators.py\n│   ├── services.py           # منطق کسب‌وکار\n│   ├── selectors.py          # خواندن‌های پیچیده\n│   ├── exceptions.py         # خطاهای دامنه\n│   ├── signals.py            # (اگر نیاز است)\n│   ├── admin.py\n│   ├── apps.py\n│   └── tests/\n│       ├── test_models.py\n│       ├── test_serializers.py\n│       ├── test_views.py\n│       ├── test_services.py\n│       ├── test_permissions.py\n│       └── factories.py\n│\n├── users/\n│   └── ...\n│\n├── manage.py\n└── requirements.txt"
+        },
+        {
+          "type": "table",
+          "headers": ["فایل", "مسئولیت"],
+          "rows": [
+            ["`models.py`", "مدل‌های Django"],
+            ["`serializers.py`", "تبدیل داده"],
+            ["`views.py`", "ViewSetها و Views"],
+            ["`urls.py`", "Routerها و مسیرها"],
+            ["`permissions.py`", "کلاس‌های مجوز"],
+            ["`filters.py`", "FilterSet و Backendها"],
+            ["`pagination.py`", "کلاس‌های صفحه‌بندی"],
+            ["`validators.py`", "Validatorهای مستقل"],
+            ["`services.py`", "منطق کسب‌وکار"],
+            ["`selectors.py`", "کوئری‌های پیچیده"],
+            ["`exceptions.py`", "خطاهای دامنه"],
+            ["`tests/`", "تست‌ها"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "when-simple",
+      "title": "چه زمانی این ساختار لازم نیست؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**پروژه کوچک:** ۱-۲ مدل، منطق ساده.",
+            "**تیم کوچک:** یک نفر، بدون نیاز به هماهنگی.",
+            "**پروتوتایپ:** سرعت مهم‌تر از ساختار.",
+            "**MVP:** باید سریع تست شود."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده",
+          "text": "با ساختار ساده شروع کنید. وقتی Viewها شلوغ شدند، Service را اضافه کنید. وقتی کوئری‌ها پیچیده شدند، Selector. زودتر از موعد، پیچیدگی بی‌مورد می‌سازید."
+        }
+      ]
+    },
+    {
+      "id": "checklist",
+      "title": "چک‌لیست معماری",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**✓** Viewها نازک‌اند (منطق کسب‌وکار ندارند).",
+            "**✓** سریالایزرها نازک‌اند (فقط تبدیل و اعتبارسنجی).",
+            "**✓** منطق کسب‌وکار در `services.py`.",
+            "**✓** کوئری‌های پیچیده در `selectors.py`.",
+            "**✓** خطاهای دامنه در `exceptions.py`.",
+            "**✓** مجوزها در `permissions.py`.",
+            "**✓** فیلترها در `filters.py`.",
+            "**✓** `select_related` و `prefetch_related` در QuerySet.",
+            "**✓** تست‌ها در `tests/` جداگانه برای هر لایه.",
+            "**✓** تنظیمات در `settings/` تقسیم‌شده."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "منطق کسب‌وکار در View",
+          "why": "تکرار، تست سخت، نگهداری سخت.",
+          "when": "وقتی Viewها پیچیده می‌شوند.",
+          "fix": "منطق را به Service منتقل کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "سریالایزر غول",
+          "why": "سریالایزر بیش از ۲۰۰ خط، تست سخت.",
+          "when": "وقتی همه چیز را در یک سریالایزر جمع می‌کنید.",
+          "fix": "سریالایزرهای جدا برای خواندن/نوشتن و منطق در Service."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پرش مستقیم به معماری پیچیده",
+          "why": "پیچیدگی بی‌مورد، کندی توسعه.",
+          "when": "وقتی تازه پروژه را شروع می‌کنید.",
+          "fix": "با ساختار ساده شروع کنید و در صورت نیاز اضافه کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود تست لایه‌ای",
+          "why": "Service تست نمی‌شود، فقط View تست می‌شود.",
+          "when": "وقتی تست‌ها فقط Endpoint را می‌سنجند.",
+          "fix": "برای هر لایه (Service، Serializer، View) تست بنویسید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Transaction بی‌جا",
+          "why": "transaction همه جا کند است و قفل می‌سازد.",
+          "when": "وقتی همه چیز را atomic می‌کنید.",
+          "fix": "فقط برای عملیات چندمرحله‌ای که باید اتمیک باشند."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-030-q1",
+      "tag": "کوییز",
+      "question": "منطق کسب‌وکار پیچیده بهتر است کجا قرار گیرد؟",
+      "options": [
+        { "text": "در View", "correct": false },
+        { "text": "در Service Layer", "correct": true, "explanation": "Service قابل تست، قابل استفاده مجدد، و View را تمیز نگه می‌دارد." },
+        { "text": "در مدل", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-030-q2",
+      "tag": "کوییز",
+      "question": "چه زمانی نباید Service Layer بسازید؟",
+      "options": [
+        { "text": "هرگز نباید بسازید.", "correct": false },
+        { "text": "وقتی پروژه کوچک است و منطق ساده.", "correct": true, "explanation": "زودتر از موعد، پیچیدگی بی‌مورد می‌سازد." },
+        { "text": "وقتی تیم بزرگ است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-030-ex1",
+      "title": "تمرین — Refactor به Service Layer",
+      "problem": "کد زیر را به معماری لایه‌ای تبدیل کنید. منطق کسب‌وکار را در Service قرار دهید.\n\n```python\nclass TransferView(APIView):\n    def post(self, request):\n        from_user = request.user\n        to_user_id = request.data[\"to_user\"]\n        amount = Decimal(request.data[\"amount\"])\n\n        to_user = User.objects.get(pk=to_user_id)\n\n        if from_user.balance < amount:\n            return Response({\"detail\": \"موجودی کافی نیست\"}, status=400)\n        if amount <= 0:\n            return Response({\"detail\": \"مبلغ باید مثبت باشد\"}, status=400)\n        if from_user == to_user:\n            return Response({\"detail\": \"نمی‌توانید به خودتان منتقل کنید\"}, status=400)\n\n        with transaction.atomic():\n            from_user.balance -= amount\n            from_user.save()\n            to_user.balance += amount\n            to_user.save()\n            Transaction.objects.create(\n                from_user=from_user,\n                to_user=to_user,\n                amount=amount,\n            )\n\n        return Response({\"status\": \"ok\"})\n```",
+      "hints": ["Service جدا بسازید.", "خطاهای دامنه در `exceptions.py`.", "سریالایزر برای ورودی.", "View فقط هماهنگ می‌کند."],
+      "solution": "**`transfers/exceptions.py`**\n```python\nfrom rest_framework.exceptions import APIException\nfrom rest_framework import status\n\n\nclass InsufficientBalance(APIException):\n    status_code = status.HTTP_400_BAD_REQUEST\n    default_detail = \"موجودی کافی نیست.\"\n    default_code = \"insufficient_balance\"\n\n\nclass InvalidTransfer(APIException):\n    status_code = status.HTTP_400_BAD_REQUEST\n    default_detail = \"انتقال نامعتبر است.\"\n    default_code = \"invalid_transfer\"\n```\n\n**`transfers/services.py`**\n```python\nfrom decimal import Decimal\nfrom django.db import transaction\nfrom django.contrib.auth.models import User\nfrom .models import Transaction\nfrom .exceptions import InsufficientBalance, InvalidTransfer\n\n\ndef transfer(*, from_user, to_user_id, amount):\n    amount = Decimal(str(amount))\n    if amount <= 0:\n        raise InvalidTransfer(\"مبلغ باید مثبت باشد.\")\n\n    to_user = User.objects.get(pk=to_user_id)\n    if from_user == to_user:\n        raise InvalidTransfer(\"نمی‌توانید به خودتان منتقل کنید.\")\n\n    with transaction.atomic():\n        from_user = User.objects.select_for_update().get(pk=from_user.pk)\n        if from_user.balance < amount:\n            raise InsufficientBalance()\n\n        from_user.balance -= amount\n        from_user.save(update_fields=[\"balance\"])\n\n        to_user = User.objects.select_for_update().get(pk=to_user.pk)\n        to_user.balance += amount\n        to_user.save(update_fields=[\"balance\"])\n\n        return Transaction.objects.create(\n            from_user=from_user, to_user=to_user, amount=amount,\n        )\n```\n\n**`transfers/serializers.py`**\n```python\nclass TransferInputSerializer(serializers.Serializer):\n    to_user = serializers.IntegerField()\n    amount = serializers.DecimalField(max_digits=12, decimal_places=2)\n```\n\n**`transfers/views.py`**\n```python\nclass TransferView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        serializer = TransferInputSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n\n        tx = transfer(\n            from_user=request.user,\n            to_user_id=serializer.validated_data[\"to_user\"],\n            amount=serializer.validated_data[\"amount\"],\n        )\n        return Response({\"id\": tx.id, \"status\": \"ok\"}, status=201)\n```",
+      "explanation": "این Refactor نشان می‌دهد چطور کد پیچیده را به لایه‌های تمیز تقسیم کنیم. هر لایه یک مسئولیت دارد."
+    }
+  ],
+  "summary": [
+    "لایه‌های معماری: URLs → Views → Serializers → Services → Models.",
+    "View نازک باشد — فقط هماهنگی.",
+    "Serializer نازک باشد — فقط تبدیل و اعتبارسنجی.",
+    "منطق کسب‌وکار در `services.py`.",
+    "کوئری‌های پیچیده در `selectors.py`.",
+    "خطاهای دامنه در `exceptions.py`.",
+    "Transaction برای عملیات چندمرحله‌ای.",
+    "با ساختار ساده شروع کنید و در صورت نیاز پیچیده کنید.",
+    "هر لایه تست جداگانه داشته باشد."
+  ],
+  "resources": [
+    { "title": "HackSoftware — Django Styleguide", "url": "https://github.com/HackSoftware/Django-Styleguide", "official": false },
+    { "title": "Django Best Practices", "url": "https://docs.djangoproject.com/en/stable/misc/design-philosophies/", "official": true }
+  ]
+}

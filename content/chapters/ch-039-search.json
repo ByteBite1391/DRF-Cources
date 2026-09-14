@@ -1,0 +1,300 @@
+{
+  "id": "ch-039",
+  "slug": "search",
+  "title": "جستجو (Search)",
+  "kicker": "فصل ۳۹",
+  "level": "intermediate",
+  "estimatedMinutes": 35,
+  "lead": "جستجو تجربه کاربری را متحول می‌کند. DRF یک SearchFilter آماده دارد که برای بیشتر موارد کافی است.",
+  "sections": [
+    {
+      "id": "basics",
+      "title": "SearchFilter پایه",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import filters\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [filters.SearchFilter]\n    search_fields = [\"title\", \"description\", \"author__full_name\"]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# جستجو در title و description و author.full_name\nGET /api/books/?search=clean\n\n# چند کلمه (OR)\nGET /api/books/?search=clean+code"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**پیش‌فرض:** `icontains` (شامل، بدون حساسیت).",
+            "**چند کلمه:** هر کلمه جداگانه با OR جستجو می‌شود.",
+            "**روی رابطه:** با `author__full_name`.",
+            "**پارامتر Query:** `?search=...`."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prefixes",
+      "title": "پیشوندهای جستجو",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["پیشوند", "معنی", "نمونه"],
+          "rows": [
+            ["(بدون)", "`icontains`", "`title`"],
+            ["`^`", "`istartswith` (شروع با)", "`^title`"],
+            ["`=`", "`iexact` (برابری دقیق)", "`=isbn`"],
+            ["`@`", "Full-text search (فقط PostgreSQL)", "`@description`"],
+            ["`$`", "regex", "`$isbn`"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [filters.SearchFilter]\n    search_fields = [\n        \"^title\",          # شروع با (سریع‌تر اگر index دارد)\n        \"=isbn\",           # برابری دقیق\n        \"@description\",    # full-text (PostgreSQL)\n        \"author__full_name\",\n    ]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "کارایی",
+          "text": "`^` با index روی فیلد خیلی سریع است. `=` روی unique حتی سریع‌تر. `icontains` (بدون پیشوند) کندترین است چون نمی‌تواند از index استفاده کند (به‌جز trigram در PostgreSQL)."
+        }
+      ]
+    },
+    {
+      "id": "full-text",
+      "title": "Full-Text Search (PostgreSQL)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای جستجوی متنی واقعی، PostgreSQL ابزار `SearchVector` و `SearchQuery` دارد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank\nfrom django.db.models import Q\n\n\nclass BookListView(generics.ListAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        qs = Book.objects.select_related(\"author\")\n        search = self.request.query_params.get(\"search\")\n        if not search:\n            return qs\n\n        vector = (\n            SearchVector(\"title\", weight=\"A\") +\n            SearchVector(\"description\", weight=\"B\") +\n            SearchVector(\"author__full_name\", weight=\"C\")\n        )\n        query = SearchQuery(search, config=\"simple\")\n\n        return (\n            qs.annotate(rank=SearchRank(vector, query))\n              .filter(rank__gte=0.1)\n              .order_by(\"-rank\")\n        )"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "فقط PostgreSQL",
+          "text": "این ویژگی فقط در PostgreSQL کار می‌کند. برای SQLite یا MySQL، از icontains یا ابزارهای دیگر استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"django.contrib.postgres\",\n]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "وزن‌دهی",
+          "text": "با `weight=\"A\"`, `B`, `C`, `D` می‌توانید اهمیت فیلدها را تعیین کنید. A مهم‌ترین."
+        }
+      ]
+    },
+    {
+      "id": "multiple-search",
+      "title": "چند جستجوی جداگانه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید جستجوهای متفاوت برای فیلدهای مختلف داشته باشید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(generics.ListAPIView):\n    serializer_class = BookSerializer\n    filter_backends = [filters.SearchFilter]\n    search_fields = [\"title\", \"description\"]\n\n    def get_queryset(self):\n        qs = Book.objects.all()\n        params = self.request.query_params\n\n        # جستجوی پیش‌فرض (?search=) روی title و description\n        qs = self.filter_queryset(qs)\n\n        # جستجوی اضافه (?author_search=)\n        author_search = params.get(\"author_search\")\n        if author_search:\n            qs = qs.filter(author__full_name__icontains=author_search)\n\n        # جستجوی اضافه (?isbn=)\n        isbn = params.get(\"isbn\")\n        if isbn:\n            qs = qs.filter(isbn__iexact=isbn)\n\n        return qs"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی حرفه‌ای",
+          "text": "`?search=` برای جستجوی عمومی، پارامترهای اختصاصی مثل `?title=`, `?author=` برای جستجوی دقیق در یک فیلد."
+        }
+      ]
+    },
+    {
+      "id": "case-insensitive",
+      "title": "حساسیت به حروف",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پیش‌فرض `SearchFilter` بدون حساسیت است. اما برای کنترل کامل، می‌توانید سفارشی کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CaseSensitiveSearchFilter(filters.SearchFilter):\n    \"\"\"جستجوی حساس به حروف برای فیلدهای مشخص.\"\"\"\n\n    def construct_search(self, field_name):\n        if field_name == \"isbn\":\n            # برای ISBN، حساس به حروف\n            return field_name\n        # برای بقیه، از icontains\n        return f\"{field_name}__icontains\"\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [CaseSensitiveSearchFilter]\n    search_fields = [\"title\", \"isbn\"]"
+        }
+      ]
+    },
+    {
+      "id": "farsi-search",
+      "title": "جستجوی فارسی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای فارسی، چند نکته مهم است:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**ی و ك عربی:** `ی` و `ي`، `ک` و `ك` باید یکسان در نظر گرفته شوند.",
+            "**نیم‌فاصله:** `نیم‌فاصله` و `نیم فاصله` باید یکسان باشند.",
+            "**اعراب:** حذف شوند.",
+            "**اعداد:** تبدیل اعداد فارسی به انگلیسی."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/search_utils.py",
+          "code": "import re\n\n\nFA_DIGITS = \"۰۱۲۳۴۵۶۷۸۹\"\nEN_DIGITS = \"0123456789\"\n\n\ndef normalize_fa(text):\n    \"\"\"نرمال‌سازی متن فارسی برای جستجو.\"\"\"\n    if not text:\n        return \"\"\n    # تبدیل اعداد\n    trans = str.maketrans(FA_DIGITS, EN_DIGITS)\n    text = text.translate(trans)\n    # یکسان‌سازی ی و ک\n    text = text.replace(\"ي\", \"ی\").replace(\"ك\", \"ک\")\n    # حذف اعراب\n    text = re.sub(r\"[\\u064B-\\u0652]\", \"\", text)\n    # یکسان‌سازی نیم‌فاصله\n    text = text.replace(\"\\u200c\", \" \")\n    # فاصله‌های چندگانه\n    text = re.sub(r\"\\s+\", \" \", text)\n    return text.strip().lower()\n\n\n# در فیلتر سفارشی\nclass FaSearchFilter(filters.BaseFilterBackend):\n    def filter_queryset(self, request, queryset, view):\n        search = request.query_params.get(\"search\")\n        if not search:\n            return queryset\n        search = normalize_fa(search)\n        # ... جستجو با نرمال‌سازی\n        from django.db.models import Q\n        return queryset.filter(\n            Q(title__icontains=search) |\n            Q(description__icontains=search)\n        )"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "ذخیره‌سازی نرمال‌شده",
+          "text": "برای کارایی بهتر، یک ستون `title_normalized` در مدل ذخیره کنید و با `icontains` روی آن جستجو کنید."
+        }
+      ]
+    },
+    {
+      "id": "search-ranking",
+      "title": "رتبه‌بندی نتایج",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "نتیجه‌ای که در عنوان می‌آید، مهم‌تر از نتیجه‌ای است که در توضیحات می‌آید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.db.models import Case, When, IntegerField, Value\n\n\nclass RankedSearchFilter(filters.BaseFilterBackend):\n    def filter_queryset(self, request, queryset, view):\n        search = request.query_params.get(\"search\")\n        if not search:\n            return queryset\n\n        return queryset.filter(\n            Q(title__icontains=search) |\n            Q(description__icontains=search)\n        ).annotate(\n            rank=Case(\n                When(title__istartswith=search, then=Value(100)),\n                When(title__icontains=search, then=Value(50)),\n                When(description__icontains=search, then=Value(10)),\n                default=Value(0),\n                output_field=IntegerField(),\n            )\n        ).order_by(\"-rank\", \"-created_at\")"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "PostgreSQL SearchRank",
+          "text": "اگر PostgreSQL دارید، `SearchRank` دقیق‌تر و سریع‌تر است."
+        }
+      ]
+    },
+    {
+      "id": "combining",
+      "title": "ترکیب با فیلتر و مرتب‌سازی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\", \"category\")\n    serializer_class = BookSerializer\n    filter_backends = [\n        DjangoFilterBackend,\n        filters.SearchFilter,\n        filters.OrderingFilter,\n    ]\n    filterset_class = BookFilter\n    search_fields = [\"title\", \"description\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\", \"title\"]\n    ordering = [\"-published_at\"]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "GET /api/books/?category=fiction&amp;search=clean&amp;ordering=-price&amp;page=2"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "icontains روی فیلد بزرگ",
+          "why": "کوئری با `%...%` نمی‌تواند از index استفاده کند. روی جدول بزرگ کند است.",
+          "when": "وقتی روی description طولانی جستجو می‌کنید.",
+          "fix": "Full-Text Search یا trigram index."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود محدودیت در تعداد نتایج",
+          "why": "برای جستجوی مبهم، هزاران نتیجه برگردانده می‌شود.",
+          "when": "وقتی جستجو روی فیلدهای عمومی.",
+          "fix": "صفحه‌بندی + `SearchFilter` با محدودیت."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود normalize برای فارسی",
+          "why": "«کتاب» و «كتاب» نتایج متفاوت می‌دهند.",
+          "when": "وقتی فارسی پشتیبانی می‌کنید.",
+          "fix": "نرمال‌سازی قبل از ذخیره و قبل از جستجو."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "جستجو روی فیلد بدون انتخاب دقیق",
+          "why": "کاربر ممکن است نتایج نامربوط ببیند.",
+          "when": "وقتی `search_fields` را اشتباه انتخاب می‌کنید.",
+          "fix": "فقط فیلدهای مربوط به جستجو را در `search_fields` بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `select_related`",
+          "why": "N+1 در سریالایزر.",
+          "when": "وقتی search_fields روی رابطه‌ها.",
+          "fix": "`Book.objects.select_related(\"author\")`"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-039-q1",
+      "tag": "کوییز",
+      "question": "پیشوند `^` در `search_fields` چه معنایی دارد؟",
+      "options": [
+        { "text": "برابری دقیق", "correct": false },
+        { "text": "شروع با (istartswith)", "correct": true, "explanation": "با index سریع‌تر از icontains است." },
+        { "text": "regex", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-039-q2",
+      "tag": "کوییز",
+      "question": "برای جستجوی متنی واقعی در PostgreSQL، از چه استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`icontains`", "correct": false },
+        { "text": "`SearchVector` و `SearchQuery`", "correct": true, "explanation": "این ابزارهای django.contrib.postgres برای Full-Text Search هستند." },
+        { "text": "`startswith`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-039-q3",
+      "tag": "کوییز",
+      "question": "برای جستجوی فارسی، کدام کار لازم است؟",
+      "options": [
+        { "text": "استفاده از icontains کافی است.", "correct": false },
+        { "text": "نرمال‌سازی متن (ی/ك، اعراب، اعداد).", "correct": true, "explanation": "بدون نرمال‌سازی، نتایج ناقص می‌شوند." },
+        { "text": "استفاده از regex.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-039-ex1",
+      "title": "تمرین — جستجوی پیشرفته",
+      "problem": "برای یک API مقالات:\n- جستجوی عمومی روی title و content.\n- رتبه‌بندی: title اول، content بعد.\n- پارامترهای جدا برای tag، author، category.\n- صفحه‌بندی.\n- فقط مقالات منتشرشده.",
+      "hints": ["از `SearchFilter` + `Q` ترکیبی.", "از `Case/When` برای رتبه‌بندی.", "با `Q` + `|` ترکیب کنید."],
+      "solution": "```python\nfrom django.db.models import Case, When, IntegerField, Value, Q\nfrom rest_framework import filters, generics\nfrom rest_framework.permissions import AllowAny\n\n\nclass ArticleSearchFilter(filters.BaseFilterBackend):\n    def filter_queryset(self, request, queryset, view):\n        search = request.query_params.get(\"search\")\n        if not search:\n            return queryset\n\n        return (\n            queryset\n            .filter(\n                Q(title__icontains=search) |\n                Q(content__icontains=search)\n            )\n            .annotate(\n                rank=Case(\n                    When(title__istartswith=search, then=Value(100)),\n                    When(title__icontains=search, then=Value(50)),\n                    When(content__icontains=search, then=Value(10)),\n                    default=Value(0),\n                    output_field=IntegerField(),\n                )\n            )\n            .order_by(\"-rank\", \"-published_at\")\n        )\n\n\nclass ArticleListView(generics.ListAPIView):\n    serializer_class = ArticleSerializer\n    permission_classes = [AllowAny]\n    filter_backends = [ArticleSearchFilter, filters.OrderingFilter]\n    ordering_fields = [\"published_at\", \"views_count\"]\n    ordering = [\"-published_at\"]\n\n    def get_queryset(self):\n        qs = Article.objects.filter(is_published=True).select_related(\"author\")\n        params = self.request.query_params\n\n        tag = params.get(\"tag\")\n        if tag:\n            qs = qs.filter(tags__slug=tag).distinct()\n\n        author = params.get(\"author\")\n        if author:\n            qs = qs.filter(author__username=author)\n\n        category = params.get(\"category\")\n        if category:\n            qs = qs.filter(category__slug=category)\n\n        return qs\n```",
+      "explanation": "این ترکیب، یک Endpoint جستجوی کامل و قابل استفاده در پروژه واقعی است."
+    }
+  ],
+  "summary": [
+    "`SearchFilter` جستجوی آماده در DRF.",
+    "`search_fields` فیلدهای جستجو را تعیین می‌کند.",
+    "پیشوندها: `^` شروع با، `=` دقیق، `@` full-text، `$` regex.",
+    "Full-Text Search در PostgreSQL با `SearchVector`.",
+    "برای فارسی، نرمال‌سازی لازم است.",
+    "رتبه‌بندی با `Case/When` یا `SearchRank`.",
+    "ترکیب با django-filter و OrderingFilter.",
+    "icontains روی فیلد بزرگ کند است — Full-Text یا index."
+  ],
+  "resources": [
+    { "title": "DRF — SearchFilter", "url": "https://www.django-rest-framework.org/api-guide/filtering/#searchfilter", "official": true },
+    { "title": "Django — Full text search", "url": "https://docs.djangoproject.com/en/stable/ref/contrib/postgres/search/", "official": true }
+  ]
+}

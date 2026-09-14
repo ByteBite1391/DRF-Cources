@@ -1,0 +1,302 @@
+{
+  "id": "ch-031",
+  "slug": "authentication-concepts",
+  "title": "مفاهیم احراز هویت",
+  "kicker": "فصل ۳۱",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "پیش از پیاده‌سازی هر روش احراز هویت، باید مفاهیم پایه را بشناسیم: Authentication، Authorization، Identity و چرخه‌ای که در DRF طی می‌شود.",
+  "sections": [
+    {
+      "id": "definitions",
+      "title": "Authentication در برابر Authorization",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "دو مفهوم که غالباً با هم اشتباه گرفته می‌شوند اما کاملاً متفاوت‌اند."
+        },
+        {
+          "type": "table",
+          "headers": ["مفهوم", "پرسش", "ابزار در DRF", "نمونه"],
+          "rows": [
+            ["**Authentication** (احراز هویت)", "تو کی هستی؟", "`authentication_classes`", "شناسایی کاربر از توکن"],
+            ["**Authorization** (مجوز)", "چه کاری مجاز هستی؟", "`permission_classes`", "فقط ادمین بتواند حذف کند"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا تفکیک مهم است؟",
+          "text": "یک کاربر می‌تواند **احراز هویت** شده باشد (شناسایی شده) اما **مجوز** انجام یک عمل خاص را نداشته باشد. مثلاً یک کاربر عادی می‌تواند وارد شود (Auth موفق) اما نمی‌تواند کاربر دیگر را حذف کند (Permission denied)."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "❌ احراز هویت نشده → 401 Unauthorized\n✅ احراز هویت شده اما بدون مجوز → 403 Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "identity",
+      "title": "هویت (Identity)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**هویت** همان چیزی است که کاربر را از بقیه متمایز می‌کند. در DRF، هویت با `request.user` نمایش داده می‌شود."
+        },
+        {
+          "type": "table",
+          "headers": ["حالت", "`request.user`", "`is_authenticated`"],
+          "rows": [
+            ["بدون احراز هویت", "`AnonymousUser`", "`False`"],
+            ["با احراز هویت", "`User` (یا کاربر سفارشی)", "`True`"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class WhoAmIView(APIView):\n    def get(self, request):\n        if request.user.is_authenticated:\n            return Response({\n                \"authenticated\": True,\n                \"username\": request.user.username,\n                \"id\": request.user.id,\n            })\n        return Response({\n            \"authenticated\": False,\n            \"user\": \"AnonymousUser\",\n        })"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "AnonymousUser ≠ None",
+          "text": "کاربر ناشناس یک شیء `AnonymousUser` است که `is_authenticated` آن `False` می‌باشد. هرگز `request.user is None` را چک نکنید — همیشه از `is_authenticated` استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "request-auth",
+      "title": "request.user و request.auth",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF دو ویژگی روی `request` می‌گذارد:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`request.user`** — کاربر جاری (یا `AnonymousUser`).",
+            "**`request.auth`** — اطلاعات احراز هویت (توکن، JWT payload، None، ...)."
+          ]
+        },
+        {
+          "type": "table",
+          "headers": ["روش احراز هویت", "`request.auth`"],
+          "rows": [
+            ["`SessionAuthentication`", "`None`"],
+            ["`BasicAuthentication`", "`None`"],
+            ["`TokenAuthentication`", "شیء `Token`"],
+            ["`JWTAuthentication`", "dict با payload توکن"],
+            ["سفارشی", "هر چیزی که تعریف کنید"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DebugAuthView(APIView):\n    def get(self, request):\n        return Response({\n            \"user_type\": type(request.user).__name__,\n            \"user_repr\": str(request.user),\n            \"auth_type\": type(request.auth).__name__,\n            \"auth_repr\": str(request.auth) if request.auth else None,\n        })"
+        }
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "title": "چرخه احراز هویت در DRF",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی درخواستی وارد یک `APIView` می‌شود، DRF به‌طور خودکار مراحل زیر را طی می‌کند:"
+        },
+        {
+          "type": "flow",
+          "steps": ["Request", "initialize_request", "perform_authentication", "PermissionCheck", "Handler"]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "**initialize_request** — `Request` DRF ساخته می‌شود.",
+            "**perform_authentication** — همه کلاس‌های `authentication_classes` به‌ترتیب امتحان می‌شوند.",
+            "**تعیین `request.user` و `request.auth`** — اولین روش موفق، مقادیر را پر می‌کند.",
+            "**check_permissions** — مجوزها بررسی می‌شوند.",
+            "**handler** — متد HTTP جاری اجرا می‌شود."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا ترتیب مهم است؟",
+          "text": "کلاس‌های `authentication_classes` به ترتیب امتحان می‌شوند. اگر اولی موفق شود، بقیه امتحان نمی‌شوند. ترتیب درست، می‌تواند کارایی را بهبود دهد."
+        }
+      ]
+    },
+    {
+      "id": "authentication-vs-permission",
+      "title": "چه زمانی از کدام استفاده کنیم؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["سناریو", "Authentication", "Permission"],
+          "rows": [
+            ["خواندن کتاب‌ها برای همه", "بدون (AllowAny)", "`AllowAny`"],
+            ["ویرایش کتاب فقط توسط مالک", "Token/JWT", "`IsOwner`"],
+            ["دسترسی به پروفایل خود", "Token/JWT", "`IsAuthenticated`"],
+            ["دسترسی به پنل ادمین", "Token/JWT", "`IsAdminUser`"],
+            ["خواندن عمومی، نوشتن احراز هویت‌شده", "Token/JWT", "`IsAuthenticatedOrReadOnly`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده کلی",
+          "text": "**Authentication** در سطح تنظیمات/نمای کلی تعریف می‌شود (چگونه کاربر را بشناسیم). **Permission** در سطح نمای خاص برای هر عملیات (اجازه چه کاری)."
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "تنظیمات پیش‌فرض",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n        \"rest_framework.authentication.BasicAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.AllowAny\",\n    ],\n}"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هشدار امنیتی",
+          "text": "پیش‌فرض DRF این است: `AllowAny`. اگر تنظیمات را تغییر ندهید، همه می‌توانند به همه چیز دسترسی داشته باشند. در تولید، حداقل `IsAuthenticated` بگذارید."
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون تنظیمات — پیش‌فرض AllowAny.",
+          "better": "تنظیم `IsAuthenticatedOrReadOnly` سراسری + تنظیم هر View.",
+          "production": "`IsAuthenticated` سراسری + مجوزهای صریح در هر View + JWT + Throttling + Audit Log."
+        }
+      ]
+    },
+    {
+      "id": "stack",
+      "title": "پشته احراز هویت",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF می‌تواند چند روش احراز هویت را همزمان داشته باشد. اولی که موفق شود، اعمال می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class FlexibleAuthView(APIView):\n    authentication_classes = [\n        TokenAuthentication,      # اول توکن را امتحان کن\n        SessionAuthentication,    # بعد نشست (برای Browsable API)\n        BasicAuthentication,      # در نهایت Basic\n    ]\n    permission_classes = [IsAuthenticated]\n\n    def get(self, request):\n        return Response({\"ok\": True})"
+        },
+        {
+          "type": "table",
+          "headers": ["ترکیب", "کاربرد"],
+          "rows": [
+            ["`TokenAuthentication` + `SessionAuthentication`", "API + Browsable API (توسعه)"],
+            ["`JWTAuthentication` تنها", "API عمومی (تولید)"],
+            ["`SessionAuthentication` تنها", "داشبورد داخلی"],
+            ["`TokenAuthentication` + `BasicAuthentication`", "Legacy + جدید"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common-mistakes",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "چک کردن `user is None`",
+          "why": "کاربر ناشناس `AnonymousUser` است، نه `None`. شرط اشتباه اجرا می‌شود.",
+          "when": "وقتی می‌خواهید وجود کاربر را بررسی کنید.",
+          "fix": "از `user.is_authenticated` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "قرار دادن احراز هویت در Permission",
+          "why": "اختلاط مسئولیت‌ها؛ کد پیچیده و تکرار.",
+          "when": "وقتی می‌خواهید بدون login کاری را محدود کنید.",
+          "fix": "احراز هویت در `authentication_classes`، مجوز در `permission_classes`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از Basic روی HTTP خام",
+          "why": "نام کاربری و رمز با Base64 فرستاده می‌شود؛ رمزنگاری نیست.",
+          "when": "همیشه در تولید.",
+          "fix": "فقط روی HTTPS. برای بیشتر موارد، از Token یا JWT استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیش‌فرض AllowAny",
+          "why": "همه به همه چیز دسترسی دارند.",
+          "when": "وقتی تنظیمات را تغییر نمی‌دهید.",
+          "fix": "حداقل `IsAuthenticatedOrReadOnly` سراسری."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود Throttling روی login",
+          "why": "حمله brute-force ممکن می‌شود.",
+          "when": "همیشه در Endpointهای ورود.",
+          "fix": "Throttle با `scope=\"login\"` و نرخ محدود (مثلاً 5/min)."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-031-q1",
+      "tag": "کوییز",
+      "question": "تفاوت Authentication و Authorization چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "Authentication یعنی «تو کی هستی؟»؛ Authorization یعنی «چه کاری مجاز هستی؟».", "correct": true, "explanation": "دو مفهوم کاملاً متفاوت که در عمل با هم کار می‌کنند." },
+        { "text": "Authentication در DRF معنی ندارد.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-031-q2",
+      "tag": "کوییز",
+      "question": "پیش‌فرض DRF برای `DEFAULT_PERMISSION_CLASSES` چیست؟",
+      "options": [
+        { "text": "`IsAuthenticated`", "correct": false },
+        { "text": "`AllowAny`", "correct": true, "explanation": "این یکی از خطرناک‌ترین پیش‌فرض‌هاست. در تولید حتماً تغییر دهید." },
+        { "text": "`IsAdminUser`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-031-q3",
+      "tag": "کوییز",
+      "question": "اگر چند `authentication_classes` تعریف کنید، چه اتفاقی می‌افتد؟",
+      "options": [
+        { "text": "همه با هم اجرا می‌شوند.", "correct": false },
+        { "text": "به ترتیب امتحان می‌شوند و اولین موفق اعمال می‌شود.", "correct": true, "explanation": "این اجازه می‌دهد چند روش احراز هویت را همزمان پشتیبانی کنید." },
+        { "text": "فقط آخری اعمال می‌شود.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-031-ex1",
+      "title": "تمرین — تفکیک Auth و Permission",
+      "problem": "برای هر سناریو بگویید کدام Auth و کدام Permission لازم است:\n۱) مشاهده پروفایل هر کاربر (عمومی).\n۲) ویرایش پروفایل خود.\n۳) حذف هر کاربر (فقط ادمین).\n۴) خواندن لیست محصولات (عمومی)، ساخت محصول (احراز هویت‌شده).",
+      "hints": ["به «کی هستی» و «چه کاری می‌توانی» فکر کنید.", "به تفاوت 401 و 403 توجه کنید."],
+      "solution": "۱) Auth: بدون نیاز. Permission: `AllowAny`.\n۲) Auth: Token/JWT. Permission: `IsAuthenticated` + `IsOwner`.\n۳) Auth: Token/JWT. Permission: `IsAdminUser`.\n۴) Auth: Token/JWT (اختیاری برای خواندن). Permission: `IsAuthenticatedOrReadOnly`.",
+      "explanation": "هر Endpoint ترکیب متفاوتی از Auth و Permission دارد. تفکیک درست، امنیت را تضمین می‌کند."
+    }
+  ],
+  "summary": [
+    "Authentication = شناسایی هویت. Authorization = بررسی مجوز.",
+    "`request.user` و `request.auth` توسط DRF پر می‌شوند.",
+    "`AnonymousUser` برای کاربران ناشناس.",
+    "چرخه: `initialize_request` → `perform_authentication` → `check_permissions` → handler.",
+    "چند روش احراز هویت به ترتیب امتحان می‌شوند.",
+    "پیش‌فرض DRF: `AllowAny`. در تولید تغییر دهید.",
+    "همیشه `is_authenticated` را چک کنید، نه `user is None`."
+  ],
+  "resources": [
+    { "title": "DRF — Authentication", "url": "https://www.django-rest-framework.org/api-guide/authentication/", "official": true },
+    { "title": "DRF — Permissions", "url": "https://www.django-rest-framework.org/api-guide/permissions/", "official": true }
+  ]
+}

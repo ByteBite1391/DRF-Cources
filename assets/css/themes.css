@@ -1,0 +1,185 @@
+/* ============================================================
+   DRF فارسی — Themes
+   Design Tokens برای Dark / Light + سطح‌بندی
+   ============================================================ */
+
+/* ---------- Dark (پیش‌فرض) ---------- */
+:root,
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg: #0b0f16;
+  --bg-soft: #0f1622;
+  --surface: #111a28;
+  --surface-2: #16202f;
+  --header-bg: rgba(15, 22, 34, .82);
+  --sidebar-bg: #0d141f;
+  --footer-bg: #0a0f18;
+
+  /* Borders */
+  --border: #1f2b3d;
+  --border-soft: #182233;
+
+  /* Text */
+  --text: #e6edf6;
+  --text-strong: #ffffff;
+  --muted: #93a3b8;
+
+  /* Accents */
+  --accent: #7c9cff;
+  --accent-soft: rgba(124, 156, 255, .14);
+  --accent-2: #2ee6a8;
+
+  /* Semantic */
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, .12);
+  --warn: #ffc857;
+  --warn-soft: rgba(255, 200, 87, .12);
+  --info: #7c9cff;
+  --info-soft: rgba(124, 156, 255, .12);
+  --success: #2ee6a8;
+  --success-soft: rgba(46, 230, 168, .12);
+
+  /* Levels */
+  --level-beginner: #2ee6a8;
+  --level-intermediate: #ffc857;
+  --level-advanced: #ff8a4c;
+  --level-professional: #c084fc;
+
+  /* Code */
+  --code-bg: #0a0e15;
+  --code-border: #1c2635;
+  --code-bar-bg: rgba(255, 255, 255, .025);
+  --code-text: #cbd6e6;
+  --code-muted: #7d8ea6;
+
+  /* Shadows */
+  --shadow: 0 12px 34px rgba(0, 0, 0, .45);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, .3);
+
+  /* Typography */
+  --font-fa: "Vazirmatn", "IRANSans", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, ui-monospace, monospace;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radii */
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
+
+  /* Layout */
+  --header-h: 60px;
+  --sidebar-w: 320px;
+  --content-max: 900px;
+
+  /* Color scheme hint for browser UI */
+  color-scheme: dark;
+}
+
+/* ---------- Light ---------- */
+[data-theme="light"] {
+  --bg: #f4f7fb;
+  --bg-soft: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --header-bg: rgba(255, 255, 255, .88);
+  --sidebar-bg: #ffffff;
+  --footer-bg: #f7f9fc;
+
+  --border: #dde5ef;
+  --border-soft: #e8eef6;
+
+  --text: #101a26;
+  --text-strong: #000000;
+  --muted: #5a6a80;
+
+  --accent: #3355d1;
+  --accent-soft: rgba(51, 85, 209, .1);
+  --accent-2: #0f9d6c;
+
+  --danger: #d64545;
+  --danger-soft: rgba(214, 69, 69, .1);
+  --warn: #a97500;
+  --warn-soft: rgba(169, 117, 0, .1);
+  --info: #3355d1;
+  --info-soft: rgba(51, 85, 209, .1);
+  --success: #0f9d6c;
+  --success-soft: rgba(15, 157, 108, .1);
+
+  --level-beginner: #0f9d6c;
+  --level-intermediate: #a97500;
+  --level-advanced: #c2571b;
+  --level-professional: #8b3fd1;
+
+  --code-bg: #f5f8fc;
+  --code-border: #dbe4ef;
+  --code-bar-bg: rgba(0, 0, 0, .02);
+  --code-text: #1c2b3d;
+  --code-muted: #6b7d94;
+
+  --shadow: 0 10px 28px rgba(16, 26, 38, .1);
+  --shadow-sm: 0 2px 8px rgba(16, 26, 38, .06);
+
+  color-scheme: light;
+}
+
+/* ---------- System preference (وقتی کاربر "system" را انتخاب کند) ---------- */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    /* اگر data-theme تنظیم نشده باشد، سیستم تصمیم می‌گیرد
+       ولی ما همیشه data-theme را در JS ست می‌کنیم
+       پس این بلاک عمدتاً برای fallback است. */
+  }
+}
+
+/* ---------- Theme transition lock ----------
+   وقتی کاربر بین تم‌ها جابه‌جا می‌شود، یک کلاس موقت به html اضافه می‌کنیم
+   تا انتقال‌های ناخواسته در عناصر ظاهر نشود. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+
+/* ============================================================
+   سطح‌بندی فصل — کلاس‌های کمکی
+   ============================================================ */
+
+.level-beginner-text {
+  color: var(--level-beginner);
+}
+
+.level-intermediate-text {
+  color: var(--level-intermediate);
+}
+
+.level-advanced-text {
+  color: var(--level-advanced);
+}
+
+.level-professional-text {
+  color: var(--level-professional);
+}
+
+/* ============================================================
+   Highlight رنگ‌ها برای جستجو (فارسی و انگلیسی)
+   ============================================================ */
+
+mark {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 700;
+}
+
+[data-theme="light"] mark {
+  background: #ffe066;
+  color: #101a26;
+}

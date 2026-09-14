@@ -1,0 +1,366 @@
+{
+  "id": "ch-045",
+  "slug": "content-negotiation",
+  "title": "مذاکره محتوا (Content Negotiation)",
+  "kicker": "فصل ۴۵",
+  "level": "advanced",
+  "estimatedMinutes": 35,
+  "lead": "مذاکره محتوا فرآیندی است که DRF بر اساس آن تصمیم می‌گیرد چه چیزی پارس کند و چه چیزی رندر کند. این فصل جزئیات آن را روشن می‌کند.",
+  "sections": [
+    {
+      "id": "concept",
+      "title": "مذاکره محتوا چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Content Negotiation** فرآیند انتخاب فرمت مناسب بین کلاینت و سرور است. کلاینت در هدر `Accept` می‌گوید چه فرمتی می‌خواهد؛ سرور با در نظر گرفتن رندررهای موجود، بهترین را انتخاب می‌کند."
+        },
+        {
+          "type": "flow",
+          "steps": ["Client Accept", "Server Renderers", "Match", "Response"]
+        },
+        {
+          "type": "table",
+          "headers": ["هدر", "جهت", "کار"],
+          "rows": [
+            ["`Content-Type`", "کلاینت → سرور", "انتخاب Parser برای بدنه درخواست"],
+            ["`Accept`", "کلاینت → سرور", "انتخاب Renderer برای بدنه پاسخ"],
+            ["`Accept-Language`", "کلاینت → سرور", "انتخاب زبان (i18n)"],
+            ["`Accept-Encoding`", "کلاینت → سرور", "انتخاب فشرده‌سازی (gzip، br)"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا مهم است؟",
+          "text": "با مذاکره محتوا، یک Endpoint می‌تواند به کلاینت‌های مختلف (مرورگر، موبایل، ابزار CLI) پاسخ دهد — بدون کد اضافه."
+        }
+      ]
+    },
+    {
+      "id": "accept-header",
+      "title": "هدر Accept و q-value",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "کلاینت می‌تواند چند فرمت را با اولویت مشخص کند."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "Accept: application/json;q=1.0, text/html;q=0.8, */*;q=0.1\n         │                  │              │\n         │                  │              └─ هر چیز دیگر با اولویت پایین\n         │                  └─ HTML با اولویت دوم\n         └─ JSON با بالاترین اولویت"
+        },
+        {
+          "type": "table",
+          "headers": ["q", "معنی"],
+          "rows": [
+            ["1.0", "بالاترین اولویت (پیش‌فرض اگر ذکر نشود)"],
+            ["0.5", "متوسط"],
+            ["0.0", "غیرقابل قبول"],
+            ["`*/*`", "هر فرمتی"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# کلاینت JSON می‌خواهد، اگر نبود HTML\ncurl -H \"Accept: application/json, text/html\" http://api/books/\n\n# کلاینت CSV می‌خواهد، اما JSON هم قبول است\ncurl -H \"Accept: text/csv, application/json;q=0.5\" http://api/books/\n\n# کلاینت فقط JSON می‌خواهد\ncurl -H \"Accept: application/json\" http://api/books/"
+        }
+      ]
+    },
+    {
+      "id": "how-drf-decides",
+      "title": "DRF چگونه تصمیم می‌گیرد؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "**درخواست می‌رسد** با هدر `Accept`.",
+            "**DRF هدر را پارس می‌کند** به لیست media types با اولویت.",
+            "**رندررهای موجود را می‌گیرد** (از View یا settings).",
+            "**هر رندرر با هر media type امتحان می‌شود** به ترتیب اولویت.",
+            "**اولین تطابق، انتخاب می‌شود.**",
+            "**اگر هیچ تطابقی نبود، `406 Not Acceptable`.**"
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# معادل مفهومی (نه کد DRF)\nfor media_type in client_accept_by_priority:\n    for renderer in view.renderers:\n        if matches(media_type, renderer.media_type):\n            return renderer\nreturn NotAcceptable()"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "media_type خاص",
+          "text": "بعضی رندررها media_type چندگانه دارند: مثلاً `JSONRenderer` هم `application/json` است و هم `application/*`. DRF تطابق هوشمند انجام می‌دهد."
+        }
+      ]
+    },
+    {
+      "id": "format-override",
+      "title": "Format Override",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید به‌جای هدر `Accept`، از پارامتر URL یا پسوند استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"URL_FORMAT_OVERRIDE\": \"format\",   # ?format=json\n    \"FORMAT_SUFFIX_KWARG\": \"format\",   # .json\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["روش", "نمونه", "مزیت"],
+          "rows": [
+            ["Accept header", "`Accept: application/json`", "استاندارد HTTP"],
+            ["Query param", "`?format=json`", "خوانا در مرورگر"],
+            ["Format suffix", "`/books.json`", "زیبا در URL"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "اولویت",
+          "text": "اگر چند روش همزمان استفاده شود، اولویت: format param > format suffix > Accept header."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# غیرفعال کردن format override (برای APIهای سخت‌گیر)\nREST_FRAMEWORK = {\n    \"URL_FORMAT_OVERRIDE\": None,\n}"
+        }
+      ]
+    },
+    {
+      "id": "custom-negotiation",
+      "title": "کلاس مذاکره سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر منطق پیش‌فرض DRF کافی نیست، کلاس مذاکره را سفارشی کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/negotiation.py",
+          "code": "from rest_framework.negotiation import BaseContentNegotiation\nfrom rest_framework.renderers import JSONRenderer, BrowsableAPIRenderer\nfrom rest_framework.exceptions import NotAcceptable\n\n\nclass APIClientsOnlyNegotiation(BaseContentNegotiation):\n    \"\"\"\n    همیشه JSON برمی‌گرداند مگر اینکه کاربر با مرورگر آمده باشد.\n    برای APIهای عمومی که Browsable API نمی‌خواهند.\n    \"\"\"\n\n    def select_parser(self, request, parsers):\n        # پیش‌فرض DRF\n        for parser in parsers:\n            if parser.media_type in request.content_type:\n                return parser\n        return None\n\n    def select_renderer(self, request, renderers, format_suffix=None):\n        # اگر کاربر مرورگر است، BrowsableAPIRenderer\n        user_agent = request.headers.get(\"User-Agent\", \"\").lower()\n        is_browser = any(\n            browser in user_agent\n            for browser in [\"mozilla\", \"chrome\", \"safari\", \"edge\", \"firefox\"]\n        )\n\n        if is_browser:\n            for renderer in renderers:\n                if isinstance(renderer, BrowsableAPIRenderer):\n                    return (renderer, renderer.media_type)\n\n        # در غیر این صورت JSON\n        for renderer in renderers:\n            if isinstance(renderer, JSONRenderer):\n                return (renderer, renderer.media_type)\n\n        raise NotAcceptable()"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در settings.py\nREST_FRAMEWORK = {\n    \"DEFAULT_CONTENT_NEGOTIATION_CLASS\": \"catalog.negotiation.APIClientsOnlyNegotiation\",\n}\n\n# یا در View\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    content_negotiation_class = APIClientsOnlyNegotiation"
+        }
+      ]
+    },
+    {
+      "id": "vary-header",
+      "title": "هدر Vary",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی پاسخ بر اساس `Accept` متفاوت است، باید در هدر `Vary` اعلام کنید تا cache و پروکسی درست رفتار کنند."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "Vary: Accept, Accept-Language\n\n# یعنی: این پاسخ بر اساس Accept و Accept-Language متفاوت است\n# cacheها نباید پاسخ JSON را به کلاینتی که HTML می‌خواهد بدهند"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# DRF خودکار Vary را اضافه می‌کند\n# اما می‌توانید دستی هم تنظیم کنید\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\n\n\nclass MyView(APIView):\n    def get(self, request):\n        response = Response({\"data\": \"...\"})\n        response[\"Vary\"] = \"Accept, Accept-Language\"\n        return response"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "چرا مهم است؟",
+          "text": "بدون `Vary`، یک CDN می‌تواند پاسخ JSON را به کاربری بدهد که HTML خواسته — باغ عجیب و غریب. همیشه Vary را تنظیم کنید."
+        }
+      ]
+    },
+    {
+      "id": "language-negotiation",
+      "title": "مذاکره زبان (i18n)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF از `Accept-Language` هم پشتیبانی می‌کند (با تنظیمات Django i18n)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "USE_I18N = True\nLANGUAGE_CODE = \"fa\"\nLANGUAGES = [\n    (\"fa\", \"فارسی\"),\n    (\"en\", \"English\"),\n]\n\nMIDDLEWARE = [\n    # ...\n    \"django.middleware.locale.LocaleMiddleware\",\n]\n\nLOCALE_PATHS = [BASE_DIR / \"locale\"]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# درخواست با زبان مشخص\ncurl -H \"Accept-Language: en\" http://api/books/\ncurl -H \"Accept-Language: fa-IR, fa;q=0.9, en;q=0.5\" http://api/books/\n\n# خروجی: پیام‌های خطا و متن‌های ترجمه‌شده"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.utils.translation import gettext_lazy as _\nfrom rest_framework.exceptions import ValidationError\n\n\ndef validate_price(value):\n    if value &lt; 0:\n        raise ValidationError(_(\"قیمت نمی‌تواند منفی باشد.\"))"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "gettext_lazy",
+          "text": "برای پیام‌هایی که در زمان import تعریف می‌شوند، از `gettext_lazy` استفاده کنید (نه `gettext`)."
+        }
+      ]
+    },
+    {
+      "id": "406",
+      "title": "خطای 406 Not Acceptable",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر هیچ رندرری با `Accept` کلاینت تطابق نداشته باشد، DRF خطای `406` می‌دهد."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# کلاینت XML می‌خواهد اما رندرر XML نداریم\ncurl -H \"Accept: application/xml\" http://api/books/\n\n# پاسخ:\n# HTTP/1.1 406 Not Acceptable\n# {\"detail\": \"Could not satisfy the request Accept header.\"}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# مدیریت سراسری 406\nfrom rest_framework.views import exception_handler\n\n\ndef custom_exception_handler(exc, context):\n    response = exception_handler(exc, context)\n    if response is not None and response.status_code == 406:\n        response.data = {\n            \"error\": \"not_acceptable\",\n            \"detail\": \"فرمت درخواستی پشتیبانی نمی‌شود.\",\n            \"available_formats\": [\n                r.media_type for r in context[\"view\"].get_renderers()\n            ],\n        }\n    return response"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "لیست فرمت‌ها",
+          "text": "در پیام خطا، لیست فرمت‌های پشتیبانی‌شده را بدهید تا کلاینت بتواند درخواست را اصلاح کند."
+        }
+      ]
+    },
+    {
+      "id": "best-practices",
+      "title": "بهترین شیوه‌ها",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**Accept را جدی بگیرید:** به‌عنوان قرارداد بین کلاینت و سرور.",
+            "**پیش‌فرض JSON:** برای کلاینت‌های API، JSON پیش‌فرض باشد.",
+            "**HTML فقط در DEBUG:** Browsable را در تولید حذف کنید.",
+            "**Vary را تنظیم کنید:** برای cache و پروکسی.",
+            "**406 با پیام مفید:** لیست فرمت‌های موجود.",
+            "**Format override را محدود کنید:** یا غیرفعال، یا فقط پارامتر `?format=`.",
+            "**Accept-Language برای i18n:** اگر چندزبانه هستید.",
+            "**تست کنید:** هر فرمت را جداگانه تست کنید."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "فقط JSON.",
+          "better": "JSON + Browsable (در توسعه).",
+          "production": "JSON + CSV/XML در صورت نیاز + مستندات OpenAPI + تست مذاکره محتوا + Vary header."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود Vary header",
+          "why": "CDN می‌تواند پاسخ JSON را به کاربر HTML بدهد.",
+          "when": "وقتی محتوا بر اساس Accept متفاوت است.",
+          "fix": "DRF خودکار اضافه می‌کند، اما در صورت دستی، فراموش نکنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن 406 در مستندات",
+          "why": "کلاینت نمی‌داند چرا خطا گرفته.",
+          "when": "وقتی رندرر محدود دارید.",
+          "fix": "406 را در OpenAPI مستند کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فعال بودن Format suffix در تولید",
+          "why": "URLهای اضافی، سطح حمله بیشتر.",
+          "when": "وقتی `URL_FORMAT_OVERRIDE` را تنظیم نمی‌کنید.",
+          "fix": "در تولید، format override را محدود یا غیرفعال کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از Accept-Language بدون LocaleMiddleware",
+          "why": "Django هدر را نمی‌خواند.",
+          "when": "وقتی i18n را فراموش می‌کنید.",
+          "fix": "`LocaleMiddleware` را در MIDDLEWARE اضافه کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Browsable API برای API عمومی",
+          "why": "افشای ساختار Endpointها.",
+          "when": "وقتی Browsable در تولید فعال است.",
+          "fix": "حذف در تولید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-045-q1",
+      "tag": "کوییز",
+      "question": "کدام هدر انتخاب Renderer را تعیین می‌کند؟",
+      "options": [
+        { "text": "`Content-Type`", "correct": false },
+        { "text": "`Accept`", "correct": true, "explanation": "Accept برای پاسخ، Content-Type برای درخواست." },
+        { "text": "`User-Agent`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-045-q2",
+      "tag": "کوییز",
+      "question": "اگر هیچ رندرری با Accept تطابق نداشته باشد، چه کدی برمی‌گردد؟",
+      "options": [
+        { "text": "400", "correct": false },
+        { "text": "406", "correct": true, "explanation": "406 Not Acceptable." },
+        { "text": "415", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-045-q3",
+      "tag": "کوییز",
+      "question": "چرا هدر Vary مهم است؟",
+      "options": [
+        { "text": "چون سرعت را افزایش می‌دهد.", "correct": false },
+        { "text": "چون بدون آن، CDN می‌تواند پاسخ JSON را به کاربر HTML بدهد.", "correct": true, "explanation": "Vary به cache می‌گوید پاسخ بر اساس هدرهای مشخصی متفاوت است." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-045-ex1",
+      "title": "تمرین — مذاکره محتوا در عمل",
+      "problem": "یک Endpoint بسازید که:\n- با `Accept: application/json` (پیش‌فرض) JSON بدهد.\n- با `Accept: text/csv` CSV بدهد.\n- با `Accept: text/html` یک صفحه HTML ساده با جدول بدهد.\n- با Accept ناشناخته، خطای 406 با لیست فرمت‌های موجود بدهد.",
+      "hints": ["از `JSONRenderer`, `CSVRenderer`, `StaticHTMLRenderer` استفاده کنید.", "برای HTML جدول، خودتان markup بسازید.", "406 خودکار است اگر هیچ رندرری تطابق نداشته باشد."],
+      "solution": "```python\n# renderers.py\nimport csv\nfrom io import StringIO\nfrom rest_framework.renderers import BaseRenderer, StaticHTMLRenderer\n\n\nclass CSVRenderer(BaseRenderer):\n    media_type = \"text/csv\"\n    format = \"csv\"\n    charset = \"utf-8\"\n\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        if isinstance(data, dict) and \"results\" in data:\n            data = data[\"results\"]\n        if not isinstance(data, list) or not data:\n            return \"\"\n        buffer = StringIO()\n        buffer.write(\"\\ufeff\")\n        writer = csv.writer(buffer)\n        writer.writerow(data[0].keys())\n        for row in data:\n            writer.writerow(row.values())\n        return buffer.getvalue()\n\n\nclass HTMLTableRenderer(StaticHTMLRenderer):\n    media_type = \"text/html\"\n    format = \"html\"\n\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        if isinstance(data, dict) and \"results\" in data:\n            data = data[\"results\"]\n        if not isinstance(data, list) or not data:\n            return \"<p>No data</p>\"\n        headers = list(data[0].keys())\n        html = [\"<table border='1'><thead><tr>\"]\n        html += [f\"<th>{h}</th>\" for h in headers]\n        html += [\"</tr></thead><tbody>\"]\n        for row in data:\n            html += [\"<tr>\"]\n            html += [f\"<td>{row.get(h, '')}</td>\" for h in headers]\n            html += [\"</tr>\"]\n        html += [\"</tbody></table>\"]\n        return \"\".join(html)\n\n\n# views.py\nfrom rest_framework import viewsets\nfrom rest_framework.renderers import JSONRenderer\nfrom .renderers import CSVRenderer, HTMLTableRenderer\n\n\nclass BookViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, CSVRenderer, HTMLTableRenderer]\n    pagination_class = None\n```\n\n**تست:**\n```bash\ncurl -H \"Accept: application/json\" http://api/books/   # JSON\ncurl -H \"Accept: text/csv\" http://api/books/           # CSV\ncurl -H \"Accept: text/html\" http://api/books/          # HTML\ncurl -H \"Accept: application/xml\" http://api/books/    # 406\n```",
+      "explanation": "این Endpoint نشان می‌دهد چطور یک API می‌تواند به چند فرمت پاسخ دهد، با همان کد."
+    }
+  ],
+  "summary": [
+    "Content Negotiation انتخاب فرمت مناسب بر اساس Accept است.",
+    "Accept با q-value اولویت را تعیین می‌کند.",
+    "DRF به ترتیب اولویت، رندرر مناسب را انتخاب می‌کند.",
+    "Format override با ?format= یا .json.",
+    "406 اگر هیچ رندرری تطابق نداشته باشد.",
+    "Vary header برای cache و پروکسی.",
+    "Accept-Language برای i18n.",
+    "مذاکره سفارشی با `BaseContentNegotiation`.",
+    "Browsable فقط در DEBUG."
+  ],
+  "resources": [
+    { "title": "DRF — Content negotiation", "url": "https://www.django-rest-framework.org/api-guide/content-negotiation/", "official": true },
+    { "title": "RFC 7231 — Content Negotiation", "url": "https://datatracker.ietf.org/doc/html/rfc7231#section-5.3", "official": true },
+    { "title": "MDN — Content negotiation", "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation", "official": false }
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "id": "ch-028",
+  "slug": "viewsets",
+  "title": "ViewSet",
+  "kicker": "فصل ۲۸",
+  "level": "intermediate",
+  "estimatedMinutes": 35,
+  "lead": "ViewSet چند عملیات مرتبط روی یک منبع را در یک کلاس جمع می‌کند. با Router، URLها خودکار ساخته می‌شوند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "ViewSet چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**ViewSet** یک کلاس است که به‌جای متدهای HTTP (GET، POST، PUT، ...)، متدهای معنایی مثل `list`, `create`, `retrieve`, `update`, `destroy` دارد. اتصال این متدها به URLها کار **Router** است."
+        },
+        {
+          "type": "flow",
+          "steps": ["ViewSet", "+", "Router", "=", "URLs کامل"]
+        },
+        {
+          "type": "table",
+          "headers": ["متد ViewSet", "متد HTTP", "URL نمونه"],
+          "rows": [
+            ["`list`", "GET", "`/books/`"],
+            ["`create`", "POST", "`/books/`"],
+            ["`retrieve`", "GET", "`/books/42/`"],
+            ["`update`", "PUT", "`/books/42/`"],
+            ["`partial_update`", "PATCH", "`/books/42/`"],
+            ["`destroy`", "DELETE", "`/books/42/`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "مزیت اصلی",
+          "text": "یک ViewSet می‌تواند چند عملیات مرتبط روی یک منبع را در یک کلاس نگه دارد. کد کمتر، ساختار یکدست‌تر."
+        }
+      ]
+    },
+    {
+      "id": "hierarchy",
+      "title": "سلسله‌مراتب ViewSet",
+      "blocks": [
+        {
+          "type": "flow",
+          "steps": ["ViewSetMixin", "→ ViewSet", "→ GenericViewSet", "→ ModelViewSet"]
+        },
+        {
+          "type": "table",
+          "headers": ["کلاس", "پایه", "ویژگی"],
+          "rows": [
+            ["`ViewSetMixin`", "—", "اتصال `as_view` به اکشن‌ها"],
+            ["`ViewSet`", "ViewSetMixin + APIView", "بدون هیچ Mixin CRUD"],
+            ["`GenericViewSet`", "ViewSetMixin + GenericAPIView", "با `get_queryset`, `get_serializer`"],
+            ["`ReadOnlyModelViewSet`", "GenericViewSet + List + Retrieve", "فقط خواندن"],
+            ["`ModelViewSet`", "GenericViewSet + همه Mixinها", "CRUD کامل"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "modelviewset",
+      "title": "ModelViewSet",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework import viewsets\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom .views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = router.urls"
+        },
+        {
+          "type": "paragraph",
+          "text": "همین چند خط، این Endpointها را می‌سازد:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET    /books/           → list\nPOST   /books/           → create\nGET    /books/42/        → retrieve\nPUT    /books/42/        → update\nPATCH  /books/42/        → partial_update\nDELETE /books/42/        → destroy"
+        }
+      ]
+    },
+    {
+      "id": "readonly",
+      "title": "ReadOnlyModelViewSet",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر فقط می‌خواهید داده را نمایش دهید (بدون ساخت، ویرایش، حذف)، از `ReadOnlyModelViewSet` استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CategoryViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Category.objects.all()\n    serializer_class = CategorySerializer\n\n# URLها:\n# GET /categories/        → list\n# GET /categories/42/     → retrieve\n# (بدون POST، PUT، PATCH، DELETE)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چه زمانی؟",
+          "text": "برای داده‌های مرجع (دسته‌بندی، تگ، کشورها) که فقط ادمین از طریق پنل مدیریت تغییر می‌دهد."
+        }
+      ]
+    },
+    {
+      "id": "generic-viewset",
+      "title": "GenericViewSet",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر نمی‌خواهید همه عملیات را داشته باشید، `GenericViewSet` را با Mixinهای دلخواه ترکیب کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import mixins, viewsets\n\n\n# فقط list و retrieve\nclass CategoryViewSet(\n    mixins.ListModelMixin,\n    mixins.RetrieveModelMixin,\n    viewsets.GenericViewSet,\n):\n    queryset = Category.objects.all()\n    serializer_class = CategorySerializer\n\n\n# فقط create (بدون خواندن)\nclass ContactViewSet(\n    mixins.CreateModelMixin,\n    viewsets.GenericViewSet,\n):\n    queryset = Contact.objects.all()\n    serializer_class = ContactSerializer\n\n\n# فقط list (بدون detail)\nclass EventViewSet(\n    mixins.ListModelMixin,\n    viewsets.GenericViewSet,\n):\n    queryset = Event.objects.all()\n    serializer_class = EventSerializer"
+        },
+        {
+          "type": "table",
+          "headers": ["ترکیب", "نتیجه"],
+          "rows": [
+            ["`ListModelMixin + RetrieveModelMixin`", "فقط خواندن"],
+            ["`CreateModelMixin`", "فقط ساخت"],
+            ["`ListModelMixin + CreateModelMixin`", "لیست و ساخت"],
+            ["`RetrieveModelMixin + UpdateModelMixin`", "خواندن و ویرایش"],
+            ["همه Mixinها", "CRUD کامل (مثل ModelViewSet)"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "custom-action",
+      "title": "اکشن سفارشی (@action)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "با دکوراتور `@action` می‌توانید عملیات غیر CRUD اضافه کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.decorators import action\nfrom rest_framework.response import Response\nfrom rest_framework import status\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    @action(detail=False, methods=[\"get\"])\n    def latest(self, request):\n        \"\"\"۱۰ کتاب آخر را برمی‌گرداند.\"\"\"\n        books = self.get_queryset().order_by(\"-created_at\")[:10]\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)\n\n    @action(detail=False, methods=[\"get\"])\n    def top_rated(self, request):\n        \"\"\"کتاب‌های با امتیاز بالا.\"\"\"\n        from django.db.models import Avg\n        books = (\n            self.get_queryset()\n            .annotate(avg_rating=Avg(\"reviews__rating\"))\n            .filter(avg_rating__gte=4)\n            .order_by(\"-avg_rating\")\n        )\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)\n\n    @action(detail=True, methods=[\"post\"])\n    def publish(self, request, pk=None):\n        \"\"\"انتشار یک کتاب.\"\"\"\n        book = self.get_object()\n        if book.is_published:\n            return Response(\n                {\"detail\": \"این کتاب قبلاً منتشر شده است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        book.is_published = True\n        book.published_at = timezone.now()\n        book.save(update_fields=[\"is_published\", \"published_at\"])\n        return Response({\"status\": \"published\"})\n\n    @action(detail=True, methods=[\"post\", \"delete\"])\n    def favorite(self, request, pk=None):\n        \"\"\"Toggle علاقه‌مندی.\"\"\"\n        book = self.get_object()\n        favorite, created = Favorite.objects.get_or_create(\n            user=request.user, book=book,\n        )\n        if not created and request.method == \"DELETE\":\n            favorite.delete()\n            return Response(status=status.HTTP_204_NO_CONTENT)\n        return Response({\"favorited\": True}, status=status.HTTP_201_CREATED)"
+        },
+        {
+          "type": "table",
+          "headers": ["پارامتر", "معنی", "URL تولیدی"],
+          "rows": [
+            ["`detail=False`", "روی کل مجموعه", "`/books/latest/`"],
+            ["`detail=True`", "روی یک رکورد", "`/books/42/publish/`"],
+            ["`methods=[\"get\"]`", "متدهای مجاز", "فقط GET"],
+            ["`methods=[\"post\", \"delete\"]`", "چند متد", "POST و DELETE"],
+            ["`url_path=\"custom\"`", "تغییر مسیر", "`/books/custom/`"],
+            ["`url_name=\"...\"`", "نام URL", "برای reverse"],
+            ["`permission_classes=[...]`", "مجوز خاص", "—"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "action-options",
+      "title": "گزینه‌های @action",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "@action(\n    detail=True,\n    methods=[\"post\"],\n    url_path=\"mark-as-read\",\n    url_name=\"mark-read\",\n    permission_classes=[IsAuthenticated],\n    serializer_class=SimpleResponseSerializer,  # برای مستندات\n)\ndef mark_as_read(self, request, pk=None):\n    obj = self.get_object()\n    obj.is_read = True\n    obj.save(update_fields=[\"is_read\"])\n    return Response({\"status\": \"ok\"})"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "url_path و url_name",
+          "text": "اگر `url_path` را ندهید، نام متد به‌عنوان مسیر استفاده می‌شود. برای نام‌هایی با `_`، از `url_path` استفاده کنید (URL ترجیحاً با `-`)."
+        }
+      ]
+    },
+    {
+      "id": "dynamic-serializer",
+      "title": "سریالایزر پویا در ViewSet",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\").all()\n\n    def get_serializer_class(self):\n        if self.action == \"list\":\n            return BookListSerializer      # سبک\n        if self.action == \"retrieve\":\n            return BookDetailSerializer    # کامل\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer     # ورودی\n        return BookSerializer              # پیش‌فرض"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "self.action",
+          "text": "`self.action` نام اکشن جاری است: `list`, `create`, `retrieve`, `update`, `partial_update`, `destroy` یا نام اکشن سفارشی."
+        }
+      ]
+    },
+    {
+      "id": "dynamic-queryset",
+      "title": "QuerySet پویا در ViewSet",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n    def get_queryset(self):\n        user = self.request.user\n        qs = Book.objects.select_related(\"author\")\n\n        # ادمین همه را می‌بیند\n        if user.is_staff:\n            return qs\n\n        # کاربران عادی فقط کتاب‌های منتشرشده + کتاب‌های خودشان\n        if user.is_authenticated:\n            return qs.filter(\n                models.Q(is_published=True) | models.Q(owner=user)\n            )\n\n        # کاربران ناشناس فقط منتشرشده\n        return qs.filter(is_published=True)"
+        }
+      ]
+    },
+    {
+      "id": "dynamic-permissions",
+      "title": "مجوزهای پویا در ViewSet",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import (\n    AllowAny, IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly,\n)\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get_permissions(self):\n        if self.action in (\"list\", \"retrieve\"):\n            return [AllowAny()]\n        if self.action == \"destroy\":\n            return [IsAdminUser()]\n        if self.action == \"favorite\":\n            return [IsAuthenticated()]\n        return [IsAuthenticatedOrReadOnly()]"
+        }
+      ]
+    },
+    {
+      "id": "example-complete",
+      "title": "مثال کامل — Book Management",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework import viewsets, filters, status\nfrom rest_framework.decorators import action\nfrom rest_framework.response import Response\nfrom rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated\nfrom django_filters.rest_framework import DjangoFilterBackend\nfrom django.db.models import Avg, Count\n\nfrom .models import Book, Favorite\nfrom .serializers import (\n    BookListSerializer, BookDetailSerializer, BookWriteSerializer,\n)\nfrom .permissions import IsOwnerOrReadOnly\nfrom .pagination import StandardPagination\nfrom .filters import BookFilter\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]\n    pagination_class = StandardPagination\n    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]\n    filterset_class = BookFilter\n    search_fields = [\"title\", \"description\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\", \"title\"]\n    ordering = [\"-created_at\"]\n    lookup_field = \"slug\"\n\n    def get_queryset(self):\n        return (\n            Book.objects\n            .select_related(\"author\", \"category\")\n            .prefetch_related(\"categories\")\n            .annotate(\n                reviews_count=Count(\"reviews\"),\n                average_rating=Avg(\"reviews__rating\"),\n            )\n        )\n\n    def get_serializer_class(self):\n        if self.action == \"list\":\n            return BookListSerializer\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer\n        return BookDetailSerializer\n\n    def perform_create(self, serializer):\n        serializer.save(owner=self.request.user)\n\n    @action(detail=False, methods=[\"get\"])\n    def top_rated(self, request):\n        \"\"\"کتاب‌های با میانگین امتیاز بالای ۴.\"\"\"\n        books = (\n            self.filter_queryset(self.get_queryset())\n            .filter(average_rating__gte=4)\n            .order_by(\"-average_rating\")[:10]\n        )\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)\n\n    @action(detail=True, methods=[\"post\", \"delete\"], permission_classes=[IsAuthenticated])\n    def favorite(self, request, slug=None):\n        \"\"\"Toggle علاقه‌مندی کتاب.\"\"\"\n        book = self.get_object()\n        favorite, created = Favorite.objects.get_or_create(\n            user=request.user, book=book,\n        )\n        if not created:\n            favorite.delete()\n            return Response({\"favorited\": False})\n        return Response({\"favorited\": True}, status=status.HTTP_201_CREATED)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom .views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = router.urls"
+        },
+        {
+          "type": "paragraph",
+          "text": "این ViewSet، این Endpointها را می‌سازد:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET    /books/                        لیست با فیلتر، جستجو، مرتب‌سازی، صفحه‌بندی\nPOST   /books/                        ساخت کتاب جدید\nGET    /books/{slug}/                 جزئیات کتاب\nPUT    /books/{slug}/                 جایگزینی کامل\nPATCH  /books/{slug}/                 ویرایش جزئی\nDELETE /books/{slug}/                 حذف\nGET    /books/top_rated/              اکشن سفارشی\nPOST   /books/{slug}/favorite/        افزودن به علاقه‌مندی\nDELETE /books/{slug}/favorite/        حذف از علاقه‌مندی"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود `queryset` یا `get_queryset` در ViewSet",
+          "why": "Router نمی‌تواند `basename` را بسازد و خطا می‌دهد.",
+          "when": "وقتی فقط `get_queryset` را بازنویسی می‌کنید بدون `queryset`.",
+          "fix": "یا `queryset` بگذارید، یا `basename` را در `router.register` بدهید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `basename`",
+          "why": "اگر `queryset` نباشد، خطای `AssertionError` می‌گیرید.",
+          "when": "وقتی فقط `get_queryset` دارید.",
+          "fix": "`router.register(r\"books\", BookViewSet, basename=\"book\")`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "اکشن سفارشی با نام `_`",
+          "why": "نام‌های snake_case در URL غیرمعمول‌اند.",
+          "when": "وقتی `def top_rated` می‌نویسید.",
+          "fix": "`@action(detail=False, url_path=\"top-rated\")`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `@action` برای CRUD استاندارد",
+          "why": "CRUD را Router خودکار می‌سازد؛ اکشن اضافه تکراری است.",
+          "when": "وقتی می‌خواهید روی یک رکورد عملیات CRUD انجام دهید.",
+          "fix": "از متدهای `list`, `create`, `retrieve` و... استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازنویسی `list` یا `create` به‌جای استفاده از hookها",
+          "why": "کد DRF را تکرار می‌کنید.",
+          "when": "وقتی منطق کمی اضافه می‌خواهید.",
+          "fix": "از `get_queryset`, `perform_create`, `get_serializer_class` استفاده کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-028-q1",
+      "tag": "کوییز",
+      "question": "تفاوت `ModelViewSet` و `ReadOnlyModelViewSet` چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "`ReadOnlyModelViewSet` فقط `list` و `retrieve` دارد؛ `ModelViewSet` همه عملیات CRUD.", "correct": true, "explanation": "ReadOnly برای داده‌های فقط‌خواندنی مناسب است." },
+        { "text": "`ReadOnlyModelViewSet` فقط برای ادمین است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-028-q2",
+      "tag": "کوییز",
+      "question": "برای یک اکشن که روی کل مجموعه کار می‌کند (مثل `latest`)، از چه چیزی استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`@action(detail=True)`", "correct": false },
+        { "text": "`@action(detail=False)`", "correct": true, "explanation": "detail=False یعنی روی مجموعه، نه روی یک رکورد." },
+        { "text": "یک متد معمولی", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-028-ex1",
+      "title": "تمرین — ViewSet کامل",
+      "problem": "یک `ProductViewSet` بسازید که:\n- CRUD کامل داشته باشد.\n- `low_stock` (detail=False, GET) محصولات با موجودی کمتر از ۵ را برگرداند.\n- `restock` (detail=True, POST) موجودی را افزایش دهد.\n- `toggle_active` (detail=True, POST) وضعیت فعال را تغییر دهد.",
+      "hints": ["از `@action` استفاده کنید.", "برای `low_stock` از `filter(stock__lt=5)`.", "برای `restock` مقدار را از `request.data[\"amount\"]` بخوانید."],
+      "solution": "```python\nfrom rest_framework import viewsets, status\nfrom rest_framework.decorators import action\nfrom rest_framework.response import Response\nfrom .models import Product\nfrom .serializers import ProductSerializer\n\n\nclass ProductViewSet(viewsets.ModelViewSet):\n    queryset = Product.objects.all()\n    serializer_class = ProductSerializer\n\n    @action(detail=False, methods=[\"get\"])\n    def low_stock(self, request):\n        products = self.get_queryset().filter(stock__lt=5)\n        serializer = self.get_serializer(products, many=True)\n        return Response(serializer.data)\n\n    @action(detail=True, methods=[\"post\"])\n    def restock(self, request, pk=None):\n        product = self.get_object()\n        try:\n            amount = int(request.data.get(\"amount\", 0))\n        except (TypeError, ValueError):\n            return Response(\n                {\"amount\": [\"عدد نامعتبر.\"]},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        if amount <= 0:\n            return Response(\n                {\"amount\": [\"مقدار باید مثبت باشد.\"]},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        product.stock += amount\n        product.save(update_fields=[\"stock\"])\n        return Response({\"id\": product.id, \"stock\": product.stock})\n\n    @action(detail=True, methods=[\"post\"])\n    def toggle_active(self, request, pk=None):\n        product = self.get_object()\n        product.is_active = not product.is_active\n        product.save(update_fields=[\"is_active\"])\n        return Response({\"is_active\": product.is_active})\n```",
+      "explanation": "این الگو در پروژه‌های واقعی رایج است: CRUD استاندارد + اکشن‌های دامنه‌ای."
+    }
+  ],
+  "summary": [
+    "ViewSet چند عملیات مرتبط را در یک کلاس جمع می‌کند.",
+    "Router URLها را خودکار می‌سازد.",
+    "`ModelViewSet` CRUD کامل، `ReadOnlyModelViewSet` فقط خواندن.",
+    "`GenericViewSet` با Mixinهای دلخواه.",
+    "`@action` برای عملیات غیر CRUD.",
+    "`detail=True` روی یک رکورد، `detail=False` روی مجموعه.",
+    "`self.action` نام اکشن جاری است.",
+    "`basename` در `router.register` اگر `queryset` ندارید."
+  ],
+  "resources": [
+    { "title": "DRF — ViewSets", "url": "https://www.django-rest-framework.org/api-guide/viewsets/", "official": true },
+    { "title": "DRF — ViewSet actions", "url": "https://www.django-rest-framework.org/api-guide/viewsets/#marking-extra-actions-for-routing", "official": true }
+  ]
+}
+

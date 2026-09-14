@@ -1,0 +1,303 @@
+{
+  "id": "ch-040",
+  "slug": "ordering",
+  "title": "مرتب‌سازی (Ordering)",
+  "kicker": "فصل ۴۰",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "مرتب‌سازی به کاربر اجازه می‌دهد داده را بر اساس معیار خودش ببیند. این فصل OrderingFilter و نکات امنیتی آن را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "basics",
+      "title": "OrderingFilter پایه",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import filters\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [filters.OrderingFilter]\n    ordering_fields = [\"price\", \"published_at\", \"title\", \"created_at\"]\n    ordering = [\"-created_at\"]   # پیش‌فرض"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# صعودی\nGET /api/books/?ordering=price\n\n# نزولی (با -)\nGET /api/books/?ordering=-price\n\n# چند فیلد — اول price نزولی، بعد title صعودی\nGET /api/books/?ordering=-price,title\n\n# بدون پارامتر → ordering پیش‌فرض (-created_at)"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`-`** برای نزولی.",
+            "**`,`** برای چند فیلد.",
+            "**بدون پارامتر:** از `ordering` پیش‌فرض استفاده می‌شود.",
+            "**ترتیب:** از چپ به راست، اولویت دارد."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "why-limit",
+      "title": "چرا محدودیت در ordering_fields؟",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "اجازه ordering روی همه فیلدها",
+          "why": "کاربر می‌تواند روی فیلد بدون index مرتب‌سازی کند و دیتابیس کند شود. همچنین می‌تواند ساختار داخلی را حدس بزند.",
+          "when": "وقتی `ordering_fields = \"__all__\"` می‌گذارید.",
+          "fix": "فقط فیلدهایی که کاربر می‌تواند ببیند و index دارند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ❌ بد\nordering_fields = \"__all__\"\n\n# ✅ خوب\nordering_fields = [\"price\", \"published_at\", \"title\"]"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "خطر امنیتی",
+          "text": "اگر `ordering_fields` را محدود نکنید، کاربر می‌تواند روی فیلدهایی مثل `password_hash` (که در serializer نیست ولی در مدل هست) مرتب‌سازی کند و از سرعت پاسخ، اطلاعات لو بدهد."
+        }
+      ]
+    },
+    {
+      "id": "default",
+      "title": "ترتیب پیش‌فرض",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "همیشه یک ترتیب پیش‌فرض داشته باشید. بدون آن، دیتابیس ترتیب دلخواه برمی‌گرداند و صفحه‌بندی بی‌ثبات می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [filters.OrderingFilter]\n    ordering_fields = [\"price\", \"published_at\", \"title\"]\n    ordering = [\"-published_at\"]   # ترتیب پیش‌فرض"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "در مدل یا در View؟",
+          "text": "می‌توانید `Meta.ordering` در مدل تعریف کنید (برای همه جا) یا `ordering` در View (فقط این View). برای API، `ordering` در View بهتر است چون انعطاف بیشتری می‌دهد."
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "صفحه‌بندی و ترتیب",
+          "text": "برای صفحه‌بندی پایدار، ترتیب باید **یکتا** باشد. اگر `price` تکراری دارد، `-price` تنها کافی نیست — `-price,-id` بهتر است."
+        }
+      ]
+    },
+    {
+      "id": "index",
+      "title": "ایندکس برای مرتب‌سازی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بدون index، مرتب‌سازی روی جدول بزرگ کند است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/models.py",
+          "code": "class Book(models.Model):\n    title = models.CharField(max_length=250, db_index=True)\n    price = models.DecimalField(max_digits=9, decimal_places=2, db_index=True)\n    published_at = models.DateField(db_index=True)\n    created_at = models.DateTimeField(auto_now_add=True, db_index=True)\n\n    class Meta:\n        ordering = [\"-published_at\"]\n        indexes = [\n            models.Index(fields=[\"-published_at\"]),\n            models.Index(fields=[\"price\"]),\n            models.Index(fields=[\"category\", \"-published_at\"]),\n        ]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "ایندکس ترکیبی",
+          "text": "برای فیلتر + مرتب‌سازی روی یک فیلد، ایندکس ترکیبی سریع‌تر است. مثلاً `(category, -published_at)`."
+        }
+      ]
+    },
+    {
+      "id": "case-insensitive",
+      "title": "مرتب‌سازی بدون حساسیت به حروف",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.db.models.functions import Lower\n\n\nclass CaseInsensitiveOrderingFilter(filters.OrderingFilter):\n    \"\"\"مرتب‌سازی روی فیلدهای متنی، بدون حساسیت به حروف.\"\"\"\n\n    def filter_queryset(self, request, queryset, view):\n        ordering = self.get_ordering(request, queryset, view)\n        if ordering:\n            fields = []\n            for field in ordering:\n                if field.startswith(\"-\"):\n                    fields.append(Lower(field[1:]).desc())\n                else:\n                    fields.append(Lower(field).asc())\n            return queryset.order_by(*fields)\n        return queryset"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "در عمل",
+          "text": "در بیشتر دیتابیس‌ها، collation پیش‌فرض کافی است. اما برای اطمینان، `Lower` کار می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "custom-ordering",
+      "title": "منطق مرتب‌سازی سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید ترتیب معنایی تعریف کنید (مثل «مهم‌ترین اول»)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.db.models import Case, When, IntegerField, Value\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [filters.OrderingFilter]\n    ordering_fields = [\"price\", \"published_at\", \"popularity\"]\n    ordering = [\"-published_at\"]\n\n    def filter_queryset(self, queryset):\n        queryset = super().filter_queryset(queryset)\n        ordering = self.request.query_params.get(\"ordering\")\n\n        if ordering == \"popularity\":\n            # محبوبیت: views_count * 2 + favorites_count\n            queryset = queryset.annotate(\n                popularity=F(\"views_count\") * 2 + F(\"favorites_count\"),\n            ).order_by(\"-popularity\")\n\n        elif ordering == \"-popularity\":\n            queryset = queryset.annotate(\n                popularity=F(\"views_count\") * 2 + F(\"favorites_count\"),\n            ).order_by(\"popularity\")\n\n        return queryset"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "فیلد مجازی",
+          "text": "می‌توانید نام‌های معنایی مثل `popularity` را در `ordering_fields` بگذارید و در View منطق آن را پیاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "nulls",
+      "title": "مدیریت مقادیر null",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در مرتب‌سازی صعودی، مقادیر `null` معمولاً اول می‌آیند. اگر نمی‌خواهید، باید صریح تنظیم کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.db.models import F\n\n\n# در PostgreSQL:\n# queryset.order_by(F(\"price\").asc(nulls_last=True))\n# queryset.order_by(F(\"price\").desc(nulls_last=True))\n\n\nclass NullsLastOrderingFilter(filters.OrderingFilter):\n    def filter_queryset(self, request, queryset, view):\n        ordering = self.get_ordering(request, queryset, view)\n        if not ordering:\n            return queryset\n\n        fields = []\n        for field in ordering:\n            if field.startswith(\"-\"):\n                fields.append(F(field[1:]).desc(nulls_last=True))\n            else:\n                fields.append(F(field).asc(nulls_last=True))\n        return queryset.order_by(*fields)"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "پشتیبانی دیتابیس",
+          "text": "`nulls_last` در PostgreSQL و SQLite پشتیبانی می‌شود. در MySQL، نیاز به راه‌حل جایگزین دارید."
+        }
+      ]
+    },
+    {
+      "id": "combining",
+      "title": "ترکیب با فیلتر و جستجو",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\", \"category\")\n    serializer_class = BookSerializer\n    filter_backends = [\n        DjangoFilterBackend,\n        filters.SearchFilter,\n        filters.OrderingFilter,\n    ]\n    filterset_class = BookFilter\n    search_fields = [\"title\", \"description\"]\n    ordering_fields = [\"price\", \"published_at\", \"title\"]\n    ordering = [\"-published_at\"]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "GET /api/books/?category=fiction&amp;search=clean&amp;ordering=-price&amp;page=2"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "ترتیب Backendها",
+          "text": "Filter → Search → Ordering. این ترتیب منطقی است چون Ordering بعد از فیلتر اعمال می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "reverse",
+      "title": "پارامتر reverse",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید یک دکمه «معکوس کردن ترتیب» بگذارید. یک پارامتر Boolean ساده کافی است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [filters.OrderingFilter]\n    ordering_fields = [\"price\", \"published_at\"]\n    ordering = [\"-published_at\"]\n\n    def filter_queryset(self, queryset):\n        queryset = super().filter_queryset(queryset)\n        reverse = self.request.query_params.get(\"reverse\")\n        if reverse and reverse.lower() in (\"true\", \"1\"):\n            current = self.request.query_params.get(\"ordering\")\n            if current and current.startswith(\"-\"):\n                queryset = queryset.order_by(current[1:])\n            elif current:\n                queryset = queryset.order_by(\"-\" + current)\n        return queryset"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود ترتیب پیش‌فرض",
+          "why": "صفحه‌بندی بی‌ثبات می‌شود؛ رکوردها ممکن است در صفحات مختلف تکرار یا حذف شوند.",
+          "when": "وقتی `ordering` را تعریف نمی‌کنید.",
+          "fix": "همیشه `ordering = [...]` در View."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ترتیب روی فیلد بدون index",
+          "why": "روی جدول بزرگ، sort کند است.",
+          "when": "وقتی `ordering_fields` شامل فیلدهای بدون index است.",
+          "fix": "`db_index=True` یا ایندکس ترکیبی."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "`ordering_fields = \"__all__\"`",
+          "why": "کاربر می‌تواند روی فیلدهای حساس sort کند.",
+          "when": "وقتی می‌خواهید ساده باشد.",
+          "fix": "لیست صریح فیلدهای مجاز."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ترتیب غیریکتا + صفحه‌بندی",
+          "why": "رکوردها ممکن است در دو صفحه تکرار شوند.",
+          "when": "وقتی فقط `-price` دارید و price تکراری است.",
+          "fix": "`-price,-id` — با tie-breaker یکتا."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "تکیه بر ترتیب پیش‌فرض دیتابیس",
+          "why": "دیتابیس تضمین نمی‌کند ترتیب ثابت باشد.",
+          "when": "وقتی `ordering` نمی‌گذارید.",
+          "fix": "همیشه صریح."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-040-q1",
+      "tag": "کوییز",
+      "question": "چرا `ordering_fields = \"__all__\"` خطرناک است؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون کاربر می‌تواند روی فیلدهای حساس یا بدون index مرتب‌سازی کند.", "correct": true, "explanation": "هم امنیت و هم کارایی تحت تأثیر قرار می‌گیرد." },
+        { "text": "چون DRF اجازه نمی‌دهد.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-040-q2",
+      "tag": "کوییز",
+      "question": "چرا ترتیب پیش‌فرض مهم است؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون بدون آن، صفحه‌بندی بی‌ثبات می‌شود و رکوردها ممکن است تکرار شوند.", "correct": true, "explanation": "ترتیب پایدار برای صفحه‌بندی ضروری است." },
+        { "text": "چون اجباری است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-040-q3",
+      "tag": "کوییز",
+      "question": "برای مرتب‌سازی نزولی، از چه استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`?ordering=desc(price)`", "correct": false },
+        { "text": "`?ordering=-price`", "correct": true, "explanation": "پیشوند `-` برای نزولی." },
+        { "text": "`?order=price_desc`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-040-ex1",
+      "title": "تمرین — Ordering کامل",
+      "problem": "برای یک API محصولات:\n- ترتیب پیش‌فرض: `-created_at`.\n- فیلدهای مجاز: `price`, `name`, `stock`, `sold_count`.\n- پارامتر `popularity` که بر اساس `views * 2 + sold_count` مرتب می‌کند.\n- محدودیت: بدون پارامتر، ترتیب پیش‌فرض.",
+      "hints": ["از `F()` برای annotate.", "در `filter_queryset` منطق popularity را اضافه کنید.", "به `select_related` توجه کنید."],
+      "solution": "```python\nfrom django.db.models import F\nfrom rest_framework import filters\n\n\nclass ProductViewSet(viewsets.ModelViewSet):\n    queryset = Product.objects.select_related(\"category\", \"brand\")\n    serializer_class = ProductSerializer\n    filter_backends = [filters.OrderingFilter]\n    ordering_fields = [\"price\", \"name\", \"stock\", \"sold_count\", \"popularity\"]\n    ordering = [\"-created_at\"]\n\n    def filter_queryset(self, queryset):\n        ordering = self.request.query_params.get(\"ordering\")\n\n        if ordering in (\"popularity\", \"-popularity\"):\n            queryset = queryset.annotate(\n                popularity=F(\"views_count\") * 2 + F(\"sold_count\"),\n            )\n            if ordering.startswith(\"-\"):\n                queryset = queryset.order_by(\"-popularity\")\n            else:\n                queryset = queryset.order_by(\"popularity\")\n            return queryset\n\n        return super().filter_queryset(queryset)\n```",
+      "explanation": "این الگو نشان می‌دهد چطور فیلد مجازی (popularity) را با annotate پیاده کنید."
+    }
+  ],
+  "summary": [
+    "`OrderingFilter` مرتب‌سازی آماده.",
+    "`?ordering=field` صعودی، `?ordering=-field` نزولی.",
+    "چند فیلد: `?ordering=-price,title`.",
+    "`ordering_fields` را محدود کنید — نه `__all__`.",
+    "همیشه `ordering` پیش‌فرض بگذارید.",
+    "برای صفحه‌بندی، ترتیب باید یکتا باشد.",
+    "ایندکس روی فیلدهای مرتب‌سازی مهم است.",
+    "منطق سفارشی با `filter_queryset` override."
+  ],
+  "resources": [
+    { "title": "DRF — OrderingFilter", "url": "https://www.django-rest-framework.org/api-guide/filtering/#orderingfilter", "official": true },
+    { "title": "Django — QuerySet order_by", "url": "https://docs.djangoproject.com/en/stable/ref/models/querysets/#order-by", "official": true }
+  ]
+}

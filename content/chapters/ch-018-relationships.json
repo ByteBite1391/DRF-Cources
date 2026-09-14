@@ -1,0 +1,339 @@
+{
+  "id": "ch-018",
+  "slug": "relationships",
+  "title": "روابط (Relationships)",
+  "kicker": "فصل ۱۸",
+  "level": "intermediate",
+  "estimatedMinutes": 45,
+  "lead": "مدل‌های واقعی با هم رابطه دارند. DRF چند راه برای نمایش و نوشتن روابط ارائه می‌دهد.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "روابط در مدل Django",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["نوع رابطه", "مدل", "مثال"],
+          "rows": [
+            ["چند-به-یک", "`ForeignKey`", "کتاب ← نویسنده"],
+            ["چند-به-چند", "`ManyToManyField`", "کتاب ↔ دسته‌ها"],
+            ["یک-به-یک", "`OneToOneField`", "کاربر ↔ پروفایل"],
+            ["چند-به-چند با through", "`through=`", "سفارش ↔ محصول با تعداد و قیمت"]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "روابط در DRF به دو شکل مدیریت می‌شوند: **نوشتن** (پذیرش شناسه‌ها) و **خواندن** (نمایش کامل، خلاصه، یا URL)."
+        }
+      ]
+    },
+    {
+      "id": "primary-key",
+      "title": "PrimaryKeyRelatedField",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پیش‌فرض DRF در `ModelSerializer`. نمایش و پذیرش شناسه عددی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\"]\n\n# خروجی:\n# {\"id\": 1, \"title\": \"Clean Code\", \"author\": 7}\n#\n# ورودی:\n# {\"title\": \"Clean Code\", \"author\": 7}"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مزیت:** سبک، ساده، کارآمد.",
+            "**عیب:** کلاینت باید شناسه‌ها را بداند.",
+            "**کاربرد:** فرم‌های داخلی، اپلیکیشن‌های SPA.",
+            "**`queryset`:** به‌طور خودکار از `ModelSerializer` پر می‌شود."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# محدود کردن queryset\nclass BookSerializer(serializers.ModelSerializer):\n    author = serializers.PrimaryKeyRelatedField(\n        queryset=Author.objects.filter(is_active=True),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\"]\n\n# چند-به-چند\nclass BookSerializer(serializers.ModelSerializer):\n    categories = serializers.PrimaryKeyRelatedField(\n        many=True,\n        queryset=Category.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"categories\"]"
+        }
+      ]
+    },
+    {
+      "id": "string-related",
+      "title": "StringRelatedField",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "خروجی را با `__str__` مدل نمایش می‌دهد. فقط خواندنی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    author = serializers.StringRelatedField(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\"]\n\n# خروجی:\n# {\"id\": 1, \"title\": \"Clean Code\", \"author\": \"Robert C. Martin\"}"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مزیت:** خوانا برای انسان.",
+            "**عیب:** فقط خواندنی؛ نمی‌توان با آن نوشت.",
+            "**کاربرد:** نمایش ساده در صفحات لیست."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "slug-related",
+      "title": "SlugRelatedField",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "به‌جای شناسه عددی، از یک فیلد یکتا مثل slug یا username استفاده می‌کند. خواندنی و نوشتنی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    author = serializers.SlugRelatedField(\n        slug_field=\"username\",\n        queryset=User.objects.all(),\n    )\n    category = serializers.SlugRelatedField(\n        slug_field=\"slug\",\n        queryset=Category.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"category\"]\n\n# خروجی:\n# {\"id\": 1, \"title\": \"Clean Code\", \"author\": \"sara\", \"category\": \"programming\"}\n#\n# ورودی:\n# {\"title\": \"Clean Code\", \"author\": \"sara\", \"category\": \"programming\"}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "مزیت URL خوانا",
+          "text": "برای APIهای عمومی که URL خوانا مهم است، `SlugRelatedField` انتخاب خوبی است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# چند-به-چند با slug\nclass BookSerializer(serializers.ModelSerializer):\n    categories = serializers.SlugRelatedField(\n        many=True,\n        slug_field=\"slug\",\n        queryset=Category.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"categories\"]"
+        }
+      ]
+    },
+    {
+      "id": "hyperlinked",
+      "title": "HyperlinkedRelatedField",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "به‌جای شناسه یا نام، URL کامل منبع را برمی‌گرداند. مناسب APIهای HATEOAS."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    author = serializers.HyperlinkedRelatedField(\n        view_name=\"author-detail\",\n        read_only=True,\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\"]\n\n# خروجی:\n# {\"id\": 1, \"title\": \"Clean Code\", \"author\": \"http://127.0.0.1:8000/api/authors/7/\"}"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "نیاز به context",
+          "text": "برای کار کردن، سریالایزر به `context={'request': request}` نیاز دارد. در ViewSet و Generic Views خودکار انجام می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    url = serializers.HyperlinkedIdentityField(view_name=\"book-detail\")\n    author = serializers.HyperlinkedRelatedField(\n        view_name=\"author-detail\",\n        queryset=Author.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"url\", \"id\", \"title\", \"author\"]"
+        }
+      ]
+    },
+    {
+      "id": "nested-read",
+      "title": "سریالایزر تودرتو (خواندنی)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای نمایش جزئیات کامل رابطه، از سریالایزر تودرتو استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class AuthorSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"bio\"]\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    author = AuthorSerializer(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\"]\n\n# خروجی:\n# {\n#   \"id\": 1,\n#   \"title\": \"Clean Code\",\n#   \"author\": {\"id\": 7, \"full_name\": \"Robert C. Martin\", \"bio\": \"...\"}\n# }"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "خطر N+1",
+          "text": "سریالایزر تودرتو به‌راحتی باعث N+1 می‌شود. حتماً در ویو از `select_related` استفاده کنید: `Book.objects.select_related('author')`."
+        }
+      ]
+    },
+    {
+      "id": "nested-write",
+      "title": "سریالایزر تودرتو (نوشتنی)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF به‌طور پیش‌فرض نوشتن تودرتو را پشتیبانی نمی‌کند. باید `create()` و `update()` را دستی پیاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class AuthorSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"bio\"]\n\n\nclass BookWithAuthorSerializer(serializers.ModelSerializer):\n    author = AuthorSerializer()\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"isbn\", \"author\"]\n\n    def create(self, validated_data):\n        author_data = validated_data.pop(\"author\")\n        author, _ = Author.objects.get_or_create(\n            full_name=author_data[\"full_name\"],\n            defaults=author_data,\n        )\n        return Book.objects.create(author=author, **validated_data)\n\n    def update(self, instance, validated_data):\n        author_data = validated_data.pop(\"author\", None)\n        if author_data:\n            author, _ = Author.objects.get_or_create(\n                full_name=author_data[\"full_name\"],\n                defaults=author_data,\n            )\n            instance.author = author\n        for attr, value in validated_data.items():\n            setattr(instance, attr, value)\n        instance.save()\n        return instance"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی read/write جدا",
+          "text": "اگر خواندن و نوشتن شکل متفاوتی دارند، دو سریالایزر بسازید: `BookReadSerializer` (خروجی تودرتو) و `BookWriteSerializer` (ورودی ساده). در ViewSet با `get_serializer_class` انتخاب کنید."
+        }
+      ]
+    },
+    {
+      "id": "many-to-many",
+      "title": "Many-to-Many",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# مدل\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    categories = models.ManyToManyField(Category, related_name=\"books\")\n\n\n# سریالایزر — شناسه‌ها\nclass BookSerializer(serializers.ModelSerializer):\n    categories = serializers.PrimaryKeyRelatedField(\n        many=True,\n        queryset=Category.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"categories\"]\n\n\n# سریالایزر — slug\nclass BookSerializer(serializers.ModelSerializer):\n    categories = serializers.SlugRelatedField(\n        many=True,\n        slug_field=\"slug\",\n        queryset=Category.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"categories\"]"
+        }
+      ]
+    },
+    {
+      "id": "reverse",
+      "title": "روابط معکوس",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای نمایش رابطه معکوس (از Author به Books)، از `related_name` استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# مدل\nclass Book(models.Model):\n    author = models.ForeignKey(\n        Author,\n        on_delete=models.CASCADE,\n        related_name=\"books\",   # ← معکوس\n    )\n\n\n# سریالایزر نویسنده با کتاب‌هایش\nclass AuthorWithBooksSerializer(serializers.ModelSerializer):\n    books = serializers.SerializerMethodField()\n    books_count = serializers.IntegerField(source=\"books.count\", read_only=True)\n\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"books\", \"books_count\"]\n\n    def get_books(self, obj):\n        books = obj.books.filter(is_active=True)[:10]\n        return [{\"id\": b.id, \"title\": b.title} for b in books]"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "N+1 در روابط معکوس",
+          "text": "برای روابط معکوس، `select_related` کار نمی‌کند. باید از `prefetch_related` استفاده کنید. در فصل ۵۹ کامل توضیح می‌دهیم."
+        }
+      ]
+    },
+    {
+      "id": "one-to-one",
+      "title": "One-to-One",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class Profile(models.Model):\n    user = models.OneToOneField(User, on_delete=models.CASCADE)\n    bio = models.TextField(blank=True)\n    avatar = models.ImageField(upload_to=\"avatars/\", blank=True)\n\n\nclass ProfileSerializer(serializers.ModelSerializer):\n    username = serializers.CharField(source=\"user.username\", read_only=True)\n    email = serializers.EmailField(source=\"user.email\", read_only=True)\n\n    class Meta:\n        model = Profile\n        fields = [\"id\", \"user\", \"username\", \"email\", \"bio\", \"avatar\"]\n        read_only_fields = [\"id\", \"user\"]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی رایج",
+          "text": "برای پروفایل کاربر جاری، `user` را از request بگیرید و read_only بگذارید. کلاینت نباید بتواند پروفایل کاربر دیگری بسازد."
+        }
+      ]
+    },
+    {
+      "id": "choosing",
+      "title": "کدام فیلد رابطه را انتخاب کنیم؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["نیاز", "فیلد"],
+          "rows": [
+            ["سبک، SPA، فرم داخلی", "`PrimaryKeyRelatedField`"],
+            ["نمایش خوانا، فقط خواندنی", "`StringRelatedField`"],
+            ["URL/شناسه خوانا، نوشتنی", "`SlugRelatedField`"],
+            ["API HATEOAS", "`HyperlinkedRelatedField`"],
+            ["نمایش جزئیات کامل", "سریالایزر تودرتو (read_only)"],
+            ["نوشتن تودرتو", "سریالایزر تودرتو + create/update سفارشی"],
+            ["تعداد یا خلاصه", "`SerializerMethodField` یا `source='books.count'`"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "`PrimaryKeyRelatedField` (پیش‌فرض ModelSerializer).",
+          "better": "سریالایزر تودرتو برای خواندن + `PrimaryKeyRelatedField` برای نوشتن.",
+          "production": "دو سریالایزر جدا (Read/Write) + `select_related`/`prefetch_related` در ویو + تست N+1."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "سریالایزر تودرتو بدون `read_only=True`",
+          "why": "DRF تلاش می‌کند بنویسد و خطا می‌دهد چون `create`/`update` پیاده نشده.",
+          "when": "وقتی فقط می‌خواهید نمایش دهید.",
+          "fix": "`author = AuthorSerializer(read_only=True)`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `select_related`",
+          "why": "N+1 Query. برای ۱۰۰ کتاب، ۱۰۱ کوئری.",
+          "when": "وقتی سریالایزر تودرتو دارید.",
+          "fix": "در ویو: `Book.objects.select_related('author', 'category')`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `depth` برای همه روابط",
+          "why": "پاسخ سنگین، N+1 زیاد، کنترل ناقص.",
+          "when": "وقتی سریالایزر تودرتو صریح می‌ترساند.",
+          "fix": "سریالایزر تودرتو صریح با `read_only=True`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "سریالایزر تودرتو در هر دو طرف رابطه",
+          "why": "بازگشت بی‌نهایت — Author با Book و Book با Author.",
+          "when": "وقتی هر دو طرف را تودرتو می‌خواهید.",
+          "fix": "یکی از طرفین را با `SerializerMethodField` یا `read_only` ساده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `queryset` در `PrimaryKeyRelatedField` صریح",
+          "why": "خطای پیکربندی در زمان بارگذاری.",
+          "when": "وقتی فیلد را صریح تعریف می‌کنید (نه از ModelSerializer).",
+          "fix": "همیشه `queryset=...` را در فیلدهای رابطه‌ای صریح بگذارید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-018-q1",
+      "tag": "کوییز",
+      "question": "برای نوشتن تودرتو، کدام کار لازم است؟",
+      "options": [
+        { "text": "کافی است سریالایزر تودرتو تعریف کنید.", "correct": false },
+        { "text": "باید `create()` و `update()` را دستی پیاده کنید.", "correct": true, "explanation": "DRF به‌طور پیش‌فرض نوشتن تودرتو را پشتیبانی نمی‌کند." },
+        { "text": "از `write_nested=True` استفاده کنید.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-018-q2",
+      "tag": "کوییز",
+      "question": "برای نمایش رابطه معکوس (Author ← Books)، از چه متدی در ویو استفاده می‌کنیم تا N+1 جلوگیری شود؟",
+      "options": [
+        { "text": "`select_related`", "correct": false },
+        { "text": "`prefetch_related`", "correct": true, "explanation": "select_related برای ForeignKey (چند-به-یک) و OneToOne است؛ برای معکوس و ManyToMany از prefetch_related استفاده می‌شود." },
+        { "text": "`join`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-018-ex1",
+      "title": "تمرین — سریالایزر با روابط",
+      "problem": "برای مدل‌های `Author`, `Category`, `Book` (با ForeignKey به Author و ManyToMany به Category) سریالایزر بنویسید که:\n- در خروجی، نویسنده و دسته‌ها به‌صورت کامل (تودرتو) نمایش داده شوند.\n- در ورودی، نویسنده با شناسه و دسته‌ها با slug پذیرفته شوند.\n- N+1 رخ ندهد.",
+      "hints": ["از دو سریالایزر جدا استفاده کنید: Read و Write.", "در ویو از `select_related` و `prefetch_related` استفاده کنید.", "با `get_serializer_class` انتخاب کنید."],
+      "solution": "```python\n# serializers.py\nclass AuthorSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"bio\"]\n\n\nclass CategorySerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Category\n        fields = [\"id\", \"name\", \"slug\"]\n\n\nclass BookReadSerializer(serializers.ModelSerializer):\n    author = AuthorSerializer(read_only=True)\n    categories = CategorySerializer(many=True, read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"categories\", \"price\"]\n\n\nclass BookWriteSerializer(serializers.ModelSerializer):\n    categories = serializers.SlugRelatedField(\n        many=True,\n        slug_field=\"slug\",\n        queryset=Category.objects.all(),\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"categories\", \"price\"]\n\n\n# views.py\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\").prefetch_related(\"categories\")\n\n    def get_serializer_class(self):\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer\n        return BookReadSerializer\n```",
+      "explanation": "این الگوی read/write جداشده + select_related/prefetch_related، استاندارد پروژه‌های واقعی است."
+    }
+  ],
+  "summary": [
+    "`PrimaryKeyRelatedField` — سبک، پیش‌فرض ModelSerializer.",
+    "`StringRelatedField` — نمایش با `__str__`، فقط خواندنی.",
+    "`SlugRelatedField` — شناسه خوانا، نوشتنی.",
+    "`HyperlinkedRelatedField` — URL کامل.",
+    "سریالایزر تودرتو — نمایش جزئیات کامل؛ برای نوشتن باید create/update بنویسید.",
+    "`ManyToManyField` — با `many=True`.",
+    "روابط معکوس — با `related_name` و `prefetch_related`.",
+    "همیشه `select_related`/`prefetch_related` برای جلوگیری از N+1."
+  ],
+  "resources": [
+    { "title": "DRF — Serializer relations", "url": "https://www.django-rest-framework.org/api-guide/relations/", "official": true }
+  ]
+}

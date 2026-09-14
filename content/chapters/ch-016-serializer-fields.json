@@ -1,0 +1,323 @@
+{
+  "id": "ch-016",
+  "slug": "serializer-fields",
+  "title": "فیلدهای Serializer",
+  "kicker": "فصل ۱۶",
+  "level": "beginner",
+  "estimatedMinutes": 40,
+  "lead": "فیلدها بلوک‌های سازنده هر Serializer هستند. این فصل همه فیلدهای مهم را معرفی می‌کند.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "فیلدها در یک نگاه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF مجموعه‌ای غنی از فیلدها دارد. هر فیلد مشخص می‌کند چه نوع داده‌ای را می‌پذیرد، چگونه اعتبارسنجی کند، و چگونه تبدیل کند."
+        },
+        {
+          "type": "table",
+          "headers": ["دسته", "فیلدها"],
+          "rows": [
+            ["متنی", "`CharField`, `EmailField`, `URLField`, `SlugField`, `RegexField`"],
+            ["عددی", "`IntegerField`, `FloatField`, `DecimalField`"],
+            ["بولی", "`BooleanField`, `NullBooleanField`"],
+            ["تاریخ/زمان", "`DateField`, `TimeField`, `DateTimeField`, `DurationField`"],
+            ["انتخابی", "`ChoiceField`, `MultipleChoiceField`"],
+            ["فایل", "`FileField`, `ImageField`"],
+            ["ساختاری", "`ListField`, `DictField`, `JSONField`"],
+            ["رابطه", "`PrimaryKeyRelatedField`, `StringRelatedField`, `SlugRelatedField`, `HyperlinkedRelatedField`"],
+            ["سایر", "`UUIDField`, `IPAddressField`, `HiddenField`, `SerializerMethodField`, `ReadOnlyField`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "string",
+      "title": "فیلدهای متنی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ExampleSerializer(serializers.Serializer):\n    name = serializers.CharField(max_length=100)\n    email = serializers.EmailField()\n    website = serializers.URLField(required=False)\n    slug = serializers.SlugField(max_length=50)\n    phone = serializers.RegexField(regex=r\"^\\+98\\d{10}$\")\n    bio = serializers.CharField(\n        style={\"base_template\": \"textarea.html\"},\n        allow_blank=True,\n        required=False,\n    )"
+        },
+        {
+          "type": "table",
+          "headers": ["فیلد", "اعتبارسنجی", "پارامترهای مهم"],
+          "rows": [
+            ["`CharField`", "طول", "`max_length`, `min_length`, `allow_blank`, `trim_whitespace`"],
+            ["`EmailField`", "فرمت ایمیل", "همه پارامترهای `CharField`"],
+            ["`URLField`", "فرمت URL", "`schemes=[\"http\", \"https\"]`"],
+            ["`SlugField`", "حروف/اعداد/-/_", "`allow_unicode`"],
+            ["`RegexField`", "الگوی regex", "`regex`, `error_messages`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "numeric",
+      "title": "فیلدهای عددی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ExampleSerializer(serializers.Serializer):\n    count = serializers.IntegerField(min_value=0, max_value=1000)\n    rating = serializers.FloatField(min_value=0.0, max_value=5.0)\n    price = serializers.DecimalField(\n        max_digits=8,\n        decimal_places=2,\n        min_value=0,\n        coerce_to_string=False,   # خروجی عددی، نه رشته\n    )"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "DecimalField و دقت",
+          "text": "`DecimalField` پیش‌فرض خروجی را به رشته تبدیل می‌کند تا دقت از دست نرود. اگر می‌خواهید عدد بماند، `coerce_to_string=False` بگذارید — اما مراقب JSON باشید که ممکن است دقت را تغییر دهد."
+        }
+      ]
+    },
+    {
+      "id": "bool-date",
+      "title": "بولی و تاریخ/زمان",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ExampleSerializer(serializers.Serializer):\n    is_active = serializers.BooleanField(default=True)\n    born = serializers.DateField()\n    appointment = serializers.DateTimeField()\n    wake_up = serializers.TimeField()\n    delay = serializers.DurationField()"
+        },
+        {
+          "type": "table",
+          "headers": ["فیلد", "فرمت ورودی", "خروجی پیش‌فرض"],
+          "rows": [
+            ["`DateField`", "`YYYY-MM-DD`", "`YYYY-MM-DD`"],
+            ["`TimeField`", "`HH:MM[:SS]`", "`HH:MM:SS`"],
+            ["`DateTimeField`", "ISO 8601", "ISO 8601"],
+            ["`DurationField`", "رشته یا عدد", "رشته"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "ISO 8601",
+          "text": "ISO 8601 فرمت استاندارد تاریخ/زمان است: `2024-01-15T10:30:00Z`. چون UTC را پشتیبانی می‌کند، برای APIها انتخاب درستی است."
+        }
+      ]
+    },
+    {
+      "id": "choice",
+      "title": "فیلدهای انتخابی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class OrderSerializer(serializers.Serializer):\n    status = serializers.ChoiceField(choices=[\n        (\"pending\", \"در انتظار\"),\n        (\"paid\", \"پرداخت‌شده\"),\n        (\"shipped\", \"ارسال‌شده\"),\n        (\"cancelled\", \"لغو‌شده\"),\n    ])\n    tags = serializers.MultipleChoiceField(\n        choices=[(\"new\", \"جدید\"), (\"hot\", \"داغ\"), (\"sale\", \"حراج\")],\n        allow_empty=False,\n    )"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**ChoiceField:** یک مقدار از مجموعه.",
+            "**MultipleChoiceField:** چند مقدار از مجموعه.",
+            "**نمایش در Browsable API:** dropdown یا checkbox."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "structural",
+      "title": "فیلدهای ساختاری",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ProductSerializer(serializers.Serializer):\n    tags = serializers.ListField(child=serializers.CharField(max_length=30))\n    metadata = serializers.DictField(child=serializers.CharField())\n    config = serializers.JSONField()   # هر داده JSON"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**ListField:** لیست — با `child` نوع آیتم را تعیین می‌کنید.",
+            "**DictField:** دیکشنری — با `child` نوع مقدارها.",
+            "**JSONField:** هر داده JSON معتبر."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "اعتبارسنجی ناقص",
+          "text": "`JSONField` ساختار داخلی را بررسی نمی‌کند. اگر ساختار مشخصی دارید، از `DictField` با `child` یا سریالایزر تودرتو استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "file",
+      "title": "فیلدهای فایل",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DocumentSerializer(serializers.Serializer):\n    file = serializers.FileField()\n    cover = serializers.ImageField(required=False)\n    attachments = serializers.ListField(\n        child=serializers.FileField(),\n        required=False,\n    )"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نیاز به MultiPartParser",
+          "text": "برای دریافت فایل، باید `MultiPartParser` فعال باشد. در فصل ۴۲ کامل توضیح می‌دهیم."
+        }
+      ]
+    },
+    {
+      "id": "special",
+      "title": "فیلدهای ویژه",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ProfileSerializer(serializers.ModelSerializer):\n    # فقط خواندنی — هر مقداری که obj بدهد\n    full_name = serializers.ReadOnlyField(source=\"user.get_full_name\")\n\n    # نوشتنی پنهان — هرگز در خروجی نمایش نمی‌یابد\n    password = serializers.CharField(write_only=True)\n\n    # از request گرفته می‌شود — نه از ورودی\n    owner = serializers.HiddenField(default=serializers.CurrentUserDefault())\n\n    # محاسبه‌شده\n    display_name = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Profile\n        fields = [\"id\", \"full_name\", \"password\", \"owner\", \"display_name\"]\n\n    def get_display_name(self, obj):\n        return obj.user.username.upper()"
+        },
+        {
+          "type": "table",
+          "headers": ["فیلد", "کاربرد"],
+          "rows": [
+            ["`ReadOnlyField`", "همیشه read_only، مقدار از `source`"],
+            ["`HiddenField`", "نوشتنی پنهان — نه در ورودی، نه در خروجی"],
+            ["`SerializerMethodField`", "مقدار از متد `get_<field_name>` محاسبه می‌شود"],
+            ["`CurrentUserDefault`", "کاربر جاری — برای `owner` مفید"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی مالکیت خودکار",
+          "text": "برای اینکه `owner` همیشه از request گرفته شود و کلاینت نتواند آن را دستکاری کند: `owner = serializers.HiddenField(default=serializers.CurrentUserDefault())`."
+        }
+      ]
+    },
+    {
+      "id": "common-params",
+      "title": "پارامترهای مشترک همه فیلدها",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["پارامتر", "معنی"],
+          "rows": [
+            ["`read_only`", "فقط در خروجی"],
+            ["`write_only`", "فقط در ورودی"],
+            ["`required`", "الزامی؟"],
+            ["`default`", "مقدار پیش‌فرض"],
+            ["`allow_null`", "پذیرش null"],
+            ["`source`", "نام فیلد در شیء (اگر متفاوت است)"],
+            ["`validators`", "لیست اعتبارسنج‌ها"],
+            ["`error_messages`", "پیام‌های خطای سفارشی"],
+            ["`label`", "برچسب در Browsable API"],
+            ["`help_text`", "راهنما"],
+            ["`style`", "راهنمای نمایش (مثلاً `textarea`)"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "validation-order",
+      "title": "ترتیب اعتبارسنجی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی `is_valid()` صدا زده می‌شود، این ترتیب اجرا می‌شود:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "**Field.to_internal_value():** تبدیل مقدار خام به نوع پایتون.",
+            "**Field.run_validators():** اجرای `validators` فیلد.",
+            "**validate_<field_name>():** متد اعتبارسنجی سطح فیلد.",
+            "**validate():** متد اعتبارسنجی سطح شیء.",
+            "**validators سطح شیء:** مثل `UniqueTogetherValidator`.",
+            "**مدل Django:** در `.save()`، `full_clean` (اگر `ModelSerializer`)."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا ترتیب مهم است؟",
+          "text": "اگر می‌خواهید در `validate_<field>` به مقدار فیلدهای دیگر دسترسی داشته باشید، نمی‌توانید — چون ترتیب مهم است. برای کارهای بین‌فیلدی، از `validate()` استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `CharField` برای همه چیز",
+          "why": "اعتبارسنجی نوع از دست می‌رود. `age: \"30\"` هم قبول می‌شود.",
+          "when": "وقتی سریع می‌نویسید.",
+          "fix": "از فیلد درست استفاده کنید: `IntegerField`، `EmailField`، `DateField`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "`allow_blank=True` روی همه فیلدهای متنی",
+          "why": "داده خالی وارد دیتابیس می‌شود.",
+          "when": "وقتی خطای «این فیلد نمی‌تواند خالی باشد» می‌بینید.",
+          "fix": "فقط روی فیلدهایی که واقعاً اختیاری‌اند، `allow_blank=True` بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `JSONField` برای ساختار مشخص",
+          "why": "اعتبارسنجی ناقص، خطاهای دیر متوجه می‌شوند.",
+          "when": "وقتی ساختار JSON تودرتو دارید.",
+          "fix": "از `DictField` با `child` یا سریالایزر تودرتو استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "قرار دادن `password` در خروجی",
+          "why": "رمز عبور هرگز نباید در پاسخ باشد.",
+          "when": "وقتی `UserSerializer` می‌سازید.",
+          "fix": "`password = serializers.CharField(write_only=True)`"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-016-q1",
+      "tag": "کوییز",
+      "question": "برای فیلدی که باید هرگز در خروجی نمایش داده نشود، از چه پارامتری استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`read_only=True`", "correct": false },
+        { "text": "`write_only=True`", "correct": true, "explanation": "write_only فقط در ورودی پذیرفته می‌شود و در خروجی نیست." },
+        { "text": "`hidden=True`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-016-q2",
+      "tag": "کوییز",
+      "question": "برای فیلدی که از request.user پر می‌شود و کلاینت نباید ببیند یا دستکاری کند، از چه استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`ReadOnlyField`", "correct": false },
+        { "text": "`HiddenField(default=CurrentUserDefault())`", "correct": true, "explanation": "HiddenField نه در ورودی ظاهر می‌شود، نه در خروجی." },
+        { "text": "`SerializerMethodField`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-016-ex1",
+      "title": "تمرین — سریالایزر با فیلدهای متنوع",
+      "problem": "یک `EventSerializer` بسازید با فیلدهای:\n- `title`: متنی، حداکثر ۲۰۰\n- `starts_at`, `ends_at`: DateTimeField\n- `status`: ChoiceField با مقادیر `draft`, `published`, `cancelled`\n- `tags`: ListField از رشته‌ها\n- `is_public`: BooleanField\n- `metadata`: DictField اختیاری",
+      "hints": ["برای status از `choices` استفاده کنید.", "برای tags از `ListField(child=CharField())`."],
+      "solution": "```python\nclass EventSerializer(serializers.Serializer):\n    title = serializers.CharField(max_length=200)\n    starts_at = serializers.DateTimeField()\n    ends_at = serializers.DateTimeField()\n    status = serializers.ChoiceField(choices=[\n        (\"draft\", \"پیش‌نویس\"),\n        (\"published\", \"منتشرشده\"),\n        (\"cancelled\", \"لغو‌شده\"),\n    ])\n    tags = serializers.ListField(\n        child=serializers.CharField(max_length=30),\n        required=False,\n    )\n    is_public = serializers.BooleanField(default=False)\n    metadata = serializers.DictField(\n        child=serializers.CharField(),\n        required=False,\n    )\n```",
+      "explanation": "این مجموعه فیلدها، تقریباً همه نیازهای یک API واقعی را پوشش می‌دهد."
+    }
+  ],
+  "summary": [
+    "فیلدهای متنی: `CharField`, `EmailField`, `URLField`, `SlugField`, `RegexField`.",
+    "فیلدهای عددی: `IntegerField`, `FloatField`, `DecimalField`.",
+    "تاریخ/زمان: `DateField`, `TimeField`, `DateTimeField`, `DurationField`.",
+    "انتخابی: `ChoiceField`, `MultipleChoiceField`.",
+    "ساختاری: `ListField`, `DictField`, `JSONField`.",
+    "فایل: `FileField`, `ImageField`.",
+    "ویژه: `ReadOnlyField`, `HiddenField`, `SerializerMethodField`, `CurrentUserDefault`.",
+    "پارامترهای مشترک: `read_only`, `write_only`, `required`, `default`, `source`, `validators`.",
+    "از فیلد مناسب برای هر داده استفاده کنید، نه فقط `CharField`."
+  ],
+  "resources": [
+    { "title": "DRF — Serializer fields", "url": "https://www.django-rest-framework.org/api-guide/fields/", "official": true }
+  ]
+}

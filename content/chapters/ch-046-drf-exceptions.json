@@ -1,0 +1,323 @@
+{
+  "id": "ch-046",
+  "slug": "drf-exceptions",
+  "title": "استثناهای DRF",
+  "kicker": "فصل ۴۶",
+  "level": "intermediate",
+  "estimatedMinutes": 35,
+  "lead": "خطاها بخشی از هر API هستند. DRF استثناهای آماده‌ای دارد که به‌طور خودکار به پاسخ‌های HTTP استاندارد تبدیل می‌شوند.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا استثنا؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "به‌جای نوشتن `if not valid: return Response({\"error\": ...}, status=400)` در هر ویو، DRF اجازه می‌دهد یک استثنا پرتاب کنید و خودش به پاسخ مناسب تبدیل کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ❌ بدون استثنا\nclass BookDetailView(APIView):\n    def get(self, request, pk):\n        try:\n            book = Book.objects.get(pk=pk)\n        except Book.DoesNotExist:\n            return Response(\n                {\"detail\": \"پیدا نشد\"},\n                status=status.HTTP_404_NOT_FOUND,\n            )\n        return Response(BookSerializer(book).data)\n\n\n# ✅ با استثنا\nfrom rest_framework.exceptions import NotFound\n\n\nclass BookDetailView(APIView):\n    def get(self, request, pk):\n        try:\n            book = Book.objects.get(pk=pk)\n        except Book.DoesNotExist:\n            raise NotFound(\"کتاب پیدا نشد.\")\n        return Response(BookSerializer(book).data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "مزیت",
+          "text": "کد تمیزتر، خطاها متمرکز، مدیریت سراسری ساده. و `raise` از هر عمقی در کد کار می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "api-exception",
+      "title": "APIException — پایه همه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "همه استثناهای DRF از `APIException` ارث‌بری می‌کنند. این کلاس پایه، یک `status_code`، `default_detail` و `default_code` دارد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import APIException\nfrom rest_framework import status\n\n\nclass CustomError(APIException):\n    status_code = status.HTTP_400_BAD_REQUEST\n    default_detail = \"خطای پیش‌فرض\"\n    default_code = \"custom_error\"\n\n\n# استفاده\nraise CustomError()\nraise CustomError(\"پیام سفارشی\")\nraise CustomError({\"field\": \"پیام خطا\"})"
+        },
+        {
+          "type": "table",
+          "headers": ["ویژگی", "کارکرد"],
+          "rows": [
+            ["`status_code`", "کد HTTP پیش‌فرض"],
+            ["`default_detail`", "پیام پیش‌فرض"],
+            ["`default_code`", "کد داخلی خطا"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "list",
+      "title": "فهرست استثناها",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["استثنا", "کد HTTP", "کاربرد"],
+          "rows": [
+            ["`APIException`", "500", "پایه"],
+            ["`ValidationError`", "400", "داده نامعتبر"],
+            ["`ParseError`", "400", "بدنه درخواست قابل پارس نیست"],
+            ["`AuthenticationFailed`", "401", "احراز هویت ناموفق"],
+            ["`NotAuthenticated`", "401", "کاربر احراز هویت نشده"],
+            ["`PermissionDenied`", "403", "مجوز ندارد"],
+            ["`NotFound`", "404", "منبع پیدا نشد"],
+            ["`MethodNotAllowed`", "405", "متد مجاز نیست"],
+            ["`NotAcceptable`", "406", "Accept قابل قبول نیست"],
+            ["`UnsupportedMediaType`", "415", "Content-Type نامعتبر"],
+            ["`Throttled`", "429", "محدودیت نرخ"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "validation",
+      "title": "ValidationError",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import ValidationError\n\n\n# خطای عمومی\nraise ValidationError(\"داده‌های ورودی نامعتبرند.\")\n# {\"non_field_errors\": [\"داده‌های ورودی نامعتبرند.\"]}\n\n# خطا روی یک فیلد\nraise ValidationError({\"email\": \"این ایمیل قبلاً ثبت شده است.\"})\n# {\"email\": [\"این ایمیل قبلاً ثبت شده است.\"]}\n\n# چند خطا\nraise ValidationError({\n    \"email\": \"فرمت ایمیل نامعتبر.\",\n    \"age\": \"سن باید مثبت باشد.\",\n})\n# {\n#   \"email\": [\"فرمت ایمیل نامعتبر.\"],\n#   \"age\": [\"سن باید مثبت باشد.\"]\n# }\n\n# خطای تودرتو\nraise ValidationError({\n    \"items\": [\n        {\"product\": \"محصول نامعتبر\"},\n        {\"quantity\": \"تعداد باید مثبت باشد\"},\n    ],\n})\n# {\"items\": [{\"product\": [\"...\"]}, {\"quantity\": [\"...\"]}]}"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "شکل پاسخ",
+          "text": "DRF خطاها را در قالب `{\"field_name\": [\"errors\"]}` برمی‌گرداند. برای خطاهای غیرفیلدی، از `non_field_errors` استفاده می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "not-found",
+      "title": "NotFound",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import NotFound\nfrom django.shortcuts import get_object_or_404\n\n\nclass BookDetailView(APIView):\n    def get(self, request, pk):\n        # روش ۱: دستی\n        try:\n            book = Book.objects.get(pk=pk)\n        except Book.DoesNotExist:\n            raise NotFound(\"کتاب پیدا نشد.\")\n\n        # روش ۲: با shortcut\n        # book = get_object_or_404(Book, pk=pk)\n        # (DRF Http404 Django را به 404 تبدیل می‌کند)\n\n        return Response(BookSerializer(book).data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "پیام فارسی",
+          "text": "پیام `NotFound` را می‌توانید به فارسی بنویسید. پیش‌فرض انگلیسی است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# پیام پیش‌فرض فارسی برای همه 404ها\nfrom rest_framework import views\n\n\nclass PersianNotFound(NotFound):\n    default_detail = \"منبع مورد نظر پیدا نشد.\"\n\n\n# در settings\nREST_FRAMEWORK = {\n    \"EXCEPTION_HANDLER\": \"myproject.exceptions.custom_exception_handler\",\n}"
+        }
+      ]
+    },
+    {
+      "id": "permission-denied",
+      "title": "PermissionDenied و AuthenticationFailed",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import PermissionDenied, AuthenticationFailed\n\n\nclass TransferView(APIView):\n    def post(self, request):\n        # احراز هویت ناموفق → 401\n        if not request.user.is_authenticated:\n            raise AuthenticationFailed(\"برای انجام این عمل باید وارد شوید.\")\n\n        # مجوز ندارد → 403\n        if not request.user.is_staff:\n            raise PermissionDenied(\"فقط ادمین می‌تواند انتقال دهد.\")\n\n        ..."
+        },
+        {
+          "type": "table",
+          "headers": ["استثنا", "کد", "معنی"],
+          "rows": [
+            ["`AuthenticationFailed`", "401", "احراز هویت انجام شد اما ناموفق"],
+            ["`NotAuthenticated`", "401", "کاربر وارد نشده"],
+            ["`PermissionDenied`", "403", "احراز هویت شده، اما مجوز ندارد"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "تفاوت 401 و 403",
+          "text": "401 = مشکل در شناسایی. 403 = شناسایی شده اما اجازه ندارد. این تفکیک مهم است."
+        }
+      ]
+    },
+    {
+      "id": "throttled",
+      "title": "Throttled",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import Throttled\nfrom rest_framework.throttling import UserRateThrottle\n\n\n# معمولاً Throttled را خودتان raise نمی‌کنید\n# throttle_classes این کار را خودکار انجام می‌دهند\n\n# اما در منطق سفارشی:\nclass CustomThrottle(UserRateThrottle):\n    def allow_request(self, request, view):\n        if super().allow_request(request, view):\n            return True\n        # مقدار wait را در self.wait ذخیره کنید\n        raise Throttled(wait=self.wait)"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"detail\": \"Request was throttled. Expected available in 42 seconds.\"\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "Retry-After",
+          "text": "پاسخ 429 شامل هدر `Retry-After` است که به کلاینت می‌گوید چند ثانیه صبر کند."
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "title": "استثنای سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای خطاهای دامنه کسب‌وکار، استثنای سفارشی بسازید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/exceptions.py",
+          "code": "from rest_framework.exceptions import APIException\nfrom rest_framework import status\n\n\nclass InsufficientStock(APIException):\n    status_code = status.HTTP_409_CONFLICT\n    default_detail = \"موجودی انبار کافی نیست.\"\n    default_code = \"insufficient_stock\"\n\n\nclass OrderAlreadyPaid(APIException):\n    status_code = status.HTTP_409_CONFLICT\n    default_detail = \"این سفارش قبلاً پرداخت شده است.\"\n    default_code = \"order_already_paid\"\n\n\nclass PaymentFailed(APIException):\n    status_code = status.HTTP_402_PAYMENT_REQUIRED\n    default_detail = \"پرداخت ناموفق بود.\"\n    default_code = \"payment_failed\"\n\n\nclass AccountSuspended(APIException):\n    status_code = status.HTTP_403_FORBIDDEN\n    default_detail = \"حساب شما موقتاً غیرفعال است.\"\n    default_code = \"account_suspended\"\n\n\nclass SubscriptionExpired(APIException):\n    status_code = status.HTTP_402_PAYMENT_REQUIRED\n    default_detail = \"اشتراک شما منقضی شده است.\"\n    default_code = \"subscription_expired\""
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/services.py",
+          "code": "from django.db import transaction\nfrom .exceptions import InsufficientStock\nfrom .models import Product, Order\n\n\ndef create_order(user, items_data):\n    with transaction.atomic():\n        for item in items_data:\n            product = Product.objects.select_for_update().get(pk=item[\"product_id\"])\n            if product.stock < item[\"quantity\"]:\n                raise InsufficientStock(\n                    f\"موجودی «{product.name}» کافی نیست.\"\n                )\n        # ... ادامه منطق"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "filename": "پاسخ 409",
+          "code": "{\n  \"detail\": \"موجودی «کیبورد مکانیکی» کافی نیست.\",\n  \"code\": \"insufficient_stock\"\n}"
+        }
+      ]
+    },
+    {
+      "id": "view-handling",
+      "title": "مدیریت در View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# روش ۱: raise — ساده‌ترین\nclass BookView(APIView):\n    def get(self, request, pk):\n        try:\n            book = Book.objects.get(pk=pk)\n        except Book.DoesNotExist:\n            raise NotFound(\"کتاب پیدا نشد.\")\n        return Response(BookSerializer(book).data)\n\n\n# روش ۲: raise_exception=True در serializer\nclass BookListView(APIView):\n    def post(self, request):\n        serializer = BookSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)   # خطای 400 خودکار\n        serializer.save()\n        return Response(serializer.data, status=201)\n\n\n# روش ۳: try/except دستی (نادر)\nfrom rest_framework.exceptions import ValidationError\n\n\nclass ImportView(APIView):\n    def post(self, request):\n        try:\n            data = json.loads(request.body)\n        except json.JSONDecodeError as e:\n            raise ValidationError({\"body\": f\"JSON نامعتبر: {e.msg}\"})\n\n        ..."
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده کلی",
+          "text": "اگر می‌خواهید خطا به DRF برود، `raise` کنید. اگر می‌خواهید خودتان پاسخ بدهید، `return Response(...)` با کد مناسب."
+        }
+      ]
+    },
+    {
+      "id": "exception-handler",
+      "title": "exception_handler پیش‌فرض",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF هر استثنای پرتاب‌شده را به‌طور خودکار می‌گیرد و به پاسخ HTTP تبدیل می‌کند. این کار توسط `exception_handler` انجام می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.views import exception_handler\n\n\n# فراخوانی مستقیم\nresponse = exception_handler(exc, context)\n# اگر exc استثنای DRF باشد، Response برمی‌گرداند\n# در غیر این صورت None\n\n# در تنظیمات\nREST_FRAMEWORK = {\n    \"EXCEPTION_HANDLER\": \"rest_framework.views.exception_handler\",\n}"
+        },
+        {
+          "type": "flow",
+          "steps": ["raise Exception", "APIView.dispatch", "exception_handler", "Response"]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "در فصل بعد",
+          "text": "در فصل ۴۷ مدیریت خطای پیشرفته و سفارشی‌سازی `exception_handler` را می‌بینیم."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "return Response با کد خطا به‌جای raise",
+          "why": "کد شلوغ، تکرار، ناهمگون.",
+          "when": "وقتی عادت دارید.",
+          "fix": "`raise ValidationError(...)` — بگذارید DRF مدیریت کند."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `Exception` خام",
+          "why": "DRF نمی‌شناسد، تبدیل به 500 می‌شود.",
+          "when": "وقتی در service از Exception استفاده می‌کنید.",
+          "fix": "از `APIException` یا زیرکلاس‌های آن."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیام‌های خطای انگلیسی در پروژه فارسی",
+          "why": "تجربه کاربری ضعیف.",
+          "when": "وقتی از پیش‌فرض‌های DRF استفاده می‌کنید.",
+          "fix": "پیام فارسی در `detail` یا `default_detail`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `raise_exception=True`",
+          "why": "باید بعد از `is_valid()` دستی چک کنید.",
+          "when": "وقتی فراموش می‌کنید.",
+          "fix": "`serializer.is_valid(raise_exception=True)`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازگرداندن جزئیات داخلی در 500",
+          "why": "افشای ساختار کد.",
+          "when": "وقتی DEBUG=False و خطای غیرمنتظره.",
+          "fix": "لاگ کنید، پیام عمومی بدهید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-046-q1",
+      "tag": "کوییز",
+      "question": "تفاوت 401 و 403 چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "401 یعنی احراز هویت مشکل دارد؛ 403 یعنی احراز هویت شده اما مجوز ندارد.", "correct": true, "explanation": "این تفکیک در طراحی API مهم است." },
+        { "text": "401 برای کلاینت و 403 برای سرور است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-046-q2",
+      "tag": "کوییز",
+      "question": "کدام کد وضعیت برای خطای اعتبارسنجی مناسب است؟",
+      "options": [
+        { "text": "400", "correct": true, "explanation": "ValidationError به‌طور خودکار 400 می‌دهد." },
+        { "text": "422", "correct": false },
+        { "text": "409", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-046-ex1",
+      "title": "تمرین — استثناهای سفارشی",
+      "problem": "برای یک سیستم رزرو هتل، این استثناها را بسازید:\n- `RoomNotAvailable` (409)\n- `InvalidDateRange` (400)\n- `GuestLimitExceeded` (400)\n- `PaymentDeclined` (402)\n- `BookingAlreadyCancelled` (409)\n\nسپس یک سرویس رزرو بنویسید که از این استثناها استفاده کند.",
+      "hints": ["از `APIException` ارث‌بری کنید.", "`status_code` و `default_detail` و `default_code` را تنظیم کنید.", "سرویس با `transaction.atomic` نوشته شود."],
+      "solution": "```python\n# exceptions.py\nfrom rest_framework.exceptions import APIException\nfrom rest_framework import status\n\n\nclass RoomNotAvailable(APIException):\n    status_code = status.HTTP_409_CONFLICT\n    default_detail = \"اتاق در این بازه در دسترس نیست.\"\n    default_code = \"room_not_available\"\n\n\nclass InvalidDateRange(APIException):\n    status_code = status.HTTP_400_BAD_REQUEST\n    default_detail = \"بازه تاریخ نامعتبر است.\"\n    default_code = \"invalid_date_range\"\n\n\nclass GuestLimitExceeded(APIException):\n    status_code = status.HTTP_400_BAD_REQUEST\n    default_detail = \"تعداد مهمان بیش از ظرفیت اتاق است.\"\n    default_code = \"guest_limit_exceeded\"\n\n\nclass PaymentDeclined(APIException):\n    status_code = status.HTTP_402_PAYMENT_REQUIRED\n    default_detail = \"پرداخت انجام نشد.\"\n    default_code = \"payment_declined\"\n\n\nclass BookingAlreadyCancelled(APIException):\n    status_code = status.HTTP_409_CONFLICT\n    default_detail = \"این رزرو قبلاً لغو شده است.\"\n    default_code = \"booking_already_cancelled\"\n\n\n# services.py\nfrom django.db import transaction\nfrom datetime import date\nfrom .exceptions import (\n    RoomNotAvailable, InvalidDateRange,\n    GuestLimitExceeded, BookingAlreadyCancelled,\n)\nfrom .models import Room, Booking\n\n\ndef create_booking(user, room_id, check_in, check_out, guests):\n    if check_out <= check_in:\n        raise InvalidDateRange(\"تاریخ خروج باید بعد از ورود باشد.\")\n    if check_in < date.today():\n        raise InvalidDateRange(\"تاریخ ورود نمی‌تواند در گذشته باشد.\")\n\n    room = Room.objects.select_for_update().get(pk=room_id)\n    if guests > room.capacity:\n        raise GuestLimitExceeded(f\"ظرفیت این اتاق {room.capacity} نفر است.\")\n\n    conflict = Booking.objects.filter(\n        room=room,\n        status=\"confirmed\",\n        check_in__lt=check_out,\n        check_out__gt=check_in,\n    ).exists()\n    if conflict:\n        raise RoomNotAvailable()\n\n    with transaction.atomic():\n        return Booking.objects.create(\n            user=user, room=room,\n            check_in=check_in, check_out=check_out,\n            guests=guests, status=\"confirmed\",\n        )\n\n\ndef cancel_booking(booking):\n    if booking.status == \"cancelled\":\n        raise BookingAlreadyCancelled()\n    booking.status = \"cancelled\"\n    booking.save(update_fields=[\"status\"])\n    return booking\n```",
+      "explanation": "این الگو، استثناهای دامنه را از منطق جدا می‌کند و به DRF اجازه می‌دهد پاسخ‌های استاندارد بسازد."
+    }
+  ],
+  "summary": [
+    "DRF استثناها را به پاسخ‌های HTTP تبدیل می‌کند.",
+    "`APIException` پایه همه استثناها.",
+    "فهرست: `ValidationError`, `NotFound`, `PermissionDenied`, `AuthenticationFailed`, `Throttled`, ...",
+    "`ValidationError` چند شکل دارد: رشته، dict، لیست تودرتو.",
+    "401 = مشکل احراز هویت، 403 = مشکل مجوز.",
+    "برای خطاهای دامنه، استثنای سفارشی بسازید.",
+    "پیام‌ها را به فارسی بنویسید.",
+    "هرگز جزئیات داخلی در 500 ندهید."
+  ],
+  "resources": [
+    { "title": "DRF — Exceptions", "url": "https://www.django-rest-framework.org/api-guide/exceptions/", "official": true },
+    { "title": "RFC 7231 — Status Codes", "url": "https://datatracker.ietf.org/doc/html/rfc7231#section-6", "official": true }
+  ]
+}

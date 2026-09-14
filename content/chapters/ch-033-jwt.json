@@ -1,0 +1,379 @@
+{
+  "id": "ch-033",
+  "slug": "jwt",
+  "title": "احراز هویت JWT",
+  "kicker": "فصل ۳۳",
+  "level": "advanced",
+  "estimatedMinutes": 50,
+  "lead": "JWT استاندارد جهانی توکن‌های امضاشده است. این فصل ساختار JWT، پیاده‌سازی با SimpleJWT و نکات امنیتی را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "JWT چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**JWT** مخفف JSON Web Token است. یک توکن امضاشده که خودش اطلاعات دارد (Self-Contained). سرور نیازی به ذخیره‌سازی ندارد — فقط امضا را بررسی می‌کند."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا محبوب است؟",
+          "text": "۱) Stateless — نیازی به دیتابیس برای هر درخواست نیست. ۲) قابل استفاده در چند سرویس بدون اشتراک‌گذاری دیتابیس نشست. ۳) استاندارد بین‌المللی (RFC 7519)."
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "title": "ساختار JWT",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "یک JWT از سه بخش تشکیل شده که با نقطه جدا می‌شوند:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3MTU2MjM0NTZ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c\n     │                                              │                          │\n     └── Header (base64)                            └── Payload (base64)        └── Signature"
+        },
+        {
+          "type": "table",
+          "headers": ["بخش", "محتوا", "نمونه"],
+          "rows": [
+            ["**Header**", "الگوریتم و نوع", "`{\"alg\": \"HS256\", \"typ\": \"JWT\"}`"],
+            ["**Payload**", "ادعاها (claims)", "`{\"user_id\": 1, \"exp\": ...}`"],
+            ["**Signature**", "امضای HMAC یا RSA", "باینری base64شده"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "filename": "decoded payload",
+          "code": "{\n  \"token_type\": \"access\",\n  \"exp\": 1715623456,\n  \"iat\": 1715623156,\n  \"jti\": \"a1b2c3d4e5f6\",\n  \"user_id\": 1\n}"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "Payload رمزنگاری نشده است",
+          "text": "هر کسی می‌تواند payload را بخواند — Base64 یک رمزنگاری نیست. **فقط اطلاعات غیرحساس** در payload بگذارید. برای اطلاعات حساس، از رمزنگاری JWE استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "access-refresh",
+      "title": "Access Token و Refresh Token",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "یک JWT معمولاً دو نوع دارد:"
+        },
+        {
+          "type": "table",
+          "headers": ["توکن", "عمر", "کاربرد", "ارسال"],
+          "rows": [
+            ["**Access Token**", "کوتاه (۵-۳۰ دقیقه)", "دسترسی به API", "هدر `Authorization: Bearer ...`"],
+            ["**Refresh Token**", "بلند (۱-۳۰ روز)", "دریافت Access جدید", "فقط به endpoint رفرش"]
+          ]
+        },
+        {
+          "type": "flow",
+          "steps": ["Login", "→ Access + Refresh", "→ API با Access", "→ Access منقضی شد", "→ Refresh → Access جدید"]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چرا دو توکن؟",
+          "text": "Access کوتاه‌مدت است تا لو رفتنش آسیب کم باشد. Refresh بلندمدت است تا کاربر مجبور نباشد هر ۵ دقیقه login کند."
+        }
+      ]
+    },
+    {
+      "id": "simplejwt",
+      "title": "SimpleJWT — نصب و تنظیمات",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "pip install djangorestframework-simplejwt"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "from datetime import timedelta\n\nINSTALLED_APPS = [\n    # ...\n    \"rest_framework_simplejwt\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework_simplejwt.authentication.JWTAuthentication\",\n    ],\n}\n\nSIMPLE_JWT = {\n    \"ACCESS_TOKEN_LIFETIME\": timedelta(minutes=15),\n    \"REFRESH_TOKEN_LIFETIME\": timedelta(days=7),\n    \"ROTATE_REFRESH_TOKENS\": True,           # هر بار رفرش، توکن جدید\n    \"BLACKLIST_AFTER_ROTATION\": True,        # توکن قدیمی blacklist شود\n    \"UPDATE_LAST_LOGIN\": True,               # last_login کاربر بروز شود\n\n    \"ALGORITHM\": \"HS256\",\n    \"SIGNING_KEY\": SECRET_KEY,                # در تولید از env\n\n    \"AUTH_HEADER_TYPES\": (\"Bearer\",),\n    \"USER_ID_FIELD\": \"id\",\n    \"USER_ID_CLAIM\": \"user_id\",\n\n    \"TOKEN_OBTAIN_SERIALIZER\": \"rest_framework_simplejwt.serializers.TokenObtainPairSerializer\",\n    \"TOKEN_REFRESH_SERIALIZER\": \"rest_framework_simplejwt.serializers.TokenRefreshSerializer\",\n    \"TOKEN_BLACKLIST_SERIALIZER\": \"rest_framework_simplejwt.serializers.TokenBlacklistSerializer\",\n}"
+        }
+      ]
+    },
+    {
+      "id": "endpoints",
+      "title": "Endpointهای آماده",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "from django.urls import path\nfrom rest_framework_simplejwt.views import (\n    TokenObtainPairView,\n    TokenRefreshView,\n    TokenVerifyView,\n    TokenBlacklistView,\n)\n\nurlpatterns = [\n    path(\"api/token/\", TokenObtainPairView.as_view(), name=\"token_obtain_pair\"),\n    path(\"api/token/refresh/\", TokenRefreshView.as_view(), name=\"token_refresh\"),\n    path(\"api/token/verify/\", TokenVerifyView.as_view(), name=\"token_verify\"),\n    path(\"api/token/blacklist/\", TokenBlacklistView.as_view(), name=\"token_blacklist\"),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ۱. ورود — دریافت Access و Refresh\ncurl -X POST http://127.0.0.1:8000/api/token/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": \"sara\", \"password\": \"s3cret!\"}'\n\n# پاسخ:\n# {\n#   \"access\": \"eyJhbGci...\",\n#   \"refresh\": \"eyJhbGci...\"\n# }\n\n# ۲. استفاده از Access در درخواست\ncurl -H \"Authorization: Bearer eyJhbGci...\" \\\n  http://127.0.0.1:8000/api/books/\n\n# ۳. رفرش Access (وقتی منقضی شد)\ncurl -X POST http://127.0.0.1:8000/api/token/refresh/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"refresh\": \"eyJhbGci...\"}'\n\n# ۴. Blacklist کردن توکن (خروج)\ncurl -X POST http://127.0.0.1:8000/api/token/blacklist/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"refresh\": \"eyJhbGci...\"}'"
+        }
+      ]
+    },
+    {
+      "id": "blacklist",
+      "title": "Blacklist — مدیریت توکن‌های باطل‌شده",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "JWT به‌طور پیش‌فرض stateless است، پس نمی‌توان توکن را «باطل» کرد. اما با blacklist، توکن‌های باطل‌شده در دیتابیس نگه داشته می‌شوند و در درخواست بعدی رد می‌شوند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"rest_framework_simplejwt\",\n    \"rest_framework_simplejwt.token_blacklist\",   # ← اضافه شد\n]\n\nSIMPLE_JWT = {\n    \"ROTATE_REFRESH_TOKENS\": True,\n    \"BLACKLIST_AFTER_ROTATION\": True,\n}"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "python manage.py migrate"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا Rotate؟",
+          "text": "با هر بار refresh، توکن جدید ساخته می‌شود و توکن قدیمی blacklist. اگر کسی refresh قدیمی را بدزدد، بی‌استفاده می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "custom-claims",
+      "title": "افزودن Claims سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید اطلاعات اضافه به payload اضافه کنید — مثلاً نقش کاربر."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/serializers.py",
+          "code": "from rest_framework_simplejwt.serializers import TokenObtainPairSerializer\nfrom rest_framework_simplejwt.views import TokenObtainPairView\n\n\nclass CustomTokenObtainPairSerializer(TokenObtainPairSerializer):\n    @classmethod\n    def get_token(cls, user):\n        token = super().get_token(user)\n        # افزودن claims سفارشی\n        token[\"username\"] = user.username\n        token[\"email\"] = user.email\n        token[\"is_staff\"] = user.is_staff\n        token[\"roles\"] = list(user.groups.values_list(\"name\", flat=True))\n        return token\n\n\nclass CustomTokenObtainPairView(TokenObtainPairView):\n    serializer_class = CustomTokenObtainPairSerializer"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "urls.py",
+          "code": "path(\"api/token/\", CustomTokenObtainPairView.as_view(), name=\"token_obtain_pair\"),"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "مراقب حجم باشید",
+          "text": "Payload JWT در هر درخواست فرستاده می‌شود. اگر claim‌های زیاد بگذارید، هر درخواست سنگین می‌شود. حداقل را نگه دارید."
+        }
+      ]
+    },
+    {
+      "id": "access-claims",
+      "title": "دسترسی به payload در View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DebugJWTView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def get(self, request):\n        # request.auth دیکشنری payload است\n        payload = request.auth\n        return Response({\n            \"user_id\": payload.get(\"user_id\"),\n            \"username\": payload.get(\"username\"),\n            \"exp\": payload.get(\"exp\"),\n            \"iat\": payload.get(\"iat\"),\n            \"jti\": payload.get(\"jti\"),\n            \"raw_claims\": dict(payload),\n        })"
+        }
+      ]
+    },
+    {
+      "id": "logout",
+      "title": "خروج (Logout)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در JWT، logout سمت سرور با blacklist انجام می‌شود:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework import status\nfrom rest_framework_simplejwt.tokens import RefreshToken\nfrom rest_framework_simplejwt.exceptions import TokenError\n\n\nclass LogoutView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        try:\n            refresh_token = request.data[\"refresh\"]\n            token = RefreshToken(refresh_token)\n            token.blacklist()\n        except KeyError:\n            return Response(\n                {\"detail\": \"فیلد refresh الزامی است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        except TokenError:\n            return Response(\n                {\"detail\": \"توکن نامعتبر یا منقضی است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        return Response({\"detail\": \"خروج موفق\"}, status=status.HTTP_205_RESET_CONTENT)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "logout سمت کلاینت",
+          "text": "کلاینت هم باید Access و Refresh را از حافظه پاک کند. blacklist فقط از استفاده مجدد جلوگیری می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "نکات امنیتی",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["نکته", "توضیح"],
+          "rows": [
+            ["**HTTPS**", "حتماً روی HTTPS. JWT در هدر فرستاده می‌شود."],
+            ["**عمر کوتاه Access**", "۵-۳۰ دقیقه. کوتاه‌تر = امن‌تر."],
+            ["**Refresh Rotation**", "هر بار رفرش، توکن جدید."],
+            ["**Blacklist**", "برای logout و توکن‌های لو رفته."],
+            ["**ذخیره Refresh**", "در HttpOnly Cookie یا حافظه امن. هرگز localStorage."],
+            ["**ذخیره Access**", "در حافظه (memory) برنامه. هرگز localStorage."],
+            ["**کلید امضا**", "قوی و از env. هرگز در کد."],
+            ["**الگوریتم**", "HS256 برای تک‌سرور؛ RS256 برای چند سرویس."],
+            ["**Throttling**", "روی endpoint توکن. جلوگیری از brute-force."],
+            ["**Audit Log**", "ثبت login، refresh، logout."]
+          ]
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ذخیره JWT در localStorage",
+          "why": "اگر XSS رخ دهد، localStorage قابل خواندن است و توکن لو می‌رود.",
+          "when": "وقتی SPA می‌سازید.",
+          "fix": "Refresh در HttpOnly Cookie؛ Access در حافظه (memory) برنامه."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "عمر طولانی Access Token",
+          "why": "اگر لو برود، تا مدت طولانی معتبر است.",
+          "when": "وقتی می‌خواهید کاربر کمتر login کند.",
+          "fix": "Access کوتاه (۵-۳۰ دقیقه) + Refresh + Rotation."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "کلید امضای ضعیف یا در کد",
+          "why": "هر کسی می‌تواند JWT جعل کند.",
+          "when": "وقتی `SECRET_KEY` را در کد نگه دارید.",
+          "fix": "از متغیرهای محیطی و کلید قوی (حداقل ۳۲ بایت تصادفی)."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود Throttling روی login",
+          "why": "حمله brute-force ممکن است.",
+          "when": "همیشه.",
+          "fix": "ScopedRateThrottle با `scope=\"login\"` و نرخ کم."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "اطلاعات حساس در payload",
+          "why": "Payload رمزنگاری نیست؛ هر کسی می‌تواند بخواند.",
+          "when": "وقتی فکر می‌کنید JWT امن است.",
+          "fix": "فقط شناسه کاربر و اطلاعات غیرحساس."
+        }
+      ]
+    },
+    {
+      "id": "algorithm-choice",
+      "title": "الگوریتم: HS256 یا RS256؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["الگوریتم", "نوع", "مناسب", "مزیت", "عیب"],
+          "rows": [
+            ["HS256", "متقارن (HMAC)", "تک‌سرور", "سریع، ساده", "همه باید کلید مشترک داشته باشند"],
+            ["RS256", "نامتقارن (RSA)", "چند سرویس", "سرویس‌ها فقط کلید عمومی دارند", "کندتر، پیچیده‌تر"],
+            ["ES256", "نامتقارن (ECDSA)", "چند سرویس", "کوتاه‌تر، سریع‌تر از RSA", "پیچیده"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "SIMPLE_JWT = {\n    \"ALGORITHM\": \"HS256\",   # پیش‌فرض\n    # یا برای RS256:\n    # \"ALGORITHM\": \"RS256\",\n    # \"SIGNING_KEY\": open(\"private.pem\").read(),\n    # \"VERIFYING_KEY\": open(\"public.pem\").read(),\n}"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "انتخاب",
+          "text": "اگر یک سرور دارید که توکن می‌سازد و همان بررسی می‌کند: HS256. اگر چند سرویس دارید و نمی‌خواهید کلید را به همه بدهید: RS256."
+        }
+      ]
+    },
+    {
+      "id": "complete",
+      "title": "مثال کامل",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/urls.py",
+          "code": "from django.urls import path\nfrom rest_framework_simplejwt.views import (\n    TokenObtainPairView,\n    TokenRefreshView,\n    TokenVerifyView,\n)\nfrom .views import LogoutView, RegisterView\n\nurlpatterns = [\n    path(\"register/\", RegisterView.as_view(), name=\"register\"),\n    path(\"token/\", TokenObtainPairView.as_view(), name=\"token_obtain\"),\n    path(\"token/refresh/\", TokenRefreshView.as_view(), name=\"token_refresh\"),\n    path(\"token/verify/\", TokenVerifyView.as_view(), name=\"token_verify\"),\n    path(\"logout/\", LogoutView.as_view(), name=\"logout\"),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom rest_framework.permissions import AllowAny, IsAuthenticated\nfrom rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework_simplejwt.tokens import RefreshToken\nfrom rest_framework_simplejwt.exceptions import TokenError\nfrom django.contrib.auth.models import User\nfrom .serializers import RegisterSerializer\n\n\nclass RegisterView(APIView):\n    permission_classes = [AllowAny]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"register\"\n\n    def post(self, request):\n        serializer = RegisterSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        user = serializer.save()\n\n        # ساخت توکن‌ها بلافاصله بعد از ثبت‌نام\n        refresh = RefreshToken.for_user(user)\n        return Response({\n            \"user\": {\"id\": user.id, \"username\": user.username},\n            \"access\": str(refresh.access_token),\n            \"refresh\": str(refresh),\n        }, status=status.HTTP_201_CREATED)\n\n\nclass LogoutView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        try:\n            refresh_token = request.data[\"refresh\"]\n            RefreshToken(refresh_token).blacklist()\n        except KeyError:\n            return Response(\n                {\"detail\": \"فیلد refresh الزامی است.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        except TokenError:\n            return Response(\n                {\"detail\": \"توکن نامعتبر.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        return Response({\"detail\": \"خروج موفق\"}, status=status.HTTP_205_RESET_CONTENT)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework_simplejwt.authentication.JWTAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n    },\n}\n\nSIMPLE_JWT = {\n    \"ACCESS_TOKEN_LIFETIME\": timedelta(minutes=15),\n    \"REFRESH_TOKEN_LIFETIME\": timedelta(days=7),\n    \"ROTATE_REFRESH_TOKENS\": True,\n    \"BLACKLIST_AFTER_ROTATION\": True,\n    \"UPDATE_LAST_LOGIN\": True,\n    \"AUTH_HEADER_TYPES\": (\"Bearer\",),\n}"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-033-q1",
+      "tag": "کوییز",
+      "question": "چرا JWT محبوب است؟",
+      "options": [
+        { "text": "چون payload آن رمزنگاری شده است.", "correct": false },
+        { "text": "چون Stateless است و نیازی به ذخیره نشست در دیتابیس ندارد.", "correct": true, "explanation": "این ویژگی مقیاس‌پذیری و چند سرویسی را ساده می‌کند." },
+        { "text": "چون کوتاه‌تر است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-033-q2",
+      "tag": "کوییز",
+      "question": "چرا JWT معمولاً دو توکن (Access + Refresh) دارد؟",
+      "options": [
+        { "text": "چون استاندارد اجباری است.", "correct": false },
+        { "text": "Access کوتاه‌مدت برای امنیت؛ Refresh بلندمدت برای جلوگیری از login مکرر.", "correct": true, "explanation": "این الگو ریسک را کم می‌کند بدون افت تجربه کاربری." },
+        { "text": "چون هر توکن برای یک سرویس متفاوت است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-033-q3",
+      "tag": "کوییز",
+      "question": "چرا نباید JWT را در localStorage ذخیره کرد؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون در صورت XSS، قابل خواندن است و توکن لو می‌رود.", "correct": true, "explanation": "localStorage در دسترس هر کد JavaScript است. HttpOnly Cookie امن‌تر است." },
+        { "text": "چون حجم localStorage کم است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-033-ex1",
+      "title": "تمرین — پیاده‌سازی JWT کامل",
+      "problem": "یک پروژه با JWT راه‌اندازی کنید:\n۱) SimpleJWT را نصب و تنظیم کنید.\n۲) Endpointهای ورود، رفرش و خروج بسازید.\n۳) ورود را با Throttling محدود کنید (۵ بار در دقیقه).\n۴) Blacklist را فعال کنید.\n۵) خروج را پیاده کنید.",
+      "hints": ["نصب: `pip install djangorestframework-simplejwt`.", "`rest_framework_simplejwt.token_blacklist` را در INSTALLED_APPS.", "برای Throttling روی login از `ScopedRateThrottle`."],
+      "solution": "**settings.py:**\n```python\nfrom datetime import timedelta\n\nINSTALLED_APPS = [\n    # ...\n    \"rest_framework_simplejwt\",\n    \"rest_framework_simplejwt.token_blacklist\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework_simplejwt.authentication.JWTAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.ScopedRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n    },\n}\n\nSIMPLE_JWT = {\n    \"ACCESS_TOKEN_LIFETIME\": timedelta(minutes=15),\n    \"REFRESH_TOKEN_LIFETIME\": timedelta(days=7),\n    \"ROTATE_REFRESH_TOKENS\": True,\n    \"BLACKLIST_AFTER_ROTATION\": True,\n    \"UPDATE_LAST_LOGIN\": True,\n    \"AUTH_HEADER_TYPES\": (\"Bearer\",),\n}\n```\n\n**views.py:**\n```python\nfrom rest_framework_simplejwt.views import TokenObtainPairView\nfrom rest_framework.throttling import ScopedRateThrottle\n\n\nclass LoginView(TokenObtainPairView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"login\"\n```\n\n**urls.py:**\n```python\nfrom django.urls import path\nfrom rest_framework_simplejwt.views import TokenRefreshView\nfrom users.views import LoginView, LogoutView, RegisterView\n\nurlpatterns = [\n    path(\"api/register/\", RegisterView.as_view()),\n    path(\"api/login/\", LoginView.as_view()),\n    path(\"api/token/refresh/\", TokenRefreshView.as_view()),\n    path(\"api/logout/\", LogoutView.as_view()),\n]\n```",
+      "explanation": "این پیکربندی، استاندارد JWT در پروژه‌های واقعی DRF است."
+    }
+  ],
+  "summary": [
+    "JWT: توکن امضاشده با سه بخش: Header.Payload.Signature.",
+    "Payload رمزنگاری نیست — فقط اطلاعات غیرحساس.",
+    "Access کوتاه‌مدت + Refresh بلندمدت.",
+    "SimpleJWT: نصب، تنظیمات، Endpointهای آماده.",
+    "Blacklist: برای logout و باطل‌کردن توکن.",
+    "Claims سفارشی: با `get_token`.",
+    "امنیت: HTTPS، HttpOnly Cookie برای Refresh، کلید قوی، Throttling.",
+    "HS256 برای تک‌سرور، RS256 برای چند سرویس."
+  ],
+  "resources": [
+    { "title": "djangorestframework-simplejwt — مستندات", "url": "https://django-rest-framework-simplejwt.readthedocs.io/", "official": true },
+    { "title": "RFC 7519 — JWT", "url": "https://datatracker.ietf.org/doc/html/rfc7519", "official": true },
+    { "title": "jwt.io — Debugger", "url": "https://jwt.io/", "official": false }
+  ]
+}

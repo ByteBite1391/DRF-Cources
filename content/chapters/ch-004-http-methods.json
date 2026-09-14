@@ -1,0 +1,245 @@
+{
+  "id": "ch-004",
+  "slug": "http-methods",
+  "title": "متدهای HTTP",
+  "kicker": "فصل ۴",
+  "level": "beginner",
+  "estimatedMinutes": 25,
+  "lead": "متدهای HTTP قلب یک API RESTful هستند. انتخاب درست متد، نیمی از طراحی API است.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "متدها در یک نگاه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "متد HTTP به سرور می‌گوید **چه کاری** می‌خواهید انجام دهید. متدهای اصلی عبارتند از GET، POST، PUT، PATCH، DELETE، HEAD و OPTIONS."
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "معنی", "بدنه؟", "ایدِم‌پوتنت؟", "امن؟"],
+          "rows": [
+            ["GET", "خواندن منبع", "خیر", "بله", "بله"],
+            ["POST", "ساخت منبع جدید", "بله", "خیر", "خیر"],
+            ["PUT", "جایگزینی کامل منبع", "بله", "بله", "خیر"],
+            ["PATCH", "ویرایش جزئی منبع", "بله", "خیر*", "خیر"],
+            ["DELETE", "حذف منبع", "خیر", "بله", "خیر"],
+            ["HEAD", "مثل GET ولی بدون بدنه", "خیر", "بله", "بله"],
+            ["OPTIONS", "کشف قابلیت‌ها", "خیر", "بله", "بله"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "ایدِم‌پوتنت و امن",
+          "text": "**ایدِم‌پوتنت** یعنی اجرای چندباره همان درخواست، نتیجه یکسانی می‌دهد. **امن** یعنی درخواست باعث تغییر داده نمی‌شود. GET و HEAD امن‌اند؛ GET، PUT، DELETE و HEAD ایدِم‌پوتنت هستند."
+        }
+      ]
+    },
+    {
+      "id": "get",
+      "title": "GET",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "GET برای خواندن داده استفاده می‌شود. نباید هیچ تغییری در سرور ایجاد کند. پارامترها در URL فرستاده می‌شوند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# لیست همه کتاب‌ها\ncurl https://api.example.com/books/\n\n# یک کتاب خاص\ncurl https://api.example.com/books/42/\n\n# با فیلتر و صفحه‌بندی\ncurl \"https://api.example.com/books/?category=fiction&page=2&limit=10\""
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "محدودیت طول URL",
+          "text": "مرورگرها و سرورها محدودیت طول URL دارند (معمولاً چند هزار کاراکتر). برای داده حجیم یا حساس، از POST استفاده کنید، نه GET."
+        }
+      ]
+    },
+    {
+      "id": "post",
+      "title": "POST",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "POST برای ساخت منبع جدید یا ارسال داده استفاده می‌شود. بدنه دارد و در URL تغییری ایجاد نمی‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "curl -X POST https://api.example.com/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer eyJ...\" \\\n  -d '{\n    \"title\": \"Clean Code\",\n    \"author_id\": 7,\n    \"price\": \"42.50\"\n  }'"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**ایدِم‌پوتنت نیست:** دو بار ارسال، دو کتاب می‌سازد.",
+            "**کد وضعیت موفق:** `201 Created`.",
+            "**هدر Location:** سرور می‌تواند آدرس منبع ساخته‌شده را برگرداند."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "put",
+      "title": "PUT",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "PUT منبع را **کاملاً جایگزین** می‌کند. اگر فیلدی نفرستید، مقدار پیش‌فرض یا تهی می‌گیرد."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "curl -X PUT https://api.example.com/books/42/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"title\": \"Clean Code (2nd Edition)\",\n    \"author_id\": 7,\n    \"price\": \"49.00\",\n    \"published_at\": \"2009-01-01\"\n  }'"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "خطر PUT",
+          "text": "اگر فراموش کنید فیلدی را بفرستید، مقدار آن پاک یا به پیش‌فرض تبدیل می‌شود. برای همین خیلی از APIها PATCH را ترجیح می‌دهند."
+        }
+      ]
+    },
+    {
+      "id": "patch",
+      "title": "PATCH",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "PATCH منبع را **جزئی** ویرایش می‌کند. فقط فیلدهایی که می‌فرستید تغییر می‌کنند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# فقط قیمت را تغییر بده\ncurl -X PATCH https://api.example.com/books/42/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"price\": \"39.90\"}'"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "در DRF",
+          "text": "در DRF، ViewSet و Generic Views هر دو PUT و PATCH را پشتیبانی می‌کنند. تفاوت در متد `update()` است که برای PATCH با `partial=True` صدا زده می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "delete",
+      "title": "DELETE",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DELETE منبع را حذف می‌کند. ایدِم‌پوتنت است — حذف دوباره خطا نمی‌دهد (یا خطای `404` می‌دهد ولی تغییر جدیدی رخ نمی‌دهد)."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "curl -X DELETE https://api.example.com/books/42/ \\\n  -H \"Authorization: Bearer eyJ...\""
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**کد موفق:** `204 No Content` — موفق، بدنه‌ای برای برگرداندن نیست.",
+            "**Soft delete:** خیلی از سیستم‌ها به‌جای حذف واقعی، فیلد `is_deleted=True` می‌کنند.",
+            "**بازگردانی:** DELETE معمولاً قابل بازگردانی نیست — با احتیاط استفاده کنید."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "head-options",
+      "title": "HEAD و OPTIONS",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "دو متد کمتر شناخته‌شده ولی مهم:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**HEAD:** دقیقاً مثل GET، ولی سرور فقط هدرها را برمی‌گرداند و بدنه‌ای نمی‌فرستد. برای بررسی وجود منبع یا اندازه پاسخ استفاده می‌شود.",
+            "**OPTIONS:** سرور می‌گوید روی این Endpoint چه متدها و چه قابلیت‌هایی وجود دارد. مرورگر قبل از درخواست‌های Cross-Origin یک OPTIONS می‌فرستد (CORS Preflight)."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# HEAD\ncurl -I https://api.example.com/books/42/\n\n# OPTIONS\ncurl -X OPTIONS https://api.example.com/books/ \\\n  -H \"Origin: https://example.com\"\n# پاسخ:\n# Allow: GET, POST, HEAD, OPTIONS\n# Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS"
+        }
+      ]
+    },
+    {
+      "id": "choosing",
+      "title": "کدام متد را انتخاب کنیم؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["می‌خواهم", "متد", "URL", "نمونه"],
+          "rows": [
+            ["لیست همه کتاب‌ها", "GET", "`/books/`", ""],
+            ["ساخت کتاب جدید", "POST", "`/books/`", ""],
+            ["دیدن کتاب ۴۲", "GET", "`/books/42/`", ""],
+            ["جایگزینی کامل کتاب ۴۲", "PUT", "`/books/42/`", ""],
+            ["ویرایش قیمت کتاب ۴۲", "PATCH", "`/books/42/`", ""],
+            ["حذف کتاب ۴۲", "DELETE", "`/books/42/`", ""],
+            ["جستجو", "GET", "`/books/?search=clean`", ""],
+            ["فیلتر", "GET", "`/books/?category=fiction`", ""]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده کلی",
+          "text": "URL = منبع (اسم جمع). متد = عملیات. هیچ‌وقت عملیات را در URL نگذارید (`/books/delete/42` ❌)."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-004-q1",
+      "tag": "کوییز",
+      "question": "تفاوت PUT و PATCH چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "PUT منبع را کاملاً جایگزین می‌کند؛ PATCH فقط فیلدهای ارسالی را تغییر می‌دهد.", "correct": true, "explanation": "به همین دلیل PATCH برای ویرایش جزئی مناسب‌تر است." },
+        { "text": "PUT فقط برای ساخت و PATCH برای ویرایش است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-004-q2",
+      "tag": "کوییز",
+      "question": "کدام متد ایدِم‌پوتنت نیست؟",
+      "options": [
+        { "text": "GET", "correct": false },
+        { "text": "POST", "correct": true, "explanation": "POST ایدِم‌پوتنت نیست چون هر بار منبع جدید می‌سازد." },
+        { "text": "DELETE", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-004-ex1",
+      "title": "تمرین — طراحی Endpoint",
+      "problem": "برای یک سیستم مدیریت مقالات، ۵ Endpoint طراحی کنید که همه عملیات CRUD را پوشش دهد.",
+      "hints": ["از اسم جمع برای منبع استفاده کنید.", "عملیات را در URL نگذارید."],
+      "solution": "```\nGET    /articles/          → لیست مقالات\nPOST   /articles/          → ساخت مقاله جدید\nGET    /articles/42/       → دیدن مقاله ۴۲\nPUT    /articles/42/       → جایگزینی کامل\nPATCH  /articles/42/       → ویرایش جزئی\nDELETE /articles/42/       → حذف مقاله\n```",
+      "explanation": "این الگو استاندارد REST برای CRUD است."
+    }
+  ],
+  "summary": [
+    "GET: خواندن، امن و ایدِم‌پوتنت.",
+    "POST: ساخت، بدنه دارد، ایدِم‌پوتنت نیست.",
+    "PUT: جایگزینی کامل، ایدِم‌پوتنت.",
+    "PATCH: ویرایش جزئی.",
+    "DELETE: حذف، ایدِم‌پوتنت.",
+    "HEAD: مثل GET ولی بدون بدنه.",
+    "OPTIONS: کشف متدها و CORS Preflight.",
+    "URL = منبع، متد = عملیات."
+  ],
+  "resources": [
+    { "title": "MDN — HTTP Methods", "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods", "official": false }
+  ]
+}

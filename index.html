@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRF فارسی — پلتفرم آموزشی Django REST Framework</title>
+<meta name="description" content="پلتفرم آموزشی مستقل و فارسی برای یادگیری Django REST Framework از صفر تا تولید.">
+
+<link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+
+<!-- CSS -->
+<link rel="stylesheet" href="assets/css/main.css">
+<link rel="stylesheet" href="assets/css/themes.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/code.css">
+</head>
+<body>
+
+<!-- ============================================================
+     Skip link (Accessibility)
+     ============================================================ -->
+<a href="#main-content" class="skip-link">پرش به محتوای اصلی</a>
+
+<!-- ============================================================
+     Header
+     ============================================================ -->
+<header class="header" role="banner">
+  <button class="menu-btn" id="menuBtn" aria-label="باز/بسته کردن منو" aria-expanded="false">☰</button>
+
+  <a class="brand" href="#home" aria-label="صفحه اصلی">
+    <span class="brand-logo" aria-hidden="true">DRF</span>
+    <span class="brand-text">
+      <span class="brand-title">DRF فارسی</span>
+      <span class="brand-sub">Persian Learning Platform</span>
+    </span>
+  </a>
+
+  <div class="search-wrap" role="search">
+    <span class="search-icon" aria-hidden="true">🔍</span>
+    <input
+      type="search"
+      id="searchInput"
+      class="search-input"
+      placeholder="جستجو… مثلاً Serializer یا سریالایزر"
+      autocomplete="off"
+      aria-label="جستجو در محتوای پلتفرم"
+      aria-controls="searchResults"
+      aria-expanded="false"
+    >
+    <div class="search-results" id="searchResults" role="listbox" aria-label="نتایج جستجو"></div>
+  </div>
+
+  <div class="header-actions">
+    <button class="icon-btn" id="progressBtn" title="پیشرفت من" aria-label="نمایش پیشرفت">📊</button>
+    <button class="icon-btn" id="themeBtn" title="تغییر تم" aria-label="تغییر تم">🌙</button>
+  </div>
+</header>
+
+<!-- نوار پیشرفت مطالعه -->
+<div class="progress-track" aria-hidden="true">
+  <div class="progress-bar" id="progressBar"></div>
+</div>
+
+<!-- ============================================================
+     Layout
+     ============================================================ -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" aria-label="ناوبری اصلی">
+    <div class="sidebar-head">
+      <b>فهرست مطالب</b>
+      <span class="done-badge" id="doneBadge">۰ / ۰</span>
+    </div>
+
+    <nav id="navList" class="nav-list" aria-label="فصل‌ها"></nav>
+
+    <div class="sidebar-footer">
+      <a href="#resources" class="sidebar-link">منابع</a>
+      <a href="#exam" class="sidebar-link">آزمون نهایی</a>
+      <a href="#cheatsheets" class="sidebar-link">چیت‌شیت‌ها</a>
+      <a href="#faq" class="sidebar-link">سوالات متداول</a>
+      <button class="sidebar-link danger" id="resetProgressBtn" type="button">بازنشانی پیشرفت</button>
+    </div>
+  </aside>
+
+  <!-- Overlay برای موبایل -->
+  <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+  <!-- Main -->
+  <main class="main" id="main-content" role="main">
+    <div class="content" id="content">
+
+      <!-- Breadcrumb -->
+      <nav class="breadcrumb" id="breadcrumb" aria-label="مسیر صفحه"></nav>
+
+      <!-- TOC درون‌فصل -->
+      <div id="chapterToc"></div>
+
+      <!-- محتوای فصل‌ها اینجا رندر می‌شود -->
+      <div id="chapterBody" aria-live="polite">
+        <div class="loading-state" id="loadingState">
+          <div class="spinner"></div>
+          <p>در حال بارگذاری…</p>
+        </div>
+      </div>
+
+      <!-- ناوبری فصل قبلی/بعدی -->
+      <nav class="chapter-nav" id="chapterNav" aria-label="ناوبری بین فصل‌ها"></nav>
+
+      <!-- دکمه علامت‌گذاری -->
+      <div class="mark-done" id="markDone"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ============================================================
+     Footer
+     ============================================================ -->
+<footer class="footer" role="contentinfo">
+  <div class="footer-inner">
+    <h4>درباره این پلتفرم</h4>
+    <p>
+      این وب‌سایت یک <strong>منبع آموزشی مستقل و فارسی</strong> برای یادگیری Django REST Framework است
+      و مستندات رسمی یا ترجمه رسمی پروژه Django REST Framework محسوب نمی‌شود.
+      تمام متن‌ها، مثال‌ها، تمرین‌ها و طراحی این پلتفرم به‌صورت مستقل تولید شده‌اند.
+    </p>
+
+    <div class="attribution">
+      <h4>منابع رسمی</h4>
+      <ul>
+        <li><a href="https://www.django-rest-framework.org/" target="_blank" rel="noopener">Django REST Framework — مستندات رسمی</a></li>
+        <li><a href="https://docs.djangoproject.com/" target="_blank" rel="noopener">Django — مستندات رسمی</a></li>
+        <li><a href="https://docs.python.org/3/" target="_blank" rel="noopener">Python — مستندات رسمی</a></li>
+      </ul>
+      <p class="muted">
+        Django و Django REST Framework پروژه‌های متن‌باز تحت مجوز BSD هستند و نام‌ها، کلاس‌ها و APIهای عمومی آن‌ها
+        متعلق به پروژه و مشارکت‌کنندگان آن است. این پلتفرم هیچ ادعایی درباره مالکیت آن‌ها ندارد.
+      </p>
+    </div>
+
+    <div class="footer-meta">
+      <span>نسخه ۱.۰.۰</span>
+      <span>·</span>
+      <span>هدف آموزشی: Python 3.11+ / Django 5.0+ / DRF 3.15+</span>
+    </div>
+  </div>
+</footer>
+
+<!-- دکمه بازگشت به بالا -->
+<button class="to-top" id="toTop" aria-label="بازگشت به بالا" title="بازگشت به بالا">↑</button>
+
+<!-- دیالوگ پیشرفت -->
+<div class="modal" id="progressModal" role="dialog" aria-modal="true" aria-labelledby="progressModalTitle" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel">
+    <header class="modal-header">
+      <h3 id="progressModalTitle">پیشرفت من</h3>
+      <button class="icon-btn" data-close aria-label="بستن">✕</button>
+    </header>
+    <div class="modal-body" id="progressModalBody"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     Scripts — به ترتیب بارگذاری
+     ============================================================ -->
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

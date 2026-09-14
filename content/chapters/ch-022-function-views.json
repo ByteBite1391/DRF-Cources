@@ -1,0 +1,264 @@
+{
+  "id": "ch-022",
+  "slug": "function-views",
+  "title": "نمای تابعی (Function Based Views)",
+  "kicker": "فصل ۲۲",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "ساده‌ترین راه ساخت نمای DRF، استفاده از دکوراتور @api_view است. این فصل همه امکانات و محدودیت‌ها را نشان می‌دهد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چه زمانی از @api_view استفاده کنیم؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**منطق ساده:** یک Endpoint که چند خط کد دارد.",
+            "**کمتر از ۳ متد:** وقتی فقط GET و POST دارید.",
+            "**منطق خاص:** وقتی نمی‌خواهید در قالب ViewSet جا شود.",
+            "**پروتوتایپ سریع:** برای آزمایش ایده‌ها.",
+            "**ترجیح شخصی:** بعضی تیم‌ها تابع را ترجیح می‌دهند."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "یک تابع با دکوراتور `@api_view`.",
+          "better": "تابع سازمان‌یافته با توابع کمکی.",
+          "production": "برای CRUD از Generic Views یا ViewSet؛ `@api_view` فقط برای Endpointهای خاص."
+        }
+      ]
+    },
+    {
+      "id": "basic",
+      "title": "شکل پایه",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\n@api_view([\"GET\", \"POST\"])\ndef book_list(request):\n    if request.method == \"GET\":\n        books = Book.objects.all()\n        serializer = BookSerializer(books, many=True)\n        return Response(serializer.data)\n\n    # POST\n    serializer = BookSerializer(data=request.data)\n    if serializer.is_valid():\n        serializer.save()\n        return Response(serializer.data, status=status.HTTP_201_CREATED)\n    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from django.urls import path\nfrom .views import book_list\n\nurlpatterns = [\n    path(\"books/\", book_list, name=\"book-list\"),\n]"
+        }
+      ]
+    },
+    {
+      "id": "decorators",
+      "title": "دکوراتورهای کاربردی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.decorators import (\n    api_view,\n    permission_classes,\n    authentication_classes,\n    throttle_classes,\n    renderer_classes,\n    parser_classes,\n    schema,\n)\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.authentication import TokenAuthentication\nfrom rest_framework.throttling import UserRateThrottle\n\n\n@api_view([\"GET\", \"POST\"])\n@authentication_classes([TokenAuthentication])\n@permission_classes([IsAuthenticated])\n@throttle_classes([UserRateThrottle])\ndef protected_view(request):\n    return Response({\"user\": request.user.username})"
+        },
+        {
+          "type": "table",
+          "headers": ["دکوراتور", "کاربرد"],
+          "rows": [
+            ["`@api_view([...])`", "تبدیل تابع به نمای DRF و تعیین متدها"],
+            ["`@authentication_classes([...])`", "تعیین روش‌های احراز هویت"],
+            ["`@permission_classes([...])`", "تعیین مجوزها"],
+            ["`@throttle_classes([...])`", "تعیین محدودیت نرخ"],
+            ["`@renderer_classes([...])`", "تعیین رندررها"],
+            ["`@parser_classes([...])`", "تعیین پارسرها"],
+            ["`@schema(...)`", "غنی‌سازی مستندات OpenAPI"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ordering",
+      "title": "ترتیب دکوراتورها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "ترتیب مهم است. `@api_view` باید بالاترین (نزدیک‌ترین به تابع، اولین دکوراتور در لیست) باشد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ✅ درست\n@api_view([\"GET\"])\n@permission_classes([IsAuthenticated])\n@throttle_classes([UserRateThrottle])\ndef view(request):\n    ...\n\n# ❌ اشتباه\n@permission_classes([IsAuthenticated])\n@api_view([\"GET\"])\ndef view(request):\n    ..."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا؟",
+          "text": "دکوراتورها از پایین به بالا اعمال می‌شوند (یعنی نزدیک‌ترین به تابع، اول اعمال می‌شود). `@api_view` باید اول اعمال شود تا بقیه دکوراتورها روی نمای DRF کار کنند."
+        }
+      ]
+    },
+    {
+      "id": "crud-example",
+      "title": "مثال کامل CRUD",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom django.shortcuts import get_object_or_404\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\n@api_view([\"GET\", \"POST\"])\ndef book_list(request):\n    \"\"\"لیست و ساخت کتاب.\"\"\"\n    if request.method == \"GET\":\n        queryset = Book.objects.all()\n        # فیلتر دستی\n        category = request.query_params.get(\"category\")\n        if category:\n            queryset = queryset.filter(category__slug=category)\n        serializer = BookSerializer(queryset, many=True)\n        return Response(serializer.data)\n\n    # POST\n    serializer = BookSerializer(data=request.data)\n    if serializer.is_valid():\n        serializer.save()\n        return Response(serializer.data, status=status.HTTP_201_CREATED)\n    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\n\n\n@api_view([\"GET\", \"PUT\", \"PATCH\", \"DELETE\"])\ndef book_detail(request, pk):\n    \"\"\"دریافت، ویرایش یا حذف یک کتاب.\"\"\"\n    book = get_object_or_404(Book, pk=pk)\n\n    if request.method == \"GET\":\n        serializer = BookSerializer(book)\n        return Response(serializer.data)\n\n    if request.method == \"PUT\":\n        serializer = BookSerializer(book, data=request.data)\n        if serializer.is_valid():\n            serializer.save()\n            return Response(serializer.data)\n        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\n\n    if request.method == \"PATCH\":\n        serializer = BookSerializer(book, data=request.data, partial=True)\n        if serializer.is_valid():\n            serializer.save()\n            return Response(serializer.data)\n        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\n\n    if request.method == \"DELETE\":\n        book.delete()\n        return Response(status=status.HTTP_204_NO_CONTENT)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from django.urls import path\nfrom .views import book_list, book_detail\n\nurlpatterns = [\n    path(\"books/\", book_list, name=\"book-list\"),\n    path(\"books/<int:pk>/\", book_detail, name=\"book-detail\"),\n]"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "شلوغی",
+          "text": "همین کد با `ListCreateAPIView` و `RetrieveUpdateDestroyAPIView` در چند خط نوشته می‌شود. برای CRUD، Generic Views بهترند."
+        }
+      ]
+    },
+    {
+      "id": "custom-actions",
+      "title": "Endpointهای سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "جایی که `@api_view` می‌درخشد، Endpointهای غیر CRUD است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "@api_view([\"POST\"])\ndef book_publish(request, pk):\n    \"\"\"انتشار کتاب.\"\"\"\n    book = get_object_or_404(Book, pk=pk)\n    if book.is_published:\n        return Response(\n            {\"detail\": \"این کتاب قبلاً منتشر شده است.\"},\n            status=status.HTTP_400_BAD_REQUEST,\n        )\n    book.is_published = True\n    book.published_at = timezone.now()\n    book.save(update_fields=[\"is_published\", \"published_at\"])\n    return Response({\"status\": \"published\", \"id\": book.id})\n\n\n@api_view([\"POST\"])\ndef book_bulk_import(request):\n    \"\"\"وارد کردن گروهی کتاب‌ها.\"\"\"\n    if not isinstance(request.data, list):\n        return Response(\n            {\"detail\": \"ورودی باید یک لیست باشد.\"},\n            status=status.HTTP_400_BAD_REQUEST,\n        )\n    serializer = BookSerializer(data=request.data, many=True)\n    if serializer.is_valid():\n        serializer.save()\n        return Response(\n            {\"created\": len(serializer.data)},\n            status=status.HTTP_201_CREATED,\n        )\n    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)"
+        }
+      ]
+    },
+    {
+      "id": "get-object-helper",
+      "title": "Helper برای شیء",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای جلوگیری از تکرار `try/except`، یک تابع کمکی بسازید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import NotFound\n\n\ndef get_object_or_404(model, **kwargs):\n    try:\n        return model.objects.get(**kwargs)\n    except model.DoesNotExist:\n        raise NotFound(\"منبع مورد نظر پیدا نشد.\")\n\n\n@api_view([\"GET\"])\ndef book_detail(request, pk):\n    book = get_object_or_404(Book, pk=pk)\n    return Response(BookSerializer(book).data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "یا از shortcut خود DRF",
+          "text": "DRF هیچ shortcut داخلی ندارد، اما می‌توانید از `django.shortcuts.get_object_or_404` استفاده کنید که `Http404` می‌دهد (و DRF آن را به `404 Not Found` تبدیل می‌کند)."
+        }
+      ]
+    },
+    {
+      "id": "validation-inline",
+      "title": "اعتبارسنجی درون‌تابع",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "@api_view([\"POST\"])\ndef book_transfer(request, pk):\n    book = get_object_or_404(Book, pk=pk)\n    to_user_id = request.data.get(\"to_user\")\n\n    if not to_user_id:\n        return Response(\n            {\"to_user\": [\"این فیلد اجباری است.\"]},\n            status=400,\n        )\n\n    try:\n        to_user = User.objects.get(pk=to_user_id)\n    except User.DoesNotExist:\n        return Response(\n            {\"to_user\": [\"کاربر پیدا نشد.\"]},\n            status=400,\n        )\n\n    if to_user == request.user:\n        return Response(\n            {\"to_user\": [\"نمی‌توانید به خودتان منتقل کنید.\"]},\n            status=400,\n        )\n\n    book.owner = to_user\n    book.save(update_fields=[\"owner\"])\n    return Response({\"status\": \"transferred\", \"to\": to_user.username})"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "کد تکراری",
+          "text": "اعتبارسنجی دستی درون تابع، تکرار و خطا می‌سازد. راه بهتر: یک سریالایزر کوچک برای این ورودی بنویسید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class TransferSerializer(serializers.Serializer):\n    to_user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())\n\n    def validate_to_user(self, value):\n        if value == self.context[\"request\"].user:\n            raise serializers.ValidationError(\"نمی‌توانید به خودتان منتقل کنید.\")\n        return value\n\n\n@api_view([\"POST\"])\ndef book_transfer(request, pk):\n    book = get_object_or_404(Book, pk=pk)\n    serializer = TransferSerializer(data=request.data, context={\"request\": request})\n    serializer.is_valid(raise_exception=True)\n    to_user = serializer.validated_data[\"to_user\"]\n    book.owner = to_user\n    book.save(update_fields=[\"owner\"])\n    return Response({\"status\": \"transferred\"})"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود `@api_view`",
+          "why": "بدون آن، `request` یک `HttpRequest` خام است، نه `Request` DRF.",
+          "when": "وقتی عادت Django دارید.",
+          "fix": "همیشه `@api_view([...])` بالای تابع."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن متدها در `@api_view`",
+          "why": "متدهایی که در لیست نیستند، با 405 رد می‌شوند. اگر POST را جا بیندازید، خطا می‌گیرید.",
+          "when": "وقتی لیست را کپی می‌کنید.",
+          "fix": "همه متدهای پشتیبانی‌شده را لیست کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ترتیب اشتباه دکوراتورها",
+          "why": "دکوراتورها به‌ترتیب از پایین اعمال می‌شوند. `@api_view` باید اول باشد.",
+          "when": "وقتی چند دکوراتور دارید.",
+          "fix": "`@api_view` بالاترین."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "CRUD کامل با `@api_view`",
+          "why": "کد طولانی، تکرار، نگهداری سخت.",
+          "when": "وقتی فقط چند مدل دارید.",
+          "fix": "از `ListCreateAPIView` و `RetrieveUpdateDestroyAPIView` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "اعتبارسنجی دستی درون تابع",
+          "why": "کد تکراری و مستعد خطا.",
+          "when": "وقتی منطق پیچیده است.",
+          "fix": "سریالایزر کوچک بنویسید حتی برای ورودی‌های غیر CRUD."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-022-q1",
+      "tag": "کوییز",
+      "question": "دکوراتور `@api_view` چه زمانی باید اعمال شود؟",
+      "options": [
+        { "text": "همیشه آخر (پایین‌ترین)", "correct": false },
+        { "text": "همیشه اول (بالاترین) — نزدیک‌ترین به تعریف تابع در ترتیب دکوراتورها", "correct": true, "explanation": "دکوراتورها از پایین به بالا اعمال می‌شوند؛ `@api_view` باید اول اعمال شود." },
+        { "text": "فرقی نمی‌کند", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-022-q2",
+      "tag": "کوییز",
+      "question": "برای یک Endpoint که فقط یک عملیات خاص انجام می‌دهد (مثل انتشار کتاب)، چه چیزی مناسب است؟",
+      "options": [
+        { "text": "`ModelViewSet`", "correct": false },
+        { "text": "`@api_view`", "correct": true, "explanation": "برای عملیات غیر CRUD، `@api_view` ساده‌ترین و واضح‌ترین است." },
+        { "text": "`RetrieveUpdateDestroyAPIView`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-022-ex1",
+      "title": "تمرین — Endpoint افزودن به علاقه‌مندی",
+      "problem": "یک Endpoint `POST /api/books/{id}/favorite/` بسازید که کتاب را به علاقه‌مندی‌های کاربر اضافه کند (یا اگر قبلاً اضافه شده، حذف کند). اگر کاربر احراز هویت نشده باشد، خطای 401 بدهد.",
+      "hints": ["از `@api_view([\"POST\"])` و `@permission_classes([IsAuthenticated])` استفاده کنید.", "از `get_or_create` استفاده کنید.", "برای toggle، اگر ساخته شد حذف، اگر قبلاً بود حذف کن."],
+      "solution": "```python\nfrom rest_framework.decorators import api_view, permission_classes\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom django.shortcuts import get_object_or_404\nfrom .models import Book, Favorite\n\n\n@api_view([\"POST\"])\n@permission_classes([IsAuthenticated])\ndef favorite_book(request, pk):\n    book = get_object_or_404(Book, pk=pk)\n    favorite, created = Favorite.objects.get_or_create(\n        user=request.user,\n        book=book,\n    )\n    if not created:\n        favorite.delete()\n        return Response({\"favorited\": False})\n    return Response({\"favorited\": True}, status=status.HTTP_201_CREATED)\n```\n\n```python\n# urls.py\npath(\"books/<int:pk>/favorite/\", favorite_book, name=\"book-favorite\"),\n```",
+      "explanation": "این الگوی toggle، رایج است. برای CRUD کامل کتاب از ViewSet استفاده می‌کنیم اما این Endpoint خاص با `@api_view` نوشته می‌شود."
+    }
+  ],
+  "summary": [
+    "`@api_view([\"GET\", \"POST\"])` ساده‌ترین راه ساخت نمای DRF.",
+    "متدهای HTTP را در لیست مشخص می‌کنید؛ بقیه با 405 رد می‌شوند.",
+    "دکوراتورهای همراه: `@permission_classes`, `@authentication_classes`, `@throttle_classes`.",
+    "`@api_view` باید اول اعمال شود (بالاترین دکوراتور).",
+    "برای CRUD کامل، `@api_view` شلوغ می‌شود — از Generic Views استفاده کنید.",
+    "برای Endpointهای خاص (پublish، transfer، toggle)، `@api_view` عالی است.",
+    "همیشه از سریالایزر استفاده کنید، حتی برای ورودی‌های کوچک."
+  ],
+  "resources": [
+    { "title": "DRF — Function based views", "url": "https://www.django-rest-framework.org/api-guide/views/#function-based-views", "official": true }
+  ]
+}

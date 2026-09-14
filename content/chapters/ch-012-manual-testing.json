@@ -1,0 +1,278 @@
+{
+  "id": "ch-012",
+  "slug": "manual-testing",
+  "title": "تست دستی API",
+  "kicker": "فصل ۱۲",
+  "level": "beginner",
+  "estimatedMinutes": 25,
+  "lead": "پیش از آنکه تست خودکار بنویسیم، باید بتوانیم API را دستی تست کنیم. این فصل ابزارهای اصلی را معرفی می‌کند.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا تست دستی؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "تست خودکار (که در فصل ۵۶ می‌آید) عالی است، اما در طول توسعه، تست دستی سریع‌تر و صمیمی‌تر است. قبل از نوشتن تست خودکار، باید بفهمید API در عمل چه می‌کند."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**سرعت:** در چند ثانیه یک درخواست می‌فرستید.",
+            "**کاوش:** می‌توانید با پارامترها بازی کنید.",
+            "**دیباگ:** خطاها را با پیام واقعی می‌بینید.",
+            "**مستندسازی:** درخواست‌های آماده، در ابزارهایی مثل Postman قابل ذخیره‌اند."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "title": "روش ۱ — مرورگر (Browsable API)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "ساده‌ترین روش. برای متدهای GET عالی است. برای POST/PUT/PATCH هم فرم دارد."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "filename": "browser",
+          "code": "http://127.0.0.1:8000/api/hello/"
+        },
+        {
+          "type": "table",
+          "headers": ["مزیت", "عیب"],
+          "rows": [
+            ["بدون نصب", "فقط GET و فرم ساده"],
+            ["نمایش زیبا", "بدون ذخیره درخواست‌ها"],
+            ["احراز هویت آسان", "برای هدرهای پیچیده ضعیف"],
+            ["بدون تنظیم", "محدود در قابلیت‌ها"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "curl",
+      "title": "روش ۲ — curl",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`curl` ابزار خط فرمان همه‌کاره است. در همه سیستم‌ها هست و در اسکریپت‌ها استفاده می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# GET ساده\ncurl http://127.0.0.1:8000/api/hello/\n\n# GET با نمایش هدرها\ncurl -i http://127.0.0.1:8000/api/hello/\n\n# POST JSON\ncurl -X POST http://127.0.0.1:8000/api/hello/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"name\": \"Sara\"}'\n\n# با توکن\ncurl -H \"Authorization: Token abc123\" http://127.0.0.1:8000/api/books/\n\n# نمایش خروجی JSON به‌صورت زیبا (با jq)\ncurl http://127.0.0.1:8000/api/books/ | jq\n\n# ذخیره خروجی در فایل\ncurl -o response.json http://127.0.0.1:8000/api/books/\n\n# زمان‌بندی\ncurl -w \"\\nTime: %{time_total}s\\n\" http://127.0.0.1:8000/api/hello/"
+        },
+        {
+          "type": "table",
+          "headers": ["flag", "معنی"],
+          "rows": [
+            ["`-X METHOD`", "تعیین متد (POST، PUT، ...)"],
+            ["`-H`", "افزودن هدر"],
+            ["`-d`", "بدنه درخواست"],
+            ["`-i`", "نمایش هدرهای پاسخ"],
+            ["`-v`", "حالت verbose (برای دیباگ)"],
+            ["`-o`", "ذخیره در فایل"],
+            ["`-u user:pass`", "احراز هویت Basic"],
+            ["`-L`", "پیروی از ریدایرکت"],
+            ["`-w`", "نمایش اطلاعات اضافی (زمان، اندازه)"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "نصب jq",
+          "text": "`jq` خروجی JSON را به‌صورت رنگی و فرمت‌شده نمایش می‌دهد. برای خوانایی خیلی کمک می‌کند. نصب: `apt install jq` یا `brew install jq`."
+        }
+      ]
+    },
+    {
+      "id": "httpie",
+      "title": "روش ۳ — HTTPie",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**HTTPie** نسخه مدرن‌تر و انسانی‌تر curl است. syntax ساده‌تر و خروجی رنگی دارد."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# نصب\npip install httpie\n\n# GET\nhttp GET http://127.0.0.1:8000/api/hello/\n\n# POST با JSON (خودکار Content-Type را تنظیم می‌کند)\nhttp POST http://127.0.0.1:8000/api/hello/ name=Sara\n\n# با هدر\nhttp GET http://127.0.0.1:8000/api/books/ \\\n  Authorization:\"Token abc123\"\n\n# فیلتر خروجی\nhttp GET http://127.0.0.1:8000/api/books/ | jq '.results[].title'"
+        }
+      ]
+    },
+    {
+      "id": "postman",
+      "title": "روش ۴ — Postman / Insomnia / Bruno",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "ابزارهای گرافیکی با رابط کاربری کامل. برای پروژه‌های بزرگ و تیم‌ها عالی‌اند."
+        },
+        {
+          "type": "table",
+          "headers": ["ابزار", "ویژگی شاخص", "رایگان؟"],
+          "rows": [
+            ["Postman", "همکاری تیمی، Collection، Environment", "بله (پایه)"],
+            ["Insomnia", "ساده، پشتیبانی GraphQL", "بله"],
+            ["Bruno", "فایل‌های متنی، بدون ابر", "بله"],
+            ["Thunder Client", "افزونه VS Code", "بله"]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**Collections:** سازمان‌دهی درخواست‌ها در گروه.",
+            "**Environments:** متغیرهایی مثل `{{base_url}}`، `{{token}}`.",
+            "**Pre-request Scripts:** کد قبل از درخواست.",
+            "**Tests:** تست خودکار ساده.",
+            "**Import از cURL:** کپی curl، paste در Postman."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی حرفه‌ای",
+          "text": "یک Collection برای API خود بسازید. متغیر `base_url` و `token` تعریف کنید. همه اعضای تیم می‌توانند از یک منبع مشترک استفاده کنند."
+        }
+      ]
+    },
+    {
+      "id": "headers",
+      "title": "هدرهایی که باید بلد باشید",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["هدر", "مثال", "کاربرد"],
+          "rows": [
+            ["`Content-Type`", "`application/json`", "نوع بدنه درخواست"],
+            ["`Accept`", "`application/json`", "نوع پاسخ مورد نظر"],
+            ["`Authorization`", "`Token abc123` یا `Bearer eyJ...`", "احراز هویت"],
+            ["`User-Agent`", "`MyApp/1.0`", "شناسه کلاینت"],
+            ["`X-Request-ID`", "UUID", "ردیابی درخواست در لاگ"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "curl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Accept: application/json\" \\\n  -H \"Authorization: Token abc123def456\" \\\n  -H \"X-Request-ID: 7a2c1b90\" \\\n  -d '{\"title\": \"Clean Code\", \"price\": \"42.50\"}'"
+        }
+      ]
+    },
+    {
+      "id": "json-tools",
+      "title": "ابزارهای JSON",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# jq — پردازش JSON\ncurl -s http://127.0.0.1:8000/api/books/ | jq '.results[].title'\n\n# گرفتن یک فیلد خاص\ncurl -s http://127.0.0.1:8000/api/books/1/ | jq '.title'\n\n# شمارش نتایج\ncurl -s http://127.0.0.1:8000/api/books/ | jq '.count'\n\n# فیلتر شرطی\ncurl -s http://127.0.0.1:8000/api/books/ | jq '.results[] | select(.price > 40)'\n\n# Python یکی‌خطی\ncurl -s http://127.0.0.1:8000/api/books/ | python -m json.tool"
+        }
+      ]
+    },
+    {
+      "id": "checklist",
+      "title": "چک‌لیست تست دستی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای هر Endpoint جدید، این‌ها را چک کنید:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**✓** متد صحیح (GET/POST/PUT/PATCH/DELETE).",
+            "**✓** Content-Type صحیح.",
+            "**✓** Accept برای فرمت پاسخ.",
+            "**✓** Authorization (اگر لازم است).",
+            "**✓** کد وضعیت موفق (200/201/204).",
+            "**✓** ساختار پاسخ.",
+            "**✓** داده نامعتبر → 400.",
+            "**✓** بدون توکن → 401.",
+            "**✓** بدون مجوز → 403.",
+            "**✓** منبع ناموجود → 404.",
+            "**✓** متد غیرمجاز → 405."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگو",
+          "text": "برای هر Endpoint، هم حالت موفق و هم چند حالت خطا را تست کنید. اگر فقط موفق را تست کنید، نصف کار را انجام داده‌اید."
+        }
+      ]
+    },
+    {
+      "id": "automate",
+      "title": "از دستی به خودکار",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "تست دستی جایگزین تست خودکار نیست. برای اطمینان از پایداری، تست خودکار بنویسید (فصل ۱۷ و ۵۶)."
+        },
+        {
+          "type": "callout-level",
+          "basic": "فقط Browsable API.",
+          "better": "Postman با Collection و Environment.",
+          "production": "تست خودکار با `pytest` و `factory_boy` + CI برای اجرای خودکار در هر push."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-012-q1",
+      "tag": "کوییز",
+      "question": "برای ارسال JSON با curl، کدام هدر لازم است؟",
+      "options": [
+        { "text": "`Accept: application/json`", "correct": false },
+        { "text": "`Content-Type: application/json`", "correct": true, "explanation": "Content-Type نوع بدنه درخواست را به سرور می‌گوید." },
+        { "text": "`Authorization: Bearer ...`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-012-q2",
+      "tag": "کوییز",
+      "question": "تفاوت `Accept` و `Content-Type` چیست؟",
+      "options": [
+        { "text": "هر دو یک چیز هستند.", "correct": false },
+        { "text": "`Content-Type` نوع بدنه درخواست است؛ `Accept` نوع پاسخ مورد نظر.", "correct": true, "explanation": "Content-Type برای ورودی، Accept برای خروجی." },
+        { "text": "`Accept` فقط برای JSON کار می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-012-ex1",
+      "title": "تمرین — تست کامل یک Endpoint",
+      "problem": "با curl یک Endpoint فرضی `POST /api/books/` را تست کنید. پاسخ موفق و پاسخ خطا (بدون title) را ببینید. از `-i` برای دیدن هدرها و از `jq` برای خوانایی استفاده کنید.",
+      "hints": ["با `-i` هدرها را می‌بینید.", "برای کد 400، body خالی یا title را حذف کنید.", "با pipe به jq: `curl ... | jq`."],
+      "solution": "```bash\n# موفق\ncurl -i -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"title\": \"Clean Code\", \"price\": \"42.50\"}' | jq\n\n# خطا — بدون title\ncurl -i -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"price\": \"42.50\"}' | jq\n\n# خطا — Content-Type نامعتبر\ncurl -i -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: text/plain\" \\\n  -d 'title=Clean Code'\n```",
+      "explanation": "همیشه هم حالت موفق و هم حالت خطا را تست کنید. اگر فقط موفق را تست کنید، ممکن است در تولید با خطاهای عجیب روبرو شوید."
+    }
+  ],
+  "summary": [
+    "چهار روش اصلی تست دستی: Browsable API، curl، HTTPie، Postman.",
+    "Browsable API برای شروع عالی است.",
+    "curl همه‌کاره و اسکریپت‌پذیر است.",
+    "HTTPie انسانی‌تر از curl است.",
+    "Postman/Insomnia/Bruno برای تیم‌های بزرگ.",
+    "همیشه Content-Type و Accept را مشخص کنید.",
+    "هم موفق و هم خطا را تست کنید.",
+    "تست دستی جایگزین تست خودکار نیست."
+  ],
+  "resources": [
+    { "title": "curl — مستندات رسمی", "url": "https://curl.se/docs/", "official": true },
+    { "title": "HTTPie", "url": "https://httpie.io/", "official": false },
+    { "title": "Postman Learning Center", "url": "https://learning.postman.com/", "official": false }
+  ]
+}

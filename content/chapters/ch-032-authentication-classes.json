@@ -1,0 +1,363 @@
+{
+  "id": "ch-032",
+  "slug": "authentication-classes",
+  "title": "کلاس‌های احراز هویت",
+  "kicker": "فصل ۳۲",
+  "level": "intermediate",
+  "estimatedMinutes": 40,
+  "lead": "DRF چند کلاس احراز هویت آماده دارد. در این فصل همه را می‌شناسیم و کاربردشان را می‌بینیم.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "فهرست کلاس‌ها",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["کلاس", "روش", "کاربرد"],
+          "rows": [
+            ["`SessionAuthentication`", "کوکی نشست", "مرورگر، Browsable API، داشبورد"],
+            ["`BasicAuthentication`", "هدر `Authorization: Basic ...`", "تست، ابزار داخلی"],
+            ["`TokenAuthentication`", "هدر `Authorization: Token ...`", "API موبایل، سرویس‌ها"],
+            ["`RemoteUserAuthentication`", "هدر `REMOTE_USER`", "پشت SSO/Apache"],
+            ["سفارشی (`BaseAuthentication`)", "دلخواه", "نیازهای خاص"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چند روش همزمان",
+          "text": "می‌توانید چند کلاس را در `DEFAULT_AUTHENTICATION_CLASSES` بگذارید. DRF به ترتیب امتحان می‌کند تا یکی موفق شود."
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "title": "SessionAuthentication",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "از سیستم نشست Django استفاده می‌کند. مرورگر کوکی `sessionid` را در هر درخواست می‌فرستد و Django کاربر را از دیتابیس نشست می‌خواند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n}"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# SessionAuthentication خودکار با کوکی کار می‌کند\n# برای POST/PUT/PATCH/DELETE، هدر X-CSRFToken لازم است\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"X-CSRFToken: <csrf-token>\" \\\n  -b cookies.txt \\\n  -d '{\"title\": \"Clean Code\"}'"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مزیت:** کار می‌کند از خود مرورگر و Browsable API.",
+            "**مزیت:** بدون نیاز به ذخیره توکن سمت کلاینت.",
+            "**عیب:** نیاز به CSRF برای متدهای تغییردهنده.",
+            "**عیب:** مناسب APIهای موبایل یا سرویس‌به‌سرویس نیست.",
+            "**کاربرد:** داشبورد داخلی، Browsable API، سایت‌های Mono-Repo."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "CSRF خودکار",
+          "text": "DRF برای `SessionAuthentication` خودکار CSRF را فعال می‌کند. در Browsable API نیازی به تنظیم دستی ندارید."
+        }
+      ]
+    },
+    {
+      "id": "basic",
+      "title": "BasicAuthentication",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "نام کاربری و رمز عبور در هدر `Authorization` با Base64 فرستاده می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# با curl\ncurl -u sara:s3cret! http://127.0.0.1:8000/api/books/\n\n# معادل دستی\ncurl http://127.0.0.1:8000/api/books/ \\\n  -H \"Authorization: Basic c2FyYTpzM2NyZXQh\"\n\n# ساخت Base64:\necho -n \"sara:s3cret!\" | base64"
+        },
+        {
+          "type": "table",
+          "headers": ["مزیت", "عیب"],
+          "rows": [
+            ["ساده برای تست", "رمز در هر درخواست فرستاده می‌شود"],
+            ["بدون نیاز به setup", "Base64 رمزنگاری نیست"],
+            ["استاندارد HTTP", "برخی سرورها آن را log می‌کنند"],
+            ["—", "بدون قابلیت revoke"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "فقط روی HTTPS",
+          "text": "هرگز روی HTTP خام استفاده نکنید. Base64 یک رمزنگاری نیست — فقط یک کدگذاری است. هر کسی که وسط راه باشد، می‌تواند آن را بخواند."
+        }
+      ]
+    },
+    {
+      "id": "token",
+      "title": "TokenAuthentication",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "روش ساده و پرکاربرد برای APIهای موبایل و سرویس‌ها. هر کاربر یک توکن در دیتابیس دارد و آن را در هدر `Authorization` می‌فرستد."
+        },
+        {
+          "type": "paragraph",
+          "text": "**پیش‌نیاز:** اپلیکیشن `rest_framework.authtoken` را نصب کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"rest_framework\",\n    \"rest_framework.authtoken\",   # ← اضافه شد\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.TokenAuthentication\",\n    ],\n}"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# ساخت جدول توکن‌ها\npython manage.py migrate"
+        },
+        {
+          "type": "paragraph",
+          "text": "Endpoint ورود برای دریافت توکن:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/views.py",
+          "code": "from rest_framework.decorators import api_view, permission_classes\nfrom rest_framework.permissions import AllowAny\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom rest_framework.authtoken.models import Token\nfrom django.contrib.auth import authenticate\n\n\n@api_view([\"POST\"])\n@permission_classes([AllowAny])\ndef obtain_token(request):\n    username = request.data.get(\"username\")\n    password = request.data.get(\"password\")\n\n    if not username or not password:\n        return Response(\n            {\"detail\": \"نام کاربری و رمز عبور الزامی است.\"},\n            status=status.HTTP_400_BAD_REQUEST,\n        )\n\n    user = authenticate(username=username, password=password)\n    if user is None:\n        return Response(\n            {\"detail\": \"نام کاربری یا رمز عبور نادرست است.\"},\n            status=status.HTTP_400_BAD_REQUEST,\n        )\n\n    token, created = Token.objects.get_or_create(user=user)\n    return Response({\"token\": token.key})"
+        },
+        {
+          "type": "paragraph",
+          "text": "استفاده از توکن در درخواست‌ها:"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "curl -H \"Authorization: Token 9f2c1b7a8d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a\" \\\n  http://127.0.0.1:8000/api/books/"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مزیت:** ساده، stateless-ish، پایدار.",
+            "**مزیت:** قابل revoke (با حذف از دیتابیس).",
+            "**عیب:** توکن هرگز منقضی نمی‌شود مگر دستی.",
+            "**عیب:** یک توکن در دیتابیس per user.",
+            "**کاربرد:** API موبایل، سرویس‌های بلندمدت."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "ساخت توکن برای کاربر",
+          "text": "در shell: `Token.objects.get_or_create(user=user)`. یا در سیگنال بعد از ساخت کاربر."
+        }
+      ]
+    },
+    {
+      "id": "remote-user",
+      "title": "RemoteUserAuthentication",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی سرور در پشت یک سیستم احراز هویت خارجی (Apache، SSO) است، این کلاس از هدر `REMOTE_USER` استفاده می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.RemoteUserAuthentication\",\n    ],\n}"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "زمان استفاده",
+          "text": "در پروژه‌های سازمانی که از SSO یا Kerberos استفاده می‌کنند. کمتر در پروژه‌های عمومی."
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "title": "احراز هویت سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر روش شما در DRF نیست (مثلاً یک هدر اختصاصی), `BaseAuthentication` را ارث‌بری کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/authentication.py",
+          "code": "from rest_framework.authentication import BaseAuthentication\nfrom rest_framework.exceptions import AuthenticationFailed\nfrom django.utils import timezone\nfrom .models import ApiKey\n\n\nclass ApiKeyAuthentication(BaseAuthentication):\n    \"\"\"\n    احراز هویت با هدر X-Api-Key.\n    \"\"\"\n\n    def authenticate(self, request):\n        api_key = request.headers.get(\"X-Api-Key\")\n        if not api_key:\n            # این روش کاری نکرد — روش بعدی امتحان شود\n            return None\n\n        try:\n            key = ApiKey.objects.select_related(\"user\").get(key=api_key)\n        except ApiKey.DoesNotExist:\n            raise AuthenticationFailed(\"کلید API نامعتبر است.\")\n\n        if not key.is_active:\n            raise AuthenticationFailed(\"کلید API غیرفعال است.\")\n\n        if key.expires_at and key.expires_at < timezone.now():\n            raise AuthenticationFailed(\"کلید API منقضی شده است.\")\n\n        # به‌روزرسانی last_used\n        ApiKey.objects.filter(pk=key.pk).update(last_used=timezone.now())\n\n        return (key.user, key)   # (user, auth)\n\n    def authenticate_header(self, request):\n        # اگر خطا داده شد، این هدر در WWW-Authenticate برگردانده می‌شود\n        # وجود آن باعث می‌شود DRF پاسخ 401 بدهد، نه 403\n        return \"X-Api-Key\""
+        },
+        {
+          "type": "paragraph",
+          "text": "استفاده:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"users.authentication.ApiKeyAuthentication\",\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n}"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "return None در برابر raise",
+          "text": "اگر روش شما درخواست را نمی‌فهمد (مثلاً هدر X-Api-Key وجود ندارد)، `return None` کنید تا DRF روش بعدی را امتحان کند. اگر هدر وجود دارد اما نامعتبر است، `raise AuthenticationFailed`."
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "authenticate_header",
+          "text": "اگر این متد را تعریف کنید، DRF پاسخ 401 (نه 403) برمی‌گرداند. اگر تعریف نکنید، خطاها به 403 تبدیل می‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "per-view",
+      "title": "تنظیم در سطح View",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید برای هر View، لیست احراز هویت جداگانه تعریف کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class PublicView(APIView):\n    authentication_classes = []   # بدون احراز هویت\n    permission_classes = [AllowAny]\n\n    def get(self, request):\n        return Response({\"public\": True})\n\n\nclass TokenOnlyView(APIView):\n    authentication_classes = [TokenAuthentication]\n    permission_classes = [IsAuthenticated]\n\n    def get(self, request):\n        return Response({\"user\": request.user.username})\n\n\nclass SessionOrTokenView(APIView):\n    authentication_classes = [\n        TokenAuthentication,\n        SessionAuthentication,\n    ]\n    permission_classes = [IsAuthenticated]\n\n    def get(self, request):\n        return Response({\"auth\": type(request.auth).__name__})"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در ViewSet\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    authentication_classes = [TokenAuthentication]\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n    @action(detail=True, methods=[\"post\"])\n    def publish(self, request, pk=None):\n        # اکشن خاص با تنظیمات متفاوت\n        book = self.get_object()\n        book.is_published = True\n        book.save()\n        return Response({\"status\": \"published\"})"
+        }
+      ]
+    },
+    {
+      "id": "comparison",
+      "title": "مقایسه",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["روش", "State", "Revoke", "انقضا", "مناسب"],
+          "rows": [
+            ["Session", "Stateful (DB)", "آسان", "تنظیمات", "مرورگر"],
+            ["Basic", "Stateless", "سخت (تغییر رمز)", "—", "تست"],
+            ["Token", "Stateful (DB)", "آسان", "دستی", "موبایل"],
+            ["JWT", "Stateless", "سخت (blacklist)", "خودکار", "مقیاس بالا"],
+            ["سفارشی", "بسته به طراحی", "بسته به طراحی", "بسته به طراحی", "نیاز خاص"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "BasicAuthentication.",
+          "better": "TokenAuthentication.",
+          "production": "JWT + Refresh Token + Blacklist + Throttling روی login + Audit Log."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "Basic روی HTTP",
+          "why": "Base64 رمزنگاری نیست؛ رمز در شبکه خوانده می‌شود.",
+          "when": "در تست محلی یا تولید.",
+          "fix": "همیشه HTTPS."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Token بدون انقضا",
+          "why": "توکن لو رفته برای همیشه معتبر است.",
+          "when": "وقتی از TokenAuthentication استفاده می‌کنید.",
+          "fix": "برای انقضا از JWT با Access کوتاه‌مدت + Refresh استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `authenticate_header` در Auth سفارشی",
+          "why": "خطاهای احراز هویت به 403 تبدیل می‌شوند، نه 401.",
+          "when": "وقتی BaseAuthentication را ارث‌بری می‌کنید.",
+          "fix": "`def authenticate_header(self, request): return \"Your-Realm\"`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "return کردن اشتباه در authenticate",
+          "why": "اگر هدر وجود ندارد، باید `None` برگردانید نه خطا. اشتباه آن، بلاک‌کردن روش‌های بعدی می‌شود.",
+          "when": "وقتی Auth سفارشی می‌نویسید.",
+          "fix": "بدون هدر → `None`؛ هدر نامعتبر → `raise AuthenticationFailed`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از SessionAuthentication برای موبایل",
+          "why": "کوکی و CSRF برای موبایل مناسب نیست.",
+          "when": "وقتی یک API موبایل می‌سازید.",
+          "fix": "Token یا JWT."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-032-q1",
+      "tag": "کوییز",
+      "question": "کدام کلاس برای اپلیکیشن موبایل مناسب‌تر است؟",
+      "options": [
+        { "text": "`SessionAuthentication`", "correct": false },
+        { "text": "`TokenAuthentication` یا JWT", "correct": true, "explanation": "Token و JWT برای کلاینت‌های غیرمرورگر مناسب‌ترند." },
+        { "text": "`BasicAuthentication`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-032-q2",
+      "tag": "کوییز",
+      "question": "در Auth سفارشی، اگر هدر موردنظر وجود نداشت، چه چیزی برگردانیم؟",
+      "options": [
+        { "text": "خطا پرتاب کنیم", "correct": false },
+        { "text": "`None` برگردانیم تا DRF روش بعدی را امتحان کند", "correct": true, "explanation": "اگر None برگردانید، DRF سراغ روش‌های بعدی می‌رود." },
+        { "text": "کاربر ناشناس برگردانیم", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-032-q3",
+      "tag": "کوییز",
+      "question": "چرا BasicAuthentication فقط روی HTTPS امن است؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون Base64 رمزنگاری نیست و رمز به‌صورت خواندنی در شبکه فرستاده می‌شود.", "correct": true, "explanation": "Base64 فقط یک کدگذاری است، نه رمزنگاری." },
+        { "text": "چون Django آن را نمی‌پذیرد.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-032-ex1",
+      "title": "تمرین — پیاده‌سازی TokenAuthentication",
+      "problem": "پروژه‌ای با `rest_framework.authtoken` راه‌اندازی کنید:\n۱) اپلیکیشن را نصب و migrate کنید.\n۲) Endpoint `/api/token/` بسازید که با username/password توکن برگرداند.\n۳) Endpoint `/api/profile/` بسازید که فقط با توکن معتبر قابل دسترسی باشد.",
+      "hints": ["از `Token.objects.get_or_create` استفاده کنید.", "روی profile از `IsAuthenticated` استفاده کنید.", "با curl تست کنید."],
+      "solution": "**settings.py:**\n```python\nINSTALLED_APPS = [\n    # ...\n    \"rest_framework\",\n    \"rest_framework.authtoken\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.TokenAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n}\n```\n\n**views.py:**\n```python\nfrom rest_framework.decorators import api_view, permission_classes\nfrom rest_framework.permissions import AllowAny, IsAuthenticated\nfrom rest_framework.response import Response\nfrom rest_framework.authtoken.models import Token\nfrom django.contrib.auth import authenticate\n\n\n@api_view([\"POST\"])\n@permission_classes([AllowAny])\ndef obtain_token(request):\n    username = request.data.get(\"username\")\n    password = request.data.get(\"password\")\n    user = authenticate(username=username, password=password)\n    if user is None:\n        return Response({\"detail\": \"نام کاربری یا رمز نادرست.\"}, status=400)\n    token, _ = Token.objects.get_or_create(user=user)\n    return Response({\"token\": token.key})\n\n\n@api_view([\"GET\"])\ndef profile(request):\n    return Response({\n        \"username\": request.user.username,\n        \"email\": request.user.email,\n    })\n```\n\n**تست:**\n```bash\n# دریافت توکن\ncurl -X POST http://127.0.0.1:8000/api/token/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": \"sara\", \"password\": \"s3cret!\"}'\n\n# استفاده از توکن\ncurl -H \"Authorization: Token <key>\" http://127.0.0.1:8000/api/profile/\n```",
+      "explanation": "این الگو در ۹۰٪ پروژه‌هایی که توکن ساده می‌خواهند کافی است. برای نیازهای پیشرفته‌تر، JWT."
+    }
+  ],
+  "summary": [
+    "SessionAuthentication: مناسب مرورگر و Browsable API؛ نیاز به CSRF.",
+    "BasicAuthentication: ساده؛ فقط روی HTTPS.",
+    "TokenAuthentication: موبایل و سرویس‌ها؛ قابل revoke؛ بدون انقضا مگر دستی.",
+    "RemoteUserAuthentication: پشت SSO/Apache.",
+    "Auth سفارشی: ارث‌بری از `BaseAuthentication`.",
+    "چند روش همزمان: به ترتیب امتحان می‌شوند.",
+    "در Auth سفارشی: بدون هدر → `None`؛ هدر نامعتبر → `raise`.",
+    "`authenticate_header` باعث پاسخ 401 (نه 403) می‌شود."
+  ],
+  "resources": [
+    { "title": "DRF — Authentication classes", "url": "https://www.django-rest-framework.org/api-guide/authentication/", "official": true },
+    { "title": "Django — Authentication", "url": "https://docs.djangoproject.com/en/stable/topics/auth/", "official": true }
+  ]
+}

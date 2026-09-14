@@ -1,0 +1,309 @@
+{
+  "id": "ch-024",
+  "slug": "genericapiview",
+  "title": "GenericAPIView",
+  "kicker": "فصل ۲۴",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "GenericAPIView پایه تمام نماهای جنریک است. این کلاس متدهای کمکی برای کار با QuerySet و Serializer اضافه می‌کند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "GenericAPIView چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`GenericAPIView`** از `APIView` ارث‌بری می‌کند و ابزارهای اضافه می‌دهد برای: تعیین QuerySet، انتخاب سریالایزر، فیلتر، صفحه‌بندی و پیدا کردن شیء."
+        },
+        {
+          "type": "flow",
+          "steps": ["APIView", "→ GenericAPIView", "→ Mixins + Concrete Views"]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "به‌ندرت مستقیم استفاده می‌شود",
+          "text": "در ۹۵٪ پروژه‌ها، از کلاس‌های Concrete (مثل `ListCreateAPIView`) استفاده می‌کنید که Mixinها را ترکیب می‌کنند. اما `GenericAPIView` پایه آن‌هاست و باید بدانید چه می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "attributes",
+      "title": "ویژگی‌های کلاس",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["ویژگی", "معنی"],
+          "rows": [
+            ["`queryset`", "QuerySet پایه (برای همه رکوردها)"],
+            ["`serializer_class`", "کلاس سریالایزر"],
+            ["`lookup_field`", "فیلد برای پیدا کردن شیء (پیش‌فرض `pk`)"],
+            ["`lookup_url_kwarg`", "نام پارامتر URL (پیش‌فرض = lookup_field)"],
+            ["`pagination_class`", "کلاس صفحه‌بندی"],
+            ["`filter_backends`", "لیست Backendهای فیلتر"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookDetailView(generics.GenericAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    lookup_field = \"slug\"   # به‌جای pk، با slug پیدا کن"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "urls.py",
+          "code": "path(\"books/<slug:slug>/\", BookDetailView.as_view(), name=\"book-detail\")"
+        }
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "متدهای کلیدی",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["متد", "کارکرد"],
+          "rows": [
+            ["`get_queryset()`", "QuerySet جاری (قابل بازنویسی)"],
+            ["`get_object()`", "پیدا کردن یک شیء با lookup"],
+            ["`get_serializer(*args, **kwargs)`", "ساخت نمونه سریالایزر"],
+            ["`get_serializer_class()`", "کلاس سریالایزر (قابل بازنویسی)"],
+            ["`get_serializer_context()`", "Context سریالایزر (`request`, `view`, `format`)"],
+            ["`filter_queryset(qs)`", "اعمال فیلترها"],
+            ["`paginate_queryset(qs)`", "صفحه‌بندی QuerySet"],
+            ["`get_paginated_response(data)`", "پاسخ صفحه‌بندی‌شده"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(generics.GenericAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get(self, request):\n        queryset = self.get_queryset()           # QuerySet\n        queryset = self.filter_queryset(queryset) # فیلترها\n\n        page = self.paginate_queryset(queryset)\n        if page is not None:\n            serializer = self.get_serializer(page, many=True)\n            return self.get_paginated_response(serializer.data)\n\n        serializer = self.get_serializer(queryset, many=True)\n        return Response(serializer.data)\n\n    def post(self, request):\n        serializer = self.get_serializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        serializer.save()\n        return Response(serializer.data, status=201)"
+        }
+      ]
+    },
+    {
+      "id": "get-queryset",
+      "title": "get_queryset — پویا",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای QuerySet پویا (مثلاً بر اساس کاربر یا پارامتر)، متد `get_queryset` را بازنویسی کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class MyBookListView(generics.ListAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        user = self.request.user\n        if user.is_staff:\n            return Book.objects.all()\n        return Book.objects.filter(owner=user, is_active=True)\n\n\nclass PublishedBookListView(generics.ListAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        qs = Book.objects.filter(is_active=True)\n        author_id = self.request.query_params.get(\"author\")\n        if author_id:\n            qs = qs.filter(author_id=author_id)\n        return qs.select_related(\"author\")"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هرگز queryset را در get_queryset تغییر ندهید",
+          "text": "همیشه یک QuerySet جدید برگردانید. `queryset = Book.objects.all()` را در سطح کلاس نگه دارید و در `get_queryset` فیلتر کنید. DRF ممکن است `queryset` را دوباره ارزیابی کند."
+        }
+      ]
+    },
+    {
+      "id": "get-serializer-class",
+      "title": "get_serializer_class — پویا",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookView(generics.GenericAPIView):\n    queryset = Book.objects.all()\n\n    def get_serializer_class(self):\n        if self.request.method == \"GET\":\n            return BookReadSerializer\n        return BookWriteSerializer\n\n    def get(self, request, pk):\n        book = self.get_object()\n        serializer = self.get_serializer(book)\n        return Response(serializer.data)\n\n    def put(self, request, pk):\n        book = self.get_object()\n        serializer = self.get_serializer(book, data=request.data)\n        serializer.is_valid(raise_exception=True)\n        serializer.save()\n        return Response(serializer.data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "self.action",
+          "text": "در ViewSetها می‌توانید از `self.action` استفاده کنید که نام متد جاری است: `list`, `retrieve`, `create`, `update`, `partial_update`, `destroy`."
+        }
+      ]
+    },
+    {
+      "id": "get-object",
+      "title": "get_object",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پیدا کردن یک شیء بر اساس `lookup_field` و `lookup_url_kwarg`. اگر پیدا نشد، `Http404` می‌دهد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookDetailView(generics.RetrieveAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    lookup_field = \"slug\"\n\n    def get(self, request, *args, **kwargs):\n        book = self.get_object()   # با slug پیدا می‌کند\n        serializer = self.get_serializer(book)\n        return Response(serializer.data)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# بازنویسی get_object برای بررسی‌های اضافه\nclass OwnBookDetailView(generics.RetrieveAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        return Book.objects.filter(owner=self.request.user)\n\n    # get_object خودکار روی queryset فیلترشده کار می‌کند\n    # اگر کتاب مال کاربر نباشد، 404 می‌دهد (نه 403)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "404 در برابر 403",
+          "text": "فیلتر کردن queryset (به‌جای چک دستی مجوز) امن‌تر است: 404 می‌دهد نه 403. این کار جلوی IDOR را می‌گیرد."
+        }
+      ]
+    },
+    {
+      "id": "get-serializer-context",
+      "title": "Context سریالایزر",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`get_serializer` به‌طور خودکار `context` را پر می‌کند. به‌طور پیش‌فرض شامل:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "{\n    \"request\": self.request,\n    \"format\": self.format_kwarg,\n    \"view\": self,\n}"
+        },
+        {
+          "type": "paragraph",
+          "text": "برای اضافه کردن context دلخواه:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookView(generics.RetrieveAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get_serializer_context(self):\n        context = super().get_serializer_context()\n        context[\"extra_data\"] = \"مقدار دلخواه\"\n        return context"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "استفاده در سریالایزر",
+          "text": "در سریالایزر: `self.context.get(\"extra_data\")`. برای فیلدهای محاسبه‌شده، `HyperlinkedRelatedField`, `CurrentUserDefault` و... ."
+        }
+      ]
+    },
+    {
+      "id": "filter-and-paginate",
+      "title": "فیلتر و صفحه‌بندی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import filters\nfrom django_filters.rest_framework import DjangoFilterBackend\n\n\nclass BookListView(generics.ListAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    filter_backends = [\n        DjangoFilterBackend,\n        filters.SearchFilter,\n        filters.OrderingFilter,\n    ]\n    filterset_fields = [\"category\", \"is_active\"]\n    search_fields = [\"title\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(generics.ListAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get(self, request, *args, **kwargs):\n        # ListAPIView خودش این کارها را انجام می‌دهد:\n        # queryset = self.filter_queryset(self.get_queryset())\n        # page = self.paginate_queryset(queryset)\n        # serializer = self.get_serializer(page, many=True)\n        # return self.get_paginated_response(serializer.data)\n        return super().get(request, *args, **kwargs)"
+        }
+      ]
+    },
+    {
+      "id": "concrete-subclasses",
+      "title": "زیرکلاس‌های Concrete",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`GenericAPIView` به‌ندرت مستقیم استفاده می‌شود. کلاس‌های Concrete (که از آن + Mixinها ساخته شده‌اند) پرکاربردترند:"
+        },
+        {
+          "type": "table",
+          "headers": ["کلاس", "ارث‌بری"],
+          "rows": [
+            ["`ListAPIView`", "GenericAPIView + ListModelMixin"],
+            ["`CreateAPIView`", "GenericAPIView + CreateModelMixin"],
+            ["`ListCreateAPIView`", "GenericAPIView + List + Create"],
+            ["`RetrieveAPIView`", "GenericAPIView + RetrieveModelMixin"],
+            ["`UpdateAPIView`", "GenericAPIView + UpdateModelMixin"],
+            ["`DestroyAPIView`", "GenericAPIView + DestroyModelMixin"],
+            ["`RetrieveUpdateAPIView`", "GenericAPIView + Retrieve + Update"],
+            ["`RetrieveUpdateDestroyAPIView`", "GenericAPIView + Retrieve + Update + Destroy"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "در فصل بعد",
+          "text": "Mixinها و کلاس‌های Concrete در فصل ۲۵ و ۲۶ کامل توضیح داده می‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "تعریف queryset در get_queryset بدون return",
+          "why": "QuerySet والد بازنویسی نمی‌شود، یا در متدهای دیگر خطا می‌دهد.",
+          "when": "وقتی عادت دارید queryset را در سطح کلاس بگذارید.",
+          "fix": "همیشه `return qs` در انتهای `get_queryset`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "تعریف queryset = [] در سطح کلاس",
+          "why": "DRF به یک QuerySet نیاز دارد، نه لیست.",
+          "when": "وقتی می‌خواهید queryset را پویا کنید.",
+          "fix": "کوچک‌ترین QuerySet را در سطح کلاس بگذارید (مثلاً `Model.objects.none()`) و در `get_queryset` بازنویسی کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `serializer_class` یا `get_serializer_class`",
+          "why": "DRF نمی‌داند چه سریالایزر بسازد و خطا می‌دهد.",
+          "when": "وقتی فراموش می‌کنید.",
+          "fix": "یکی از آن دو را همیشه تعریف کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "دستکاری مستقیم `self.queryset`",
+          "why": "QuerySet مشترک بین درخواست‌ها، ممکن است وضعیت را بین کاربران لو بدهد.",
+          "when": "وقتی می‌خواهید پویا کنید.",
+          "fix": "همیشه در `get_queryset` یک QuerySet جدید برگردانید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازنویسی `get_object` برای فیلتر ساده",
+          "why": "کد اضافه و تکرار.",
+          "when": "وقتی می‌خواهید فقط بر اساس کاربر فیلتر کنید.",
+          "fix": "از `get_queryset` استفاده کنید — `get_object` خودکار روی آن کار می‌کند."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-024-q1",
+      "tag": "کوییز",
+      "question": "برای QuerySet پویا در GenericAPIView، کدام متد را بازنویسی می‌کنیم؟",
+      "options": [
+        { "text": "`queryset` در سطح کلاس", "correct": false },
+        { "text": "`get_queryset()`", "correct": true, "explanation": "همیشه برای پویا، `get_queryset` را بازنویسی کنید." },
+        { "text": "`get_object()`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-024-q2",
+      "tag": "کوییز",
+      "question": "برای انتخاب سریالایزر بر اساس نوع درخواست، از چه متدی استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`get_serializer()`", "correct": false },
+        { "text": "`get_serializer_class()`", "correct": true, "explanation": "این متد کلاس سریالایزر را برمی‌گرداند؛ DRF سپس نمونه می‌سازد." },
+        { "text": "`serializer_class` در سطح کلاس", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-024-ex1",
+      "title": "تمرین — GenericAPIView دستی",
+      "problem": "با استفاده مستقیم از `GenericAPIView` (بدون Mixinها)، یک نمای `ListCreate` بسازید که لیست کتاب‌های کاربر جاری را برگرداند و اجازه ساخت کتاب جدید بدهد.",
+      "hints": ["از `get_queryset` برای فیلتر کردن بر اساس کاربر استفاده کنید.", "در POST، `perform_create` یا `serializer.save(owner=request.user)`."],
+      "solution": "```python\nfrom rest_framework import generics, status\nfrom rest_framework.response import Response\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass MyBookListCreateView(generics.GenericAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        return Book.objects.filter(owner=self.request.user)\n\n    def get(self, request):\n        queryset = self.filter_queryset(self.get_queryset())\n        page = self.paginate_queryset(queryset)\n        if page is not None:\n            serializer = self.get_serializer(page, many=True)\n            return self.get_paginated_response(serializer.data)\n        serializer = self.get_serializer(queryset, many=True)\n        return Response(serializer.data)\n\n    def post(self, request):\n        serializer = self.get_serializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        serializer.save(owner=request.user)\n        return Response(serializer.data, status=status.HTTP_201_CREATED)\n```\n\n**نکته:** همین کار با `ListCreateAPIView` + `perform_create` در چند خط انجام می‌شود. اما دیدن پیاده‌سازی دستی، درک بهتری می‌دهد.",
+      "explanation": "این تمرین نشان می‌دهد چرا Mixinها وجود دارند — کد تکراری زیاد می‌شود."
+    }
+  ],
+  "summary": [
+    "`GenericAPIView` پایه نماهای جنریک است.",
+    "ویژگی‌های کلاس: `queryset`, `serializer_class`, `lookup_field`, `pagination_class`, `filter_backends`.",
+    "متدهای کمکی: `get_queryset`, `get_object`, `get_serializer`, `get_serializer_class`, `filter_queryset`, `paginate_queryset`.",
+    "برای QuerySet پویا، `get_queryset` را بازنویسی کنید.",
+    "برای انتخاب سریالایزر، `get_serializer_class` را بازنویسی کنید.",
+    "به‌ندرت مستقیم استفاده می‌شود — زیرکلاس‌های Concrete پرکاربردترند."
+  ],
+  "resources": [
+    { "title": "DRF — GenericAPIView", "url": "https://www.django-rest-framework.org/api-guide/generic-views/", "official": true }
+  ]
+}

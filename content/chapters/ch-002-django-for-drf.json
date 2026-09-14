@@ -1,0 +1,426 @@
+{
+  "id": "ch-002",
+  "slug": "django-for-drf",
+  "title": "Django برای DRF",
+  "kicker": "فصل ۲",
+  "level": "beginner",
+  "estimatedMinutes": 35,
+  "lead": "DRF روی Django سوار می‌شود. این فصل مفاهیم کلیدی Django را که برای کار با DRF ضروری‌اند مرور می‌کند.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Django در یک نگاه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Django یک فریم‌ورک وب کامل برای Python است. ابزارهای آماده‌ای دارد برای: کار با دیتابیس (ORM)، مسیریابی (URLs)، مدیریت کاربران (Auth)، پنل مدیریت (Admin) و غیره."
+        },
+        {
+          "type": "paragraph",
+          "text": "DRF از این ابزارها استفاده می‌کند و لایه‌ای برای ساخت API روی آن اضافه می‌کند. پس اگر Django را نشناسید، DRF معنی نمی‌دهد."
+        },
+        {
+          "type": "flow",
+          "steps": ["Request", "URLs", "View", "Model/ORM", "Template/Response"]
+        }
+      ]
+    },
+    {
+      "id": "project-app",
+      "title": "پروژه و اپلیکیشن",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در Django دو مفهوم داریم: **پروژه (Project)** و **اپلیکیشن (App)**. پروژه یک ظرف برای چند اپلیکیشن است. هر اپلیکیشن یک بخش مستقل از سیستم را پیاده‌سازی می‌کند (مثلاً `books`، `users`، `orders`)."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ساخت پروژه\ndjango-admin startproject library_api .\n\n# ساخت اپلیکیشن\npython manage.py startapp books\n\n# ساختار به‌دست‌آمده:\n# library_api/         ← پروژه\n#   settings.py        ← تنظیمات\n#   urls.py            ← مسیرهای اصلی\n#   wsgi.py / asgi.py\n# manage.py\n# books/               ← اپلیکیشن\n#   models.py\n#   views.py\n#   admin.py\n#   apps.py\n#   migrations/"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "قاعده کلی",
+          "text": "پروژه = محل تنظیمات. اپلیکیشن = محل کد. هر اپلیکیشن باید در `INSTALLED_APPS` ثبت شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    \"django.contrib.admin\",\n    \"django.contrib.auth\",\n    \"django.contrib.contenttypes\",\n    \"django.contrib.sessions\",\n    \"django.contrib.messages\",\n    \"django.contrib.staticfiles\",\n\n    \"rest_framework\",   # ← اضافه شده برای DRF\n    \"books\",            # ← اپلیکیشن ما\n]"
+        }
+      ]
+    },
+    {
+      "id": "models",
+      "title": "مدل‌ها (Models)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "هر مدل Django یک جدول در دیتابیس است. فیلدهای مدل، ستون‌های جدول هستند. Django به‌طور خودکار جدول را می‌سازد و کوئری‌ها را مدیریت می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/models.py",
+          "code": "from django.db import models\n\n\nclass Author(models.Model):\n    full_name = models.CharField(max_length=150)\n    bio = models.TextField(blank=True)\n\n    def __str__(self):\n        return self.full_name\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    author = models.ForeignKey(\n        Author,\n        on_delete=models.CASCADE,\n        related_name=\"books\",\n    )\n    isbn = models.CharField(max_length=13, unique=True)\n    price = models.DecimalField(max_digits=9, decimal_places=2)\n    published_at = models.DateField()\n    is_active = models.BooleanField(default=True)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    class Meta:\n        ordering = [\"-published_at\"]\n\n    def __str__(self):\n        return self.title"
+        },
+        {
+          "type": "table",
+          "headers": ["فیلد", "معنی", "کاربرد"],
+          "rows": [
+            ["`CharField`", "رشته با طول محدود", "نام، عنوان، ایمیل"],
+            ["`TextField`", "متن بلند بدون محدودیت", "توضیحات، بیوگرافی"],
+            ["`IntegerField`", "عدد صحیح", "شمارنده، امتیاز"],
+            ["`DecimalField`", "عدد اعشاری دقیق", "قیمت، مبلغ"],
+            ["`BooleanField`", "درست/غلط", "فعال/غیرفعال"],
+            ["`DateField` / `DateTimeField`", "تاریخ / تاریخ و ساعت", "تاریخ انتشار"],
+            ["`ForeignKey`", "رابطه چند-به-یک", "کتاب ← نویسنده"],
+            ["`ManyToManyField`", "رابطه چند-به-چند", "کتاب ← دسته‌ها"],
+            ["`OneToOneField`", "رابطه یک-به-یک", "کاربر ← پروفایل"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "migrations",
+      "title": "مایگریشن‌ها (Migrations)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "مایگریشن مکانیزم Django برای اعمال تغییرات مدل‌ها روی دیتابیس است. Django فایل‌های مایگریشن را می‌سازد و شما آن‌ها را اجرا می‌کنید."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ساخت فایل مایگریشن بر اساس تغییرات مدل‌ها\npython manage.py makemigrations\n\n# اعمال مایگریشن‌ها روی دیتابیس\npython manage.py migrate\n\n# مشاهده وضعیت مایگریشن‌ها\npython manage.py showmigrations\n\n# بازگشت به مایگریشن قبلی\npython manage.py migrate books 0002"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده طلایی",
+          "text": "هر بار مدل را تغییر دادید: `makemigrations` و بعد `migrate`. فایل‌های مایگریشن باید در Git نگه داشته شوند."
+        }
+      ]
+    },
+    {
+      "id": "orm",
+      "title": "ORM و QuerySet",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**ORM** لایه‌ای است که به‌جای SQL، با کد Python با دیتابیس کار می‌کنید. **QuerySet** مجموعه‌ای از کوئری‌ها است که می‌توانید آن‌ها را زنجیره‌وار ترکیب کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from books.models import Book, Author\n\n# ساخت رکورد\nbook = Book.objects.create(\n    title=\"Clean Code\",\n    author=author,\n    isbn=\"9780132350884\",\n    price=42.50,\n    published_at=\"2008-08-01\",\n)\n\n# خواندن همه\nall_books = Book.objects.all()\n\n# فیلتر\ncheap = Book.objects.filter(price__lt=30)\n\n# یک رکورد خاص\ntry:\n    b = Book.objects.get(isbn=\"9780132350884\")\nexcept Book.DoesNotExist:\n    b = None\n\n# دسترسی به رابطه\nb.author.full_name\n\n# مرتب‌سازی\nBook.objects.order_by(\"-published_at\")\n\n# صفحه‌بندی (اول ۱۰ تا)\nBook.objects.all()[:10]\n\n# شمردن\nBook.objects.count()\n\n# بروزرسانی\nbook.price = 45.00\nbook.save()\n\n# حذف\nbook.delete()"
+        },
+        {
+          "type": "table",
+          "headers": ["عمل", "متد", "نمونه"],
+          "rows": [
+            ["همه", "`all()`", "`Book.objects.all()`"],
+            ["فیلتر", "`filter(**kwargs)`", "`Book.objects.filter(is_active=True)`"],
+            ["حذف فیلتر", "`exclude(**kwargs)`", "`Book.objects.exclude(is_active=False)`"],
+            ["یک رکورد", "`get(**kwargs)`", "`Book.objects.get(pk=1)`"],
+            ["اولی", "`first()`", "`Book.objects.first()`"],
+            ["مرتب‌سازی", "`order_by()`", "`Book.objects.order_by(\"-price\")`"],
+            ["شمارش", "`count()`", "`Book.objects.count()`"],
+            ["وجود دارد؟", "`exists()`", "`Book.objects.filter(...).exists()`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "مشکل N+1",
+          "text": "وقتی روی یک QuerySet حلقه می‌زنید و به یک رابطه دسترسی می‌گیرید (مثل `book.author.full_name`)، Django برای هر کتاب یک کوئری جدا می‌زند. این مشکل N+1 است و راه‌حل آن `select_related` و `prefetch_related` است — در فصل ۵۹ کامل توضیح داده می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ❌ بد: N+1\nfor book in Book.objects.all():\n    print(book.author.full_name)   # یک کوئری برای هر کتاب\n\n# ✅ خوب: یک کوئری JOIN\nfor book in Book.objects.select_related(\"author\"):\n    print(book.author.full_name)"
+        }
+      ]
+    },
+    {
+      "id": "views",
+      "title": "نماها (Views)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "نمای Django یک تابع یا کلاس است که یک درخواست (Request) می‌گیرد و یک پاسخ (Response) برمی‌گرداند. در Django این پاسخ معمولاً HTML است؛ در DRF این پاسخ JSON است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/views.py",
+          "code": "# Django — نمای تابعی\nfrom django.http import JsonResponse\nfrom .models import Book\n\n\ndef book_list(request):\n    books = Book.objects.all()\n    data = [\n        {\"id\": b.id, \"title\": b.title, \"price\": str(b.price)}\n        for b in books\n    ]\n    return JsonResponse(data, safe=False)\n\n\n# Django — نمای کلاسی\nfrom django.views import View\n\n\nclass BookDetailView(View):\n    def get(self, request, pk):\n        book = Book.objects.get(pk=pk)\n        return JsonResponse({\"id\": book.id, \"title\": book.title})"
+        },
+        {
+          "type": "paragraph",
+          "text": "در DRF دقیقاً همین الگو وجود دارد ولی با کلاس‌های DRF. به‌جای `View` از `APIView` و به‌جای `JsonResponse` از `Response` استفاده می‌کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/views.py",
+          "code": "# DRF — همان مفهوم با ابزار DRF\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\n\n\nclass BookDetailView(APIView):\n    def get(self, request, pk):\n        book = Book.objects.get(pk=pk)\n        return Response({\"id\": book.id, \"title\": book.title})"
+        }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "مسیریابی (URLs)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فایل `urls.py` تعیین می‌کند کدام آدرس به کدام نما برود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "from django.contrib import admin\nfrom django.urls import path, include\n\nurlpatterns = [\n    path(\"admin/\", admin.site.urls),\n    path(\"api/\", include(\"books.urls\")),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/urls.py",
+          "code": "from django.urls import path\nfrom .views import book_list, BookDetailView\n\nurlpatterns = [\n    path(\"books/\", book_list, name=\"book-list\"),\n    path(\"books/<int:pk>/\", BookDetailView.as_view(), name=\"book-detail\"),\n]"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`path()`** — تعریف یک مسیر.",
+            "**`include()`** — اتصال یک فایل `urls.py` دیگر.",
+            "**`<int:pk>`** — پارامتر مسیر با نوع int.",
+            "**`name=\"...\"`** — نام یکتا برای مسیر؛ در `reverse()` و سریالایزرهای Hyperlinked استفاده می‌شود."
+          ]
+        },
+        {
+          "type": "table",
+          "headers": ["Converter", "تطابق با", "مثال"],
+          "rows": [
+            ["`str`", "هر رشته بدون /", "`<str:slug>`"],
+            ["`int`", "عدد صحیح مثبت", "`<int:pk>`"],
+            ["`slug`", "رشته slug (حروف، اعداد، -، _)", "`<slug:slug>`"],
+            ["`uuid`", "UUID", "`<uuid:id>`"],
+            ["`path`", "هر رشته شامل /", "`<path:file_path>`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "title": "پنل ادمین (Admin)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Django یک پنل ادمین آماده دارد که با چند خط کد می‌توانید مدل‌هایتان را در آن مدیریت کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/admin.py",
+          "code": "from django.contrib import admin\nfrom .models import Author, Book\n\n\n@admin.register(Author)\nclass AuthorAdmin(admin.ModelAdmin):\n    list_display = [\"full_name\"]\n    search_fields = [\"full_name\"]\n\n\n@admin.register(Book)\nclass BookAdmin(admin.ModelAdmin):\n    list_display = [\"title\", \"author\", \"price\", \"is_active\"]\n    list_filter = [\"is_active\", \"author\"]\n    search_fields = [\"title\", \"isbn\"]\n    date_hierarchy = \"published_at\""
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ساخت کاربر ادمین\npython manage.py createsuperuser\n\n# اجرای سرور و مراجعه به /admin/\npython manage.py runserver"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "تنظیمات (settings.py)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فایل `settings.py` قلب پروژه Django است. تنظیمات مهم برای DRF:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "# دیتابیس\nDATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.sqlite3\",\n        \"NAME\": BASE_DIR / \"db.sqlite3\",\n    }\n}\n\n# زبان و زمان\nLANGUAGE_CODE = \"fa\"\nTIME_ZONE = \"Asia/Tehran\"\nUSE_I18N = True\nUSE_TZ = True\n\n# حالت توسعه\nDEBUG = True   # ⚠️ در تولید False\n\n# اپلیکیشن‌ها\nINSTALLED_APPS = [\n    # Django\n    \"django.contrib.admin\",\n    \"django.contrib.auth\",\n    \"django.contrib.contenttypes\",\n    \"django.contrib.sessions\",\n    \"django.contrib.messages\",\n    \"django.contrib.staticfiles\",\n\n    # Third-party\n    \"rest_framework\",\n\n    # Local\n    \"books\",\n]\n\n# تنظیمات DRF\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticatedOrReadOnly\",\n    ],\n    \"DEFAULT_PAGINATION_CLASS\": \"rest_framework.pagination.PageNumberPagination\",\n    \"PAGE_SIZE\": 20,\n}"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هشدار امنیتی",
+          "text": "هرگز `DEBUG = True` را در تولید رها نکنید. این تنظیم اطلاعات حساس را لو می‌دهد. همچنین `SECRET_KEY` را در کد نگذارید — از متغیرهای محیطی استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "middleware",
+      "title": "میدل‌ور (Middleware)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "میدل‌ور یک لایه بین درخواست و ویو است. هر درخواست از بالا به پایین از میدل‌ورها عبور می‌کند و پاسخ به‌صورت معکوس."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "MIDDLEWARE = [\n    \"django.middleware.security.SecurityMiddleware\",\n    \"django.contrib.sessions.middleware.SessionMiddleware\",\n    \"django.middleware.common.CommonMiddleware\",\n    \"django.middleware.csrf.CsrfViewMiddleware\",\n    \"django.contrib.auth.middleware.AuthenticationMiddleware\",\n    \"django.contrib.messages.middleware.MessageMiddleware\",\n    \"django.middleware.clickjacking.XFrameOptionsMiddleware\",\n]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "کاربرد در DRF",
+          "text": "میدل‌ورهای Django روی APIهای DRF هم اثر می‌گذارند. مثلاً `SessionMiddleware` و `AuthenticationMiddleware` باعث می‌شوند `request.user` در ویوهای DRF پر شود."
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "سیستم احراز هویت Django",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Django یک سیستم احراز هویت آماده دارد با مدل `User`، گروه‌ها، مجوزها و توابع کمکی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.contrib.auth.models import User\nfrom django.contrib.auth import authenticate\n\n# ساخت کاربر\nuser = User.objects.create_user(\n    username=\"sara\",\n    email=\"sara@example.com\",\n    password=\"s3cret!\",\n)\n\n# بررسی اعتبار\nuser = authenticate(username=\"sara\", password=\"s3cret!\")\nif user is not None:\n    print(\"ورود موفق\")\n\n# در ویو\ndef my_view(request):\n    if request.user.is_authenticated:\n        print(f\"کاربر: {request.user.username}\")\n    else:\n        print(\"کاربر ناشناس\")"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`User` — مدل کاربر پیش‌فرض Django.",
+            "`request.user` — کاربر جاری (یا `AnonymousUser`).",
+            "`is_authenticated` — آیا کاربر وارد شده است؟",
+            "`is_staff` / `is_superuser` — دسترسی به ادمین.",
+            "`groups` / `user_permissions` — گروه‌ها و مجوزها."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "در DRF",
+          "text": "DRF از همین سیستم استفاده می‌کند. `request.user` در ویوهای DRF همان `User` است. برای احراز هویت، DRF چند روش (Session, Token, JWT) روی این سیستم سوار می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "title": "دستورات مدیریتی (manage.py)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`manage.py` ابزار خط فرمان Django است. پرکاربردترین دستورات:"
+        },
+        {
+          "type": "table",
+          "headers": ["دستور", "کاربرد"],
+          "rows": [
+            ["`runserver`", "اجرای سرور توسعه"],
+            ["`makemigrations`", "ساخت فایل مایگریشن"],
+            ["`migrate`", "اعمال مایگریشن‌ها"],
+            ["`createsuperuser`", "ساخت کاربر ادمین"],
+            ["`shell`", "ورود به shell Django با ORM"],
+            ["`startapp`", "ساخت اپلیکیشن جدید"],
+            ["`collectstatic`", "جمع‌آوری فایل‌های استاتیک برای تولید"],
+            ["`test`", "اجرای تست‌ها"],
+            ["`dumpdata` / `loaddata`", "پشتیبان‌گیری / بازیابی داده"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# اجرای shell Django برای تست سریع ORM\npython manage.py shell\n\n# داخل shell:\n# >>> from books.models import Book\n# >>> Book.objects.count()\n# >>> Book.objects.create(title=\"Test\", ...)"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-002-q1",
+      "tag": "کوییز",
+      "question": "تفاوت اصلی پروژه (Project) و اپلیکیشن (App) در Django چیست؟",
+      "options": [
+        { "text": "پروژه کوچک‌تر است، اپلیکیشن بزرگ‌تر.", "correct": false },
+        { "text": "پروژه ظرف تنظیمات است و اپلیکیشن‌ها بخش‌های مستقل کد را نگه می‌دارند.", "correct": true, "explanation": "پروژه یک ظرف برای تنظیمات و چند اپلیکیشن است. هر اپلیکیشن یک بخش مستقل از سیستم." },
+        { "text": "پروژه برای تولید و اپلیکیشن برای توسعه است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-002-q2",
+      "tag": "کوییز",
+      "question": "کدام متد برای جلوگیری از مشکل N+1 استفاده می‌شود؟",
+      "options": [
+        { "text": "`filter()`", "correct": false },
+        { "text": "`select_related()`", "correct": true, "explanation": "select_related یک JOIN می‌زند و داده رابطه را در همان کوئری می‌آورد. prefetch_related هم برای many-to-many و reverse استفاده می‌شود." },
+        { "text": "`order_by()`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-002-ex1",
+      "title": "تمرین ۱ — مدل و مایگریشن",
+      "problem": "یک مدل `Category` با فیلدهای `name` (یکتا) و `slug` (یکتا) بسازید، سپس مایگریشن بسازید و اعمال کنید.",
+      "hints": [
+        "برای یکتا بودن از `unique=True` استفاده کنید.",
+        "برای slug از `SlugField` استفاده کنید.",
+        "پس از تغییر مدل: `makemigrations` و `migrate`."
+      ],
+      "solution": "```python\n# books/models.py\nfrom django.db import models\n\n\nclass Category(models.Model):\n    name = models.CharField(max_length=80, unique=True)\n    slug = models.SlugField(max_length=80, unique=True)\n\n    class Meta:\n        verbose_name_plural = \"categories\"\n        ordering = [\"name\"]\n\n    def __str__(self):\n        return self.name\n```\n\n```bash\npython manage.py makemigrations\npython manage.py migrate\n```",
+      "explanation": "این الگو پایه ساخت هر مدل است. `SlugField` یک فیلد متنی است که فقط حروف، اعداد، خط تیره و آندرلاین می‌پذیرد — عالی برای URL."
+    },
+    {
+      "id": "ch-002-ex2",
+      "title": "تمرین ۲ — QuerySet",
+      "problem": "با فرض داشتن مدل `Book`، کدی بنویسید که: (الف) همه کتاب‌های فعال را بگیرد؛ (ب) آن‌ها را بر اساس قیمت نزولی مرتب کند؛ (ج) ۵ تای اول را برگرداند.",
+      "hints": [
+        "از `filter()` برای فیلتر استفاده کنید.",
+        "`order_by(\"-price\")` برای نزولی.",
+        "برش `[:5]` برای ۵ تای اول."
+      ],
+      "solution": "```python\nfrom books.models import Book\n\nbooks = (\n    Book.objects\n    .filter(is_active=True)\n    .order_by(\"-price\")[:5]\n)\n\nfor b in books:\n    print(b.title, b.price)\n```",
+      "explanation": "QuerySetها زنجیره‌وار ترکیب می‌شوند. برش `[:5]` باعث می‌شود SQL با LIMIT اجرا شود."
+    }
+  ],
+  "summary": [
+    "**پروژه** ظرف تنظیمات است؛ **اپلیکیشن** بخش مستقل کد.",
+    "**مدل** یک جدول دیتابیس است؛ فیلدهای مدل = ستون‌ها.",
+    "**مایگریشن** تغییرات مدل را روی دیتابیس اعمال می‌کند.",
+    "**ORM** به‌جای SQL با کد Python کار می‌کند؛ **QuerySet** زنجیره‌پذیر است.",
+    "**View** درخواست را می‌گیرد و پاسخ می‌دهد.",
+    "**urls.py** آدرس‌ها را به نماها نگاشت می‌کند.",
+    "**admin** پنل آماده مدیریت داده است.",
+    "**settings.py** تنظیمات پروژه و DRF را نگه می‌دارد.",
+    "**Middleware** لایه بین درخواست و ویو است.",
+    "**User** سیستم احراز هویت پیش‌فرض Django است و DRF از آن استفاده می‌کند.",
+    "**N+1** با `select_related` و `prefetch_related` حل می‌شود."
+  ],
+  "resources": [
+    {
+      "title": "Django — مستندات رسمی",
+      "url": "https://docs.djangoproject.com/",
+      "official": true
+    },
+    {
+      "title": "Django Models — مستندات رسمی",
+      "url": "https://docs.djangoproject.com/en/stable/topics/db/models/",
+      "official": true
+    },
+    {
+      "title": "Django Queries — مستندات رسمی",
+      "url": "https://docs.djangoproject.com/en/stable/topics/db/queries/",
+      "official": true
+    }
+  ]
+}

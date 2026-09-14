@@ -1,0 +1,284 @@
+{
+  "id": "ch-026",
+  "slug": "generic-views",
+  "title": "نماهای جنریک (Generic Views)",
+  "kicker": "فصل ۲۶",
+  "level": "intermediate",
+  "estimatedMinutes": 40,
+  "lead": "نماهای جنریک، ترکیب آماده Mixinها و GenericAPIView هستند. با چند خط کد، CRUD کامل می‌سازید.",
+  "sections": [
+    {
+      "id": "list",
+      "title": "فهرست کلاس‌ها",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["کلاس", "متدها", "کاربرد"],
+          "rows": [
+            ["`ListAPIView`", "GET (لیست)", "فقط خواندن لیست"],
+            ["`CreateAPIView`", "POST", "فقط ساخت"],
+            ["`ListCreateAPIView`", "GET + POST", "لیست و ساخت"],
+            ["`RetrieveAPIView`", "GET (یک)", "جزئیات فقط خواندنی"],
+            ["`UpdateAPIView`", "PUT + PATCH", "فقط ویرایش"],
+            ["`DestroyAPIView`", "DELETE", "فقط حذف"],
+            ["`RetrieveUpdateAPIView`", "GET + PUT + PATCH", "خواندن + ویرایش"],
+            ["`RetrieveDestroyAPIView`", "GET + DELETE", "خواندن + حذف"],
+            ["`RetrieveUpdateDestroyAPIView`", "GET+PUT+PATCH+DELETE", "CRUD کامل یک رکورد"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "list-create",
+      "title": "ListCreateAPIView",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework import generics\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookListCreateView(generics.ListCreateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from django.urls import path\nfrom .views import BookListCreateView\n\nurlpatterns = [\n    path(\"books/\", BookListCreateView.as_view(), name=\"book-list\"),\n]"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**GET /api/books/** → لیست کتاب‌ها",
+            "**POST /api/books/** → ساخت کتاب جدید",
+            "همه کارها خودکار: فیلتر، صفحه‌بندی، سریال‌سازی، اعتبارسنجی."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "detail",
+      "title": "RetrieveUpdateDestroyAPIView",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**GET /api/books/42/** → دریافت کتاب",
+            "**PUT /api/books/42/** → جایگزینی کامل",
+            "**PATCH /api/books/42/** → ویرایش جزئی",
+            "**DELETE /api/books/42/** → حذف"
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "CRUD کامل در ۲ کلاس",
+          "text": "با `ListCreateAPIView` و `RetrieveUpdateDestroyAPIView`، CRUD کامل یک مدل را در چند خط می‌سازید. این الگوی رایج در پروژه‌های DRF است."
+        }
+      ]
+    },
+    {
+      "id": "specific",
+      "title": "کلاس‌های تخصصی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# فقط لیست — برای داده‌های فقط خواندنی\nclass CategoryListView(generics.ListAPIView):\n    queryset = Category.objects.all()\n    serializer_class = CategorySerializer\n\n\n# فقط ساخت — برای Endpointهای ساخت\nclass CommentCreateView(generics.CreateAPIView):\n    queryset = Comment.objects.all()\n    serializer_class = CommentSerializer\n\n\n# فقط ویرایش — برای Endpointهایی که ساخت/حذف ندارند\nclass ProfileUpdateView(generics.UpdateAPIView):\n    queryset = Profile.objects.all()\n    serializer_class = ProfileSerializer\n\n\n# خواندن + ویرایش — بدون حذف\nclass SettingsView(generics.RetrieveUpdateAPIView):\n    queryset = Settings.objects.all()\n    serializer_class = SettingsSerializer"
+        }
+      ]
+    },
+    {
+      "id": "customization",
+      "title": "سفارشی‌سازی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "کلاس‌های جنریک قابل بازنویسی هستند. مهم‌ترین متدها:"
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "کاربرد"],
+          "rows": [
+            ["`get_queryset()`", "QuerySet پویا"],
+            ["`get_serializer_class()`", "انتخاب سریالایزر"],
+            ["`get_permissions()`", "مجوزهای پویا"],
+            ["`perform_create(serializer)`", "منطق قبل از ساخت"],
+            ["`perform_update(serializer)`", "منطق قبل از ویرایش"],
+            ["`perform_destroy(instance)`", "منطق قبل از حذف"],
+            ["`get_serializer_context()`", "Context اضافه"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListCreateView(generics.ListCreateAPIView):\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n    def get_queryset(self):\n        # فقط کتاب‌های فعال\n        qs = Book.objects.filter(is_active=True).select_related(\"author\")\n        # فیلتر بر اساس پارامتر\n        category = self.request.query_params.get(\"category\")\n        if category:\n            qs = qs.filter(category__slug=category)\n        return qs\n\n    def perform_create(self, serializer):\n        # مالک را از request پر کن\n        serializer.save(owner=self.request.user)"
+        }
+      ]
+    },
+    {
+      "id": "filter-pagination",
+      "title": "فیلتر و صفحه‌بندی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import filters\nfrom django_filters.rest_framework import DjangoFilterBackend\n\n\nclass BookListView(generics.ListAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    # فیلتر\n    filter_backends = [\n        DjangoFilterBackend,\n        filters.SearchFilter,\n        filters.OrderingFilter,\n    ]\n    filterset_fields = [\"category\", \"is_active\", \"author\"]\n    search_fields = [\"title\", \"description\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\", \"title\"]\n\n    # صفحه‌بندی سفارشی\n    pagination_class = StandardPagination"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "خودکار",
+          "text": "`ListAPIView` و `ListCreateAPIView` به‌طور خودکار `filter_backends` و `pagination_class` را اعمال می‌کنند. نیازی به بازنویسی `get` نیست."
+        }
+      ]
+    },
+    {
+      "id": "multiple-serializers",
+      "title": "چند سریالایزر",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListCreateView(generics.ListCreateAPIView):\n    queryset = Book.objects.all()\n\n    def get_serializer_class(self):\n        if self.request.method == \"GET\":\n            return BookListSerializer   # سریالایزر سبک برای لیست\n        return BookSerializer          # سریالایزر کامل برای POST\n\n\nclass BookDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Book.objects.all()\n\n    def get_serializer_class(self):\n        if self.request.method == \"GET\":\n            return BookReadSerializer   # با روابط تودرتو\n        return BookWriteSerializer      # ورودی ساده"
+        }
+      ]
+    },
+    {
+      "id": "permissions",
+      "title": "مجوزهای پویا",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated\n\n\nclass BookListCreateView(generics.ListCreateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get_permissions(self):\n        if self.request.method == \"GET\":\n            return [AllowAny()]\n        return [IsAdminUser()]\n\n\nclass BookDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticated]\n\n    def get_permissions(self):\n        if self.request.method in (\"PUT\", \"PATCH\"):\n            return [IsAuthenticated(), IsOwnerOrReadOnly()]\n        return [IsAuthenticated()]"
+        }
+      ]
+    },
+    {
+      "id": "helpers",
+      "title": "متدهای کمکی مفید",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# دسترسی به شیء\ninstance = self.get_object()\n\n# دسترسی به QuerySet\nqs = self.get_queryset()\n\n# ساخت نمونه سریالایزر\nserializer = self.get_serializer(data=request.data)\nserializer = self.get_serializer(instance)\nserializer = self.get_serializer(qs, many=True)\n\n# دسترسی به context\ncontext = self.get_serializer_context()\n\n# بررسی که آیا صفحه‌بندی فعال است\nself.paginator  # None یا نمونه\n\n# دسترسی به پارامترهای URL\npk = self.kwargs.get(\"pk\")"
+        }
+      ]
+    },
+    {
+      "id": "example-complete",
+      "title": "مثال کامل — Blog API",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "blog/views.py",
+          "code": "from rest_framework import generics, filters\nfrom rest_framework.permissions import IsAuthenticatedOrReadOnly\nfrom django_filters.rest_framework import DjangoFilterBackend\nfrom .models import Post, Comment\nfrom .serializers import PostSerializer, CommentSerializer\nfrom .permissions import IsAuthorOrReadOnly\n\n\nclass PostListCreateView(generics.ListCreateAPIView):\n    queryset = Post.objects.filter(is_published=True).select_related(\"author\")\n    serializer_class = PostSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]\n    filterset_fields = [\"author\", \"category\"]\n    search_fields = [\"title\", \"content\"]\n    ordering_fields = [\"published_at\", \"title\"]\n\n    def perform_create(self, serializer):\n        serializer.save(author=self.request.user)\n\n\nclass PostDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Post.objects.all()\n    serializer_class = PostSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]\n    lookup_field = \"slug\"\n\n\nclass CommentListCreateView(generics.ListCreateAPIView):\n    serializer_class = CommentSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n    def get_queryset(self):\n        return Comment.objects.filter(post_id=self.kwargs[\"post_pk\"])\n\n    def perform_create(self, serializer):\n        serializer.save(\n            post_id=self.kwargs[\"post_pk\"],\n            author=self.request.user,\n        )\n\n\nclass CommentDetailView(generics.RetrieveUpdateDestroyAPIView):\n    serializer_class = CommentSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]\n\n    def get_queryset(self):\n        return Comment.objects.filter(post_id=self.kwargs[\"post_pk\"])"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "blog/urls.py",
+          "code": "from django.urls import path\nfrom .views import (\n    PostListCreateView, PostDetailView,\n    CommentListCreateView, CommentDetailView,\n)\n\nurlpatterns = [\n    path(\"posts/\", PostListCreateView.as_view(), name=\"post-list\"),\n    path(\"posts/<slug:slug>/\", PostDetailView.as_view(), name=\"post-detail\"),\n    path(\"posts/<int:post_pk>/comments/\", CommentListCreateView.as_view(), name=\"comment-list\"),\n    path(\"posts/<int:post_pk>/comments/<int:pk>/\", CommentDetailView.as_view(), name=\"comment-detail\"),\n]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "این الگو را در پروژه‌های واقعی زیاد می‌بینید",
+          "text": "برای CRUD استاندارد روی مدل‌ها، از `ListCreateAPIView` و `RetrieveUpdateDestroyAPIView`. برای Endpointهای غیر CRUD، `APIView` یا `@api_view`."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود `queryset` در ListAPIView",
+          "why": "`get_queryset` بدون `queryset` سطح کلاس خطا می‌دهد اگر بازنویسی نکنید.",
+          "when": "وقتی فراموش می‌کنید.",
+          "fix": "یا `queryset` بگذارید یا `get_queryset` را بازنویسی کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازنویسی `create` به‌جای `perform_create`",
+          "why": "کد DRF را تکرار می‌کنید.",
+          "when": "وقتی می‌خواهید owner را پر کنید.",
+          "fix": "فقط `perform_create`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `RetrieveUpdateDestroyAPIView` برای Endpointهایی که حذف نمی‌خواهند",
+          "why": "کلاس حذف را در دسترس قرار می‌دهد، که ناخواسته است.",
+          "when": "وقتی فقط خواندن و ویرایش می‌خواهید.",
+          "fix": "از `RetrieveUpdateAPIView` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `lookup_field` در URL",
+          "why": "اگر `lookup_field = \"slug\"` گذاشتید اما URL `<int:pk>` است، تطابق نمی‌کند.",
+          "when": "وقتی با slug می‌خواهید.",
+          "fix": "URL را `<slug:slug>` کنید و `lookup_field = \"slug\"` بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "قرار دادن `Lookup` در `queryset` غیر از pk",
+          "why": "اگر URL پارامتر دیگری دارد، باید `lookup_url_kwarg` را هم تنظیم کنید.",
+          "when": "وقتی پارامتر URL متفاوت است.",
+          "fix": "`lookup_field = \"slug\"; lookup_url_kwarg = \"slug\"`"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-026-q1",
+      "tag": "کوییز",
+      "question": "برای CRUD کامل یک مدل، کدام دو کلاس کافی است؟",
+      "options": [
+        { "text": "`ListAPIView` + `RetrieveAPIView`", "correct": false },
+        { "text": "`ListCreateAPIView` + `RetrieveUpdateDestroyAPIView`", "correct": true, "explanation": "این دو کلاس همه عملیات CRUD را پوشش می‌دهند." },
+        { "text": "`CreateAPIView` + `UpdateAPIView`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-026-q2",
+      "tag": "کوییز",
+      "question": "برای پر کردن owner از request.user، کدام متد را بازنویسی می‌کنیم؟",
+      "options": [
+        { "text": "`create`", "correct": false },
+        { "text": "`perform_create`", "correct": true, "explanation": "این متد جدا شده تا فقط همان را بازنویسی کنید." },
+        { "text": "`get_serializer`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-026-ex1",
+      "title": "تمرین — API وبلاگ کامل",
+      "problem": "برای مدل‌های Post و Comment API بسازید با:\n- CRUD کامل روی Post.\n- CRUD کامل روی Comment (تو در تو زیر Post).\n- فقط نویسنده بتواند ویرایش/حذف کند.\n- جستجو روی عنوان و محتوا.",
+      "hints": ["از `ListCreateAPIView` و `RetrieveUpdateDestroyAPIView` استفاده کنید.", "برای Comment، از `get_queryset` با فیلتر `post_id`.", "برای مالکیت، مجوز `IsAuthorOrReadOnly` بنویسید."],
+      "solution": "```python\n# permissions.py\nfrom rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\nclass IsAuthorOrReadOnly(BasePermission):\n    message = \"فقط نویسنده می‌تواند این را تغییر دهد.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        return obj.author == request.user\n\n\n# views.py\nfrom rest_framework import generics, filters\nfrom rest_framework.permissions import IsAuthenticatedOrReadOnly\nfrom .models import Post, Comment\nfrom .serializers import PostSerializer, CommentSerializer\nfrom .permissions import IsAuthorOrReadOnly\n\n\nclass PostListCreateView(generics.ListCreateAPIView):\n    queryset = Post.objects.select_related(\"author\").all()\n    serializer_class = PostSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n    filter_backends = [filters.SearchFilter]\n    search_fields = [\"title\", \"content\"]\n\n    def perform_create(self, serializer):\n        serializer.save(author=self.request.user)\n\n\nclass PostDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Post.objects.all()\n    serializer_class = PostSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]\n\n\nclass CommentListCreateView(generics.ListCreateAPIView):\n    serializer_class = CommentSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n    def get_queryset(self):\n        return Comment.objects.filter(post_id=self.kwargs[\"post_pk\"])\n\n    def perform_create(self, serializer):\n        serializer.save(\n            post_id=self.kwargs[\"post_pk\"],\n            author=self.request.user,\n        )\n\n\nclass CommentDetailView(generics.RetrieveUpdateDestroyAPIView):\n    serializer_class = CommentSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]\n\n    def get_queryset(self):\n        return Comment.objects.filter(post_id=self.kwargs[\"post_pk\"])\n```",
+      "explanation": "این ساختار، الگوی استاندارد CRUD + روابط تو در تو در DRF است. در فصل ۲۸ با ViewSet ساده‌تر می‌شود."
+    }
+  ],
+  "summary": [
+    "نماهای جنریک ترکیب آماده Mixinها هستند.",
+    "برای CRUD کامل: `ListCreateAPIView` + `RetrieveUpdateDestroyAPIView`.",
+    "برای حالت‌های خاص: `ListAPIView`, `CreateAPIView`, `RetrieveAPIView`, `UpdateAPIView`, `DestroyAPIView`.",
+    "متدهای قابل بازنویسی: `get_queryset`, `get_serializer_class`, `get_permissions`, `perform_create`, `perform_update`, `perform_destroy`.",
+    "فیلتر و صفحه‌بندی خودکار.",
+    "می‌توانید سریالایزر متفاوت بر اساس متد انتخاب کنید.",
+    "CRUD کامل یک مدل را در ۴-۵ خط کد می‌سازید."
+  ],
+  "resources": [
+    { "title": "DRF — Generic views", "url": "https://www.django-rest-framework.org/api-guide/generic-views/", "official": true }
+  ]
+}

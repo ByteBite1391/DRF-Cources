@@ -1,0 +1,274 @@
+{
+  "id": "ch-017",
+  "slug": "validation",
+  "title": "اعتبارسنجی (Validation)",
+  "kicker": "فصل ۱۷",
+  "level": "intermediate",
+  "estimatedMinutes": 40,
+  "lead": "اعتبارسنجی قلب یک API قابل اعتماد است. در این فصل، همه راه‌های اعتبارسنجی در DRF را یاد می‌گیریم.",
+  "sections": [
+    {
+      "id": "levels",
+      "title": "سطوح اعتبارسنجی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF اعتبارسنجی را در چند سطح انجام می‌دهد. هر سطح جای خودش را دارد و در زمان مناسب اجرا می‌شود."
+        },
+        {
+          "type": "flow",
+          "steps": ["Field", "validate_<field>", "validate()", "validators", "Model"]
+        },
+        {
+          "type": "table",
+          "headers": ["سطح", "محل", "کاربرد"],
+          "rows": [
+            ["فیلد", "پارامترهای فیلد", "`required`, `max_length`, `min_value`"],
+            ["Field validators", "`validators=[...]`", "اعتبارسنجی‌های مستقل و قابل ترکیب"],
+            ["`validate_<field>`", "متد در Serializer", "اعتبارسنجی یک فیلد خاص"],
+            ["`validate()`", "متد در Serializer", "اعتبارسنجی بین چند فیلد"],
+            ["Object validators", "`validators=[...]` در Meta", "مثل `UniqueTogetherValidator`"],
+            ["مدل", "در `.save()`", "قواعد دیتابیس (unique, check)"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "field-level",
+      "title": "اعتبارسنجی سطح فیلد (validate_<field>)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای هر فیلد می‌توانید متدی با نام `validate_<field_name>` بنویسید. این متد مقدار فیلد را می‌گیرد و باید مقدار نهایی را برگرداند یا استثنا پرتاب کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"isbn\", \"price\", \"published_at\"]\n\n    def validate_title(self, value):\n        if len(value.strip()) < 3:\n            raise serializers.ValidationError(\"عنوان باید حداقل ۳ کاراکتر باشد.\")\n        return value.strip()\n\n    def validate_isbn(self, value):\n        # ISBN باید ۱۰ یا ۱۳ رقم عددی باشد\n        clean = value.replace(\"-\", \"\").strip()\n        if not clean.isdigit() or len(clean) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN باید ۱۰ یا ۱۳ رقم عددی باشد.\")\n        return clean\n\n    def validate_price(self, value):\n        if value <= 0:\n            raise serializers.ValidationError(\"قیمت باید بزرگ‌تر از صفر باشد.\")\n        if value > 1000000:\n            raise serializers.ValidationError(\"قیمت نمی‌تواند بیشتر از یک میلیون باشد.\")\n        return value\n\n    def validate_published_at(self, value):\n        from datetime import date\n        if value > date.today():\n            raise serializers.ValidationError(\"تاریخ انتشار نمی‌تواند در آینده باشد.\")\n        return value"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چند نکته",
+          "text": "۱) نام متد دقیقاً `validate_` + نام فیلد است. ۲) باید مقدار را برگردانید (ممکن است تبدیل‌شده باشد). ۳) برای خطا، `serializers.ValidationError` پرتاب کنید."
+        }
+      ]
+    },
+    {
+      "id": "object-level",
+      "title": "اعتبارسنجی سطح شیء (validate)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "متد `validate()` کل دیکشنری داده را بعد از اعتبارسنجی فیلدها می‌گیرد. برای قواعدی که به چند فیلد وابسته‌اند استفاده می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class EventSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Event\n        fields = [\"id\", \"title\", \"starts_at\", \"ends_at\", \"capacity\", \"registration_open\"]\n\n    def validate(self, attrs):\n        # قاعده ۱: پایان باید بعد از شروع باشد\n        if attrs[\"ends_at\"] <= attrs[\"starts_at\"]:\n            raise serializers.ValidationError(\n                {\"ends_at\": \"زمان پایان باید بعد از زمان شروع باشد.\"}\n            )\n\n        # قاعده ۲: اگر ثبت‌نام باز است، باید ظرفیت داشته باشد\n        if attrs.get(\"registration_open\") and attrs.get(\"capacity\", 0) <= 0:\n            raise serializers.ValidationError(\n                {\"capacity\": \"برای ثبت‌نام باز، ظرفیت باید بزرگ‌تر از صفر باشد.\"}\n            )\n\n        return attrs"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "شکل خطا",
+          "text": "در `validate()` می‌توانید خطا را به‌صورت دیکشنری بدهید تا به فیلد خاصی نسبت داده شود، یا به‌صورت رشته برای خطای کلی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# خطای کلی\nraise serializers.ValidationError(\"داده‌های ورودی نامعتبرند.\")\n# {'non_field_errors': ['داده‌های ورودی نامعتبرند.']}\n\n# خطا روی فیلد خاص\nraise serializers.ValidationError({\"ends_at\": \"باید بعد از starts_at باشد.\"})\n# {'ends_at': ['باید بعد از starts_at باشد.']}\n\n# چند خطا\nraise serializers.ValidationError({\n    \"ends_at\": \"باید بعد از starts_at باشد.\",\n    \"capacity\": \"باید مثبت باشد.\",\n})"
+        }
+      ]
+    },
+    {
+      "id": "validators",
+      "title": "Validatorهای مستقل",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای قواعد قابل استفاده مجدد، Validator بنویسید. Validator یک تابع یا کلاس است که مقدار می‌گیرد و در صورت خطا `ValidationError` پرتاب می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/validators.py",
+          "code": "from rest_framework import serializers\nfrom django.utils.deconstruct import deconstructible\n\n\n# Validator به‌صورت تابع\ndef validate_positive(value):\n    if value <= 0:\n        raise serializers.ValidationError(\"مقدار باید مثبت باشد.\")\n\n\n# Validator به‌صورت کلاس (برای پارامتردار شدن)\n@deconstructible\nclass MaxFileSizeValidator:\n    def __init__(self, max_mb):\n        self.max_mb = max_mb\n\n    def __call__(self, value):\n        if value.size > self.max_mb * 1024 * 1024:\n            raise serializers.ValidationError(\n                f\"حجم فایل نمی‌تواند بیشتر از {self.max_mb} مگابایت باشد.\"\n            )\n\n\n# Validator پیچیده روی چند مقدار\n@deconstructible\nclass IsbnValidator:\n    def __call__(self, value):\n        clean = value.replace(\"-\", \"\").strip()\n        if not clean.isdigit() or len(clean) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN نامعتبر است.\")"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from .validators import validate_positive, IsbnValidator, MaxFileSizeValidator\n\n\nclass ProductSerializer(serializers.ModelSerializer):\n    price = serializers.DecimalField(\n        max_digits=8, decimal_places=2,\n        validators=[validate_positive],\n    )\n    isbn = serializers.CharField(validators=[IsbnValidator()])\n\n    class Meta:\n        model = Product\n        fields = [\"id\", \"name\", \"price\", \"isbn\"]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چرا کلاس؟",
+          "text": "اگر Validator پارامتر دارد (مثل `MaxFileSizeValidator(5)`)، باید کلاس باشد. تابع‌ها فقط برای قواعد ثابت خوب‌اند."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "deconstructible",
+          "text": "دکوراتور `@deconstructible` برای پشتیبانی از مایگریشن‌های Django لازم است، اگر Validator را در فیلدهای مدل استفاده کنید. برای سریالایزرها ضروری نیست اما خوب است همیشه بگذارید."
+        }
+      ]
+    },
+    {
+      "id": "unique-together",
+      "title": "UniqueTogetherValidator",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی یکتایی به ترکیب چند فیلد وابسته است (مثلاً «یک کاربر فقط یک نظر روی هر کتاب»)، از `UniqueTogetherValidator` استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.validators import UniqueTogetherValidator\n\n\nclass ReviewSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Review\n        fields = [\"id\", \"book\", \"user\", \"rating\", \"comment\"]\n        read_only_fields = [\"id\", \"user\"]\n        validators = [\n            UniqueTogetherValidator(\n                queryset=Review.objects.all(),\n                fields=[\"book\", \"user\"],\n                message=\"شما قبلاً برای این کتاب نظر داده‌اید.\",\n            )\n        ]"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "نکته مهم",
+          "text": "اگر فیلدی که در `fields` ولیدیتور است read_only یا `HiddenField` باشد، باید مقدار پیش‌فرض داشته باشد (مثلاً `CurrentUserDefault`)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ReviewSerializer(serializers.ModelSerializer):\n    user = serializers.HiddenField(default=serializers.CurrentUserDefault())\n\n    class Meta:\n        model = Review\n        fields = [\"id\", \"book\", \"user\", \"rating\", \"comment\"]\n        validators = [\n            UniqueTogetherValidator(\n                queryset=Review.objects.all(),\n                fields=[\"book\", \"user\"],\n            )\n        ]"
+        }
+      ]
+    },
+    {
+      "id": "unique-validator",
+      "title": "UniqueValidator",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای یکتایی یک فیلد تنها، `UniqueValidator` وجود دارد. اگر مدل `unique=True` داشته باشد، `ModelSerializer` خودکار آن را اضافه می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.validators import UniqueValidator\n\n\nclass UserSerializer(serializers.ModelSerializer):\n    email = serializers.EmailField(\n        validators=[\n            UniqueValidator(\n                queryset=User.objects.all(),\n                message=\"این ایمیل قبلاً ثبت شده است.\",\n            )\n        ]\n    )\n\n    class Meta:\n        model = User\n        fields = [\"id\", \"username\", \"email\"]"
+        }
+      ]
+    },
+    {
+      "id": "model-clean",
+      "title": "full_clean در ModelSerializer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`ModelSerializer` به‌طور پیش‌فرض `full_clean()` را در `.save()` صدا نمی‌زند. یعنی اعتبارسنج‌های سطح مدل (مثل `clean()` یا `CheckConstraint`) اجرا نمی‌شوند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# مدل با clean()\nclass Event(models.Model):\n    starts_at = models.DateTimeField()\n    ends_at = models.DateTimeField()\n\n    def clean(self):\n        if self.ends_at <= self.starts_at:\n            raise ValidationError(\"پایان باید بعد از شروع باشد.\")\n\n\n# سریالایزر — اجرای full_clean\nclass EventSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Event\n        fields = [\"id\", \"starts_at\", \"ends_at\"]\n\n    def validate(self, attrs):\n        # راه ۱: صریحاً چک کن\n        return attrs\n\n    def create(self, validated_data):\n        instance = Event(**validated_data)\n        instance.full_clean()   # اجرای اعتبارسنجی مدل\n        instance.save()\n        return instance"
+        },
+        {
+          "type": "callout-level",
+          "basic": "اعتبارسنجی فقط در سطح فیلد.",
+          "better": "افزودن `validate()` برای قواعد بین‌فیلدی.",
+          "production": "اعتبارسنجی در سه سطح: فیلد، سریالایزر و مدل (`full_clean`) + تست‌های اختصاصی برای هر قاعده."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `assert` برای اعتبارسنجی",
+          "why": "`assert` در حالت بهینه‌سازی (python -O) غیرفعال می‌شود و اعتبارسنجی از بین می‌رود.",
+          "when": "وقتی تازه‌کار هستید.",
+          "fix": "از `raise serializers.ValidationError(...)` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "دسترسی به فیلدهای دیگر در `validate_<field>`",
+          "why": "در `validate_<field>`، فقط مقدار همان فیلد را دارید، نه بقیه.",
+          "when": "وقتی می‌خواهید چیزی بین دو فیلد چک کنید.",
+          "fix": "از `validate(self, attrs)` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `return value` در `validate_<field>`",
+          "why": "اگر مقدار را برنگردانید، `None` به بقیه اعتبارسنجی‌ها و ذخیره می‌رود.",
+          "when": "وقتی فقط چک می‌کنید و برنمی‌گردانید.",
+          "fix": "همیشه `return value` (حتی اگر تغییرش نداده‌اید)."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "اعتبارسنجی سنگین دیتابیسی در `validate`",
+          "why": "هر درخواست، چند کوئری اضافه می‌زند.",
+          "when": "وقتی `validate` با `exists()` یا `count()` زیاد کار می‌کند.",
+          "fix": "از `validators` سطح فیلد (که فقط یک بار اجرا می‌شوند) یا کش استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیام‌های خطای انگلیسی در پروژه فارسی",
+          "why": "تجربه کاربری ضعیف برای کاربران فارسی.",
+          "when": "وقتی از پیش‌فرض‌های DRF استفاده می‌کنید.",
+          "fix": "با `error_messages` پیام‌های فارسی تعریف کنید یا از سیستم i18n استفاده کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-017-q1",
+      "tag": "کوییز",
+      "question": "برای اعتبارسنجی اینکه «تاریخ پایان بعد از تاریخ شروع باشد»، از کدام متد استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`validate_starts_at`", "correct": false },
+        { "text": "`validate()`", "correct": true, "explanation": "چون به دو فیلد وابسته است، باید در validate سطح شیء انجام شود." },
+        { "text": "`clean()` مدل", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-017-q2",
+      "tag": "کوییز",
+      "question": "در `validate_<field>` چه چیزی باید برگردانیم؟",
+      "options": [
+        { "text": "`True` یا `False`", "correct": false },
+        { "text": "مقدار فیلد (حتی اگر تغییر نکرده)", "correct": true, "explanation": "اگر برنگردانید، None جایگزین می‌شود." },
+        { "text": "هیچ چیزی — DRF خودش می‌فهمد", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-017-ex1",
+      "title": "تمرین — اعتبارسنجی چندسطحی",
+      "problem": "برای یک مدل `Reservation` با فیلدهای `start_date`, `end_date`, `guests`, `room` اعتبارسنجی بنویسید که:\n۱) `start_date` نباید در گذشته باشد.\n۲) `end_date` باید بعد از `start_date` باشد.\n۳) `guests` باید بین ۱ تا ظرفیت اتاق باشد.",
+      "hints": ["۱ و ۳ (بخشی) در `validate_<field>`.", "۲ در `validate()`.", "برای دسترسی به ظرفیت اتاق، از `attrs['room'].capacity` در `validate()` استفاده کنید."],
+      "solution": "```python\nfrom datetime import date\nfrom rest_framework import serializers\nfrom .models import Reservation\n\n\nclass ReservationSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Reservation\n        fields = [\"id\", \"start_date\", \"end_date\", \"guests\", \"room\"]\n\n    def validate_start_date(self, value):\n        if value < date.today():\n            raise serializers.ValidationError(\"تاریخ شروع نمی‌تواند در گذشته باشد.\")\n        return value\n\n    def validate_guests(self, value):\n        if value < 1:\n            raise serializers.ValidationError(\"تعداد مهمان باید حداقل ۱ باشد.\")\n        return value\n\n    def validate(self, attrs):\n        if attrs[\"end_date\"] <= attrs[\"start_date\"]:\n            raise serializers.ValidationError(\n                {\"end_date\": \"تاریخ پایان باید بعد از تاریخ شروع باشد.\"}\n            )\n        room = attrs.get(\"room\")\n        if room and attrs[\"guests\"] > room.capacity:\n            raise serializers.ValidationError(\n                {\"guests\": f\"ظرفیت این اتاق {room.capacity} نفر است.\"}\n            )\n        return attrs\n```",
+      "explanation": "این ترکیب سه سطحی، الگوی رایج در پروژه‌های واقعی است. هر قاعده در جای مناسب خودش."
+    },
+    {
+      "id": "ch-017-ex2",
+      "title": "تمرین — Validator مستقل",
+      "problem": "یک Validator به نام `NoProfanityValidator` بنویسید که یک لیست کلمات ممنوعه بگیرد و اگر در متن پیدا شد، خطا بدهد. سپس آن را روی فیلد `comment` اعمال کنید.",
+      "hints": ["از کلاس استفاده کنید تا پارامتر بگیرد.", "از `@deconstructible` استفاده کنید.", "در `__call__`، کلمات ممنوعه را در متن جستجو کنید."],
+      "solution": "```python\n# catalog/validators.py\nfrom django.utils.deconstruct import deconstructible\nfrom rest_framework import serializers\n\n\n@deconstructible\nclass NoProfanityValidator:\n    def __init__(self, banned_words):\n        self.banned_words = [w.lower() for w in banned_words]\n\n    def __call__(self, value):\n        text = value.lower()\n        for word in self.banned_words:\n            if word in text:\n                raise serializers.ValidationError(\n                    f\"متن شامل کلمه غیرمجاز «{word}» است.\"\n                )\n\n\n# استفاده\nclass CommentSerializer(serializers.ModelSerializer):\n    comment = serializers.CharField(\n        validators=[NoProfanityValidator([\"spam\", \"scam\", \"offensive\"])]\n    )\n\n    class Meta:\n        model = Comment\n        fields = [\"id\", \"comment\"]\n```",
+      "explanation": "این الگو برای قواعد قابل استفاده مجدد در چند سریالایزر عالی است."
+    }
+  ],
+  "summary": [
+    "اعتبارسنجی چندسطحی است: فیلد، `validate_<field>`، `validate()`, validators, مدل.",
+    "`validate_<field>` فقط به یک فیلد دسترسی دارد.",
+    "`validate()` برای قواعد بین چند فیلد.",
+    "Validatorها کلاس یا تابع قابل استفاده مجدد.",
+    "`UniqueTogetherValidator` برای یکتایی ترکیبی.",
+    "`ModelSerializer` به‌طور پیش‌فرض `full_clean()` را اجرا نمی‌کند.",
+    "از `error_messages` برای پیام‌های فارسی استفاده کنید.",
+    "همیشه مقدار را از `validate_<field>` برگردانید."
+  ],
+  "resources": [
+    { "title": "DRF — Validators", "url": "https://www.django-rest-framework.org/api-guide/validators/", "official": true },
+    { "title": "DRF — Validation in Serializers", "url": "https://www.django-rest-framework.org/api-guide/serializers/#validation", "official": true }
+  ]
+}

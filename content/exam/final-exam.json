@@ -1,0 +1,23 @@
+{
+  "id": "final-exam",
+  "slug": "final-exam",
+  "title": "آزمون نهایی",
+  "kicker": "Final Exam",
+  "level": "professional",
+  "estimatedMinutes": 60,
+  "lead": "این آزمون پس از تکمیل فصل‌ها فعال می‌شود.",
+  "sections": [
+    {
+      "id": "intro",
+      "title": "به‌زودی",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "در حال آماده‌سازی",
+          "text": "آزمون نهایی در فاز ۸ اضافه خواهد شد. تا آن زمان، از کوییزهای پایان هر فصل استفاده کنید."
+        }
+      ]
+    }
+  ]
+}

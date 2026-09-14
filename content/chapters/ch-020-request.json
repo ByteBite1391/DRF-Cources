@@ -1,0 +1,325 @@
+{
+  "id": "ch-020",
+  "slug": "request",
+  "title": "درخواست (Request)",
+  "kicker": "فصل ۲۰",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "در DRF، شیء درخواست بسیار قدرتمندتر از Django خالص است. این فصل همه APIهای Request را توضیح می‌دهد.",
+  "sections": [
+    {
+      "id": "difference",
+      "title": "تفاوت Request در DRF و Django",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF شیء `Request` خودش را دارد که روی `HttpRequest` Django سوار می‌شود. این شیء، پارس بدنه، احراز هویت و دسترسی به پارامترها را یکدست می‌کند."
+        },
+        {
+          "type": "flow",
+          "steps": ["HttpRequest", "→ DRF wraps →", "Request"]
+        },
+        {
+          "type": "table",
+          "headers": ["ویژگی", "Django HttpRequest", "DRF Request"],
+          "rows": [
+            ["بدنه JSON", "دستی `json.loads(request.body)`", "`request.data` (خودکار)"],
+            ["فرم", "`request.POST`", "`request.data` (خودکار)"],
+            ["فایل", "`request.FILES`", "`request.data` + `request.FILES`"],
+            ["Query params", "`request.GET`", "`request.query_params`"],
+            ["کاربر", "`request.user` (اگر AuthMiddleware)", "`request.user` (DRF خودکار)"],
+            ["احراز هویت", "—", "`request.auth` (توکن، JWT، ...)"],
+            ["هدرها", "`request.META` (dict خام)", "`request.headers` (dict تمیز)"],
+            ["متد", "`request.method`", "`request.method`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "data",
+      "title": "request.data",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`request.data`** پارس‌شده بدنه درخواست است. مستقل از فرمت — JSON، فرم، multipart، همه از یک API."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\n\n\n@api_view([\"POST\"])\ndef create_book(request):\n    # می‌تواند از JSON، فرم یا multipart بیاید\n    title = request.data.get(\"title\")\n    price = request.data.get(\"price\")\n    tags = request.data.getlist(\"tags\", [])  # اگر چندمقداری باشد\n    return Response({\n        \"title\": title,\n        \"price\": price,\n        \"tags\": tags,\n    })"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نکات مهم",
+          "text": "۱) `request.data` فقط در POST/PUT/PATCH معنی دارد. ۲) برای Query String از `request.query_params` استفاده کنید. ۳) اگر بدنه خالی باشد، `request.data` یک دیکشنری خالی است."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# همه این‌ها request.data را پر می‌کنند\n\n# JSON\ncurl -X POST http://api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"title\": \"Clean Code\"}'\n\n# فرم\ncurl -X POST http://api/books/ \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"title=Clean+Code\"\n\n# Multipart (با فایل)\ncurl -X POST http://api/books/ \\\n  -F \"title=Clean Code\" \\\n  -F \"cover=@cover.jpg\""
+        }
+      ]
+    },
+    {
+      "id": "query-params",
+      "title": "request.query_params",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`request.query_params`** معادل `request.GET` در Django است، اما با نام واضح‌تر."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(APIView):\n    def get(self, request):\n        # خواندن پارامترها\n        search = request.query_params.get(\"search\")\n        sort = request.query_params.get(\"sort\", \"-created_at\")\n        page = int(request.query_params.get(\"page\", 1))\n        active = request.query_params.get(\"active\") == \"true\"\n\n        # چند مقدار با یک نام\n        tags = request.query_params.getlist(\"tag\")\n\n        # بررسی وجود\n        if \"search\" in request.query_params:\n            pass\n\n        # همه پارامترها\n        return Response(dict(request.query_params))"
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "کاربرد"],
+          "rows": [
+            ["`.get(key, default)`", "مقدار یک پارامتر یا پیش‌فرض"],
+            ["`[key]`", "مقدار، با KeyError اگر نبود"],
+            ["`.getlist(key)`", "لیست همه مقادیر یک پارامتر"],
+            ["`in`", "بررسی وجود"],
+            ["`.keys()`, `.values()`, `.items()`", "تکرار"],
+            ["`.dict()`", "تبدیل به dict معمولی"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "همیشه رشته است",
+          "text": "همه مقادیر `query_params` رشته هستند. برای عدد، خودتان تبدیل کنید: `int(request.query_params.get(\"page\", 1))`. یا از فرم‌های DRF استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "title": "request.user",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`request.user`** کاربر جاری است. DRF آن را بعد از احراز هویت پر می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ProfileView(APIView):\n    def get(self, request):\n        if request.user.is_authenticated:\n            return Response({\n                \"id\": request.user.id,\n                \"username\": request.user.username,\n                \"email\": request.user.email,\n                \"is_staff\": request.user.is_staff,\n                \"is_superuser\": request.user.is_superuser,\n            })\n        return Response({\"detail\": \"احراز هویت نشده\"}, status=401)"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`is_authenticated`** — کاربر وارد شده؟",
+            "**`is_anonymous`** — کاربر ناشناس؟",
+            "**`is_staff`** — دسترسی به ادمین؟",
+            "**`is_superuser`** — ابرکاربر؟",
+            "**`id`, `username`, `email`** — اطلاعات پایه.",
+            "**`groups`** — گروه‌های کاربر.",
+            "**`user_permissions`** — مجوزها."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "کاربر ناشناس",
+          "text": "اگر کسی احراز هویت نشده باشد، `request.user` یک `AnonymousUser` است، نه `None`. همیشه `is_authenticated` را چک کنید، نه `user is None`."
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "request.auth",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`request.auth`** اطلاعات احراز هویت را نگه می‌دارد. بسته به کلاس احراز هویت، چیز متفاوتی است."
+        },
+        {
+          "type": "table",
+          "headers": ["کلاس احراز هویت", "مقدار `request.auth`"],
+          "rows": [
+            ["`SessionAuthentication`", "`None`"],
+            ["`BasicAuthentication`", "`None`"],
+            ["`TokenAuthentication`", "شیء `Token`"],
+            ["`JWTAuthentication`", "دیکشنری payload توکن"],
+            ["`RemoteUserAuthentication`", "`None`"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DebugAuthView(APIView):\n    def get(self, request):\n        return Response({\n            \"user\": str(request.user),\n            \"auth_type\": type(request.auth).__name__,\n            \"auth_repr\": str(request.auth) if request.auth else None,\n        })"
+        }
+      ]
+    },
+    {
+      "id": "headers",
+      "title": "request.headers",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`request.headers`** دسترسی تمیز به هدرها. نام‌ها case-insensitive هستند و `HTTP_` لازم نیست."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ClientInfoView(APIView):\n    def get(self, request):\n        return Response({\n            \"user_agent\": request.headers.get(\"User-Agent\"),\n            \"accept\": request.headers.get(\"Accept\"),\n            \"content_type\": request.headers.get(\"Content-Type\"),\n            \"authorization\": bool(request.headers.get(\"Authorization\")),\n            \"x_request_id\": request.headers.get(\"X-Request-ID\"),\n            \"client_ip\": self.get_client_ip(request),\n        })\n\n    def get_client_ip(self, request):\n        # اگر پروکسی دارید، X-Forwarded-For\n        x_forwarded = request.headers.get(\"X-Forwarded-For\")\n        if x_forwarded:\n            return x_forwarded.split(\",\")[0].strip()\n        return request.META.get(\"REMOTE_ADDR\")"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا request.headers؟",
+          "text": "در Django خالص باید از `request.META['HTTP_USER_AGENT']` استفاده کنید. DRF این را ساده می‌کند: `request.headers['User-Agent']`."
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "title": "request.method",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "@api_view([\"GET\", \"POST\", \"DELETE\"])\ndef flexible(request):\n    if request.method == \"GET\":\n        return Response({\"action\": \"list\"})\n    if request.method == \"POST\":\n        return Response({\"action\": \"create\"}, status=201)\n    if request.method == \"DELETE\":\n        return Response(status=204)\n    return Response(status=405)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "در APIView لازم نیست",
+          "text": "در `APIView`، متد HTTP را با نام متد پایتون مدیریت می‌کنید: `def get()`, `def post()` و... . لازم نیست `request.method` را چک کنید."
+        }
+      ]
+    },
+    {
+      "id": "content-type",
+      "title": "request.content_type",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`request.content_type`** نوع محتوای بدنه درخواست را می‌دهد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class UploadView(APIView):\n    def post(self, request):\n        ct = request.content_type\n        if ct == \"application/json\":\n            return Response({\"format\": \"json\", \"data\": request.data})\n        if ct.startswith(\"multipart/\"):\n            return Response({\n                \"format\": \"multipart\",\n                \"files\": list(request.FILES.keys()),\n            })\n        if ct == \"application/x-www-form-urlencoded\":\n            return Response({\"format\": \"form\", \"data\": request.data})\n        return Response({\"detail\": \"فرمت پشتیبانی نمی‌شود.\"}, status=415)"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "title": "request.FILES",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای فایل‌های آپلودشده، از `request.FILES` استفاده کنید. در DRF، فایل‌ها در `request.data` هم قابل دسترسی هستند اگر `MultiPartParser` فعال باشد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DocumentUploadView(APIView):\n    parser_classes = [MultiPartParser, FormParser]\n\n    def post(self, request):\n        # هر دو راه کار می‌کند\n        file1 = request.FILES.get(\"document\")\n        file2 = request.data.get(\"document\")\n\n        if not file1:\n            return Response({\"detail\": \"فایل ارسال نشده.\"}, status=400)\n\n        # بررسی نوع\n        if not file1.name.endswith((\".pdf\", \".docx\")):\n            return Response({\"detail\": \"فقط PDF و DOCX مجاز است.\"}, status=400)\n\n        # بررسی اندازه\n        if file1.size > 10 * 1024 * 1024:\n            return Response({\"detail\": \"حجم فایل بیش از ۱۰ مگابایت.\"}, status=400)\n\n        return Response({\n            \"name\": file1.name,\n            \"size\": file1.size,\n            \"content_type\": file1.content_type,\n        })"
+        }
+      ]
+    },
+    {
+      "id": "advanced",
+      "title": "دسترسی‌های پیشرفته",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DebugRequestView(APIView):\n    def get(self, request):\n        return Response({\n            # بدنه خام (اگر پارسر اجرا نشده باشد)\n            \"raw_body\": request.body[:200] if request.body else None,\n\n            # مسیر و URL\n            \"path\": request.path,\n            \"full_path\": request.get_full_path(),\n            \"query_string\": request.META.get(\"QUERY_STRING\"),\n\n            # دامنه\n            \"host\": request.get_host(),\n            \"scheme\": request.scheme,\n            \"is_secure\": request.is_secure(),\n\n            # کوکی‌ها\n            \"cookies\": dict(request.COOKIES),\n\n            # متادیتا Django\n            \"remote_addr\": request.META.get(\"REMOTE_ADDR\"),\n            \"server_name\": request.META.get(\"SERVER_NAME\"),\n\n            # فرمت مورد درخواست\n            \"accepted_renderer\": request.accepted_renderer.__class__.__name__,\n            \"accepted_media_type\": request.accepted_media_type,\n\n            # نسخه API\n            \"version\": getattr(request, \"version\", None),\n            \"versioning_scheme\": type(request.versioning_scheme).__name__,\n        })"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `request.POST` در DRF",
+          "why": "`request.POST` فقط فرم را می‌خواند، نه JSON.",
+          "when": "وقتی عادت Django دارید.",
+          "fix": "از `request.data` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "چک کردن `user is None`",
+          "why": "کاربر ناشناس `AnonymousUser` است، نه `None`. شرایط اشتباه پیش می‌رود.",
+          "when": "وقتی احراز هویت نشده باشد.",
+          "fix": "از `user.is_authenticated` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فرض اینکه `query_params` عدد است",
+          "why": "همیشه رشته است. `int()` لازم است یا خطا می‌دهید.",
+          "when": "وقتی `page` یا `limit` می‌خوانید.",
+          "fix": "تبدیل صریح یا استفاده از فرم‌های اعتبارسنجی."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "خواندن فایل از `request.body`",
+          "why": "اگر `MultiPartParser` اجرا شده باشد، `request.body` خالی است.",
+          "when": "وقتی می‌خواهید فایل خام را دستکاری کنید.",
+          "fix": "از `request.FILES` یا `request.data` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `request.META` به‌جای `request.headers`",
+          "why": "خام، ناخوانا، پیشوند `HTTP_` اجباری.",
+          "when": "وقتی از Django مهاجرت می‌کنید.",
+          "fix": "`request.headers.get(\"User-Agent\")`"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-020-q1",
+      "tag": "کوییز",
+      "question": "برای خواندن Query String در DRF از چه استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`request.GET`", "correct": false },
+        { "text": "`request.query_params`", "correct": true, "explanation": "معادل request.GET است اما خوانا‌تر." },
+        { "text": "`request.data`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-020-q2",
+      "tag": "کوییز",
+      "question": "اگر کاربر احراز هویت نشده باشد، `request.user` چیست؟",
+      "options": [
+        { "text": "`None`", "correct": false },
+        { "text": "`AnonymousUser`", "correct": true, "explanation": "یک شیء که is_authenticated آن False است." },
+        { "text": "خطا می‌دهد", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-020-ex1",
+      "title": "تمرین — Endpoint دیباگ",
+      "problem": "یک Endpoint `/api/debug/` بسازید که اطلاعات کامل درخواست را برگرداند: متد، مسیر، Query Params، هدرها، وضعیت احراز هویت و IP کلاینت.",
+      "hints": ["از `request.query_params`، `request.headers`، `request.user` استفاده کنید.", "برای IP از `request.META.get(\"REMOTE_ADDR\")`."],
+      "solution": "```python\nfrom rest_framework.decorators import api_view\nfrom rest_framework.response import Response\n\n\n@api_view([\"GET\", \"POST\"])\ndef debug(request):\n    return Response({\n        \"method\": request.method,\n        \"path\": request.path,\n        \"query_params\": dict(request.query_params),\n        \"data\": request.data if request.method in (\"POST\", \"PUT\", \"PATCH\") else None,\n        \"headers\": {\n            \"user_agent\": request.headers.get(\"User-Agent\"),\n            \"accept\": request.headers.get(\"Accept\"),\n            \"content_type\": request.content_type,\n        },\n        \"user\": {\n            \"is_authenticated\": request.user.is_authenticated,\n            \"username\": request.user.username if request.user.is_authenticated else None,\n        },\n        \"client_ip\": request.META.get(\"REMOTE_ADDR\"),\n    })\n```",
+      "explanation": "این Endpoint در توسعه برای دیباگ عالی است. در تولید غیرفعال کنید."
+    }
+  ],
+  "summary": [
+    "`request.data` — بدنه درخواست (JSON، فرم، multipart).",
+    "`request.query_params` — پارامترهای URL.",
+    "`request.user` — کاربر جاری (AnonymousUser اگر وارد نشده).",
+    "`request.auth` — اطلاعات احراز هویت (توکن، JWT payload، ...).",
+    "`request.headers` — دسترسی تمیز به هدرها.",
+    "`request.method` — متد HTTP.",
+    "`request.content_type` — نوع بدنه.",
+    "`request.FILES` — فایل‌های آپلودشده.",
+    "همیشه از `request.data` استفاده کنید، نه `request.POST`."
+  ],
+  "resources": [
+    { "title": "DRF — Requests", "url": "https://www.django-rest-framework.org/api-guide/requests/", "official": true }
+  ]
+}

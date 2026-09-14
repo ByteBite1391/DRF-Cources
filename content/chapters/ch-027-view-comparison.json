@@ -1,0 +1,271 @@
+{
+  "id": "ch-027",
+  "slug": "view-comparison",
+  "title": "مقایسه نماها",
+  "kicker": "فصل ۲۷",
+  "level": "intermediate",
+  "estimatedMinutes": 25,
+  "lead": "در DRF هفت لایه برای ساخت نما وجود دارد. انتخاب درست بین آن‌ها، کد شما را کوتاه، خوانا و قابل نگهداری می‌کند.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "هفت لایه نما",
+      "blocks": [
+        {
+          "type": "flow",
+          "steps": ["@api_view", "APIView", "GenericAPIView", "Mixins", "Generic Views", "ViewSet", "ModelViewSet"]
+        },
+        {
+          "type": "table",
+          "headers": ["لایه", "انتزاع", "کد لازم"],
+          "rows": [
+            ["`@api_view`", "کم", "بسیار زیاد"],
+            ["`APIView`", "کم", "زیاد"],
+            ["`GenericAPIView`", "متوسط", "زیاد"],
+            ["Mixins", "متوسط", "متوسط"],
+            ["Generic Views", "زیاد", "کم"],
+            ["ViewSet", "زیاد", "کم"],
+            ["`ModelViewSet`", "بیشترین", "بسیار کم"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "decision-tree",
+      "title": "درخت تصمیم",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "**CRUD روی یک مدل با URLهای استاندارد؟** → `ModelViewSet`",
+            "**CRUD با محدودیت‌ها یا منطق خاص؟** → `Generic Views`",
+            "**چند عملیات مرتبط روی یک منبع + اکشن سفارشی؟** → `ViewSet` یا `GenericViewSet`",
+            "**منطق سفارشی که در قالب Generic جا نمی‌شود؟** → `APIView`",
+            "**یک Endpoint ساده و خاص؟** → `@api_view`"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api-view-vs-apiview",
+      "title": "@api_view یا APIView؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["معیار", "`@api_view`", "`APIView`"],
+          "rows": [
+            ["منطق ساده (۱-۲ متد)", "✅ بهتر", "زیادی است"],
+            ["چند متد (۳+)", "شلوغ", "✅ بهتر"],
+            ["نیاز به متد کمکی", "❌", "✅"],
+            ["ارث‌بری", "❌", "✅"],
+            ["دسترسی به `self`", "❌", "✅"],
+            ["سازمان‌دهی", "تابع خالص", "کلاس"],
+            ["تست‌پذیری", "خوب", "بهتر"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# @api_view — منطق ساده\n@api_view([\"GET\"])\ndef health_check(request):\n    return Response({\"status\": \"ok\"})\n\n\n# APIView — چند متد مرتبط\nclass HealthView(APIView):\n    def get(self, request):\n        return Response({\"status\": \"ok\"})\n\n    def post(self, request):\n        return Response({\"received\": request.data})"
+        }
+      ]
+    },
+    {
+      "id": "generic-vs-apiview",
+      "title": "Generic Views یا APIView؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["معیار", "Generic Views", "APIView"],
+          "rows": [
+            ["CRUD استاندارد", "✅ بهتر", "شلوغ"],
+            ["منطق خاص", "محدود", "✅ بهتر"],
+            ["کد لازم", "کم", "زیاد"],
+            ["انتزاع", "زیاد", "کم"],
+            ["کنترل", "کمتر", "بیشتر"],
+            ["یادگیری", "منحنی", "ساده"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# Generic Views — CRUD استاندارد\nclass BookListCreateView(generics.ListCreateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n\n# APIView — منطق خاص (مثلاً رفرش توکن)\nclass TokenRefreshView(APIView):\n    def post(self, request):\n        token = request.data.get(\"refresh\")\n        # منطق سفارشی\n        return Response({\"access\": new_access})"
+        }
+      ]
+    },
+    {
+      "id": "generic-vs-viewset",
+      "title": "Generic Views یا ViewSet؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["معیار", "Generic Views", "ViewSet"],
+          "rows": [
+            ["URLهای استاندارد", "دستی در urls.py", "خودکار با Router"],
+            ["اکشن سفارشی", "Endpoint جدا", "با `@action`"],
+            ["سازمان‌دهی", "چند کلاس", "یک کلاس"],
+            ["کنترل URL", "کامل", "محدود"],
+            ["شخصی‌سازی URL", "آسان", "با Router سفارشی"],
+            ["کد کمتر", "—", "✅"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# Generic Views — کنترل کامل URL\nclass BookListCreateView(generics.ListCreateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\nclass BookDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n# urls.py\npath(\"books/\", BookListCreateView.as_view()),\npath(\"books/<int:pk>/\", BookDetailView.as_view()),\n\n\n# ViewSet — همه در یک کلاس\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n# urls.py\nrouter.register(\"books\", BookViewSet)"
+        }
+      ]
+    },
+    {
+      "id": "modelviewset-when",
+      "title": "چه زمانی ModelViewSet؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**URLها استاندارد REST هستند.**",
+            "**CRUD کامل روی یک مدل.**",
+            "**می‌خواهید کد کمتر بنویسید.**",
+            "**اکشن‌های سفارشی محدود (۱-۳ تا).**",
+            "**تیم با ViewSet آشناست.**"
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "چه زمانی ModelViewSet نه؟",
+          "text": "اگر URLهای شما غیر استانداردند (مثلاً `/books/active/` و `/books/draft/` به‌عنوان Endpointهای جدا)، یا اکشن‌های زیادی دارید که منطق متفاوت دارند، Generic Views یا APIView بهتر است."
+        }
+      ]
+    },
+    {
+      "id": "real-examples",
+      "title": "مثال‌های واقعی",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["سناریو", "انتخاب", "دلیل"],
+          "rows": [
+            ["CRUD کتاب‌ها", "`ModelViewSet`", "URLها استاندارد، کد کم"],
+            ["CRUD کاربران با محدودیت‌های خاص", "`Generic Views` + `get_permissions`", "کنترل بیشتر"],
+            ["Endpoint آپلود فایل", "`APIView`", "منطق خاص"],
+            ["Endpoint سلامت (health check)", "`@api_view`", "یک متد ساده"],
+            ["جستجوی پیشرفته با چند فیلتر", "`ListAPIView` + `filter_backends`", "تمرکز روی فیلتر"],
+            ["Dashboard آماری", "`@api_view` یا `APIView`", "منطق تجمیعی"],
+            ["CRUD + اکشن publish", "`ViewSet` + `@action`", "ترکیب"],
+            ["CRUD ساده با مجوز پیچیده", "`ModelViewSet` + `get_permissions`", "کنترل مجوز"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "ModelViewSet برای همه چیز",
+          "why": "اگر URLهای شما استاندارد نیستند، مجبور می‌شوید Router را به‌زور تغییر دهید و کد پیچیده می‌شود.",
+          "when": "وقتی تازه با DRF آشنا شده‌اید و همه چیز را با ViewSet می‌سازید.",
+          "fix": "برای URLهای غیر استاندارد، از `APIView` یا `Generic Views` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "APIView برای CRUD استاندارد",
+          "why": "کد طولانی، تکراری، خطاپذیر.",
+          "when": "وقتی از Django آمده‌اید و با کلاس‌های DRF آشنا نیستید.",
+          "fix": "از `ListCreateAPIView` و `RetrieveUpdateDestroyAPIView` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ترکیب Mixinهای دستی به‌جای کلاس‌های Concrete",
+          "why": "کد اضافه بدون مزیت.",
+          "when": "وقتی تازه با Mixin آشنا شده‌اید.",
+          "fix": "کلاس‌های Concrete آماده (`ListCreateAPIView`, `RetrieveUpdateDestroyAPIView`) همه کارها را می‌کنند."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "@api_view برای همه چیز",
+          "why": "کد طولانی، نبود سازمان‌دهی، تکرار در هر Endpoint.",
+          "when": "وقتی به توابع عادت دارید.",
+          "fix": "برای چند متد، `APIView`؛ برای CRUD، `Generic Views` یا `ViewSet`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "انتخاب بر اساس مُد",
+          "why": "مناسب‌ترین ابزار، ابزاری است که کمترین کد اضافه و بیشترین خوانایی را بدهد.",
+          "when": "وقتی تیم می‌گوید «همه چیز را ViewSet کن».",
+          "fix": "برای هر Endpoint، بر اساس درخت تصمیم انتخاب کنید."
+        }
+      ]
+    },
+    {
+      "id": "cheatsheet",
+      "title": "چیت‌شیت",
+      "blocks": [
+        {
+          "type": "cheatsheet",
+          "title": "انتخاب سریع",
+          "items": [
+            { "title": "@api_view", "body": "منطق ساده، ۱-۲ متد، Endpoint خاص" },
+            { "title": "APIView", "body": "منطق سفارشی، چند متد، متد کمکی" },
+            { "title": "GenericAPIView", "body": "پایه ساخت ویوهای سفارشی (نادر)" },
+            { "title": "Mixins", "body": "ترکیب رفتار سفارشی (نادر)" },
+            { "title": "Generic Views", "body": "CRUD با کنترل URL و منطق خاص" },
+            { "title": "ViewSet", "body": "چند عملیات مرتبط + اکشن سفارشی" },
+            { "title": "ModelViewSet", "body": "CRUD کامل با URLهای استاندارد" }
+          ]
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-027-q1",
+      "tag": "کوییز",
+      "question": "برای CRUD استاندارد روی یک مدل با URLهای REST، کدام انتخاب بهتر است؟",
+      "options": [
+        { "text": "`APIView`", "correct": false },
+        { "text": "`ModelViewSet`", "correct": true, "explanation": "کمترین کد، استانداردترین URLها." },
+        { "text": "`@api_view`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-027-q2",
+      "tag": "کوییز",
+      "question": "برای یک Endpoint که فقط یک عملیات خاص انجام می‌دهد (مثل health check)، کدام مناسب‌تر است؟",
+      "options": [
+        { "text": "`ModelViewSet`", "correct": false },
+        { "text": "`@api_view`", "correct": true, "explanation": "ساده‌ترین و واضح‌ترین." },
+        { "text": "`GenericAPIView`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-027-ex1",
+      "title": "تمرین — انتخاب نما",
+      "problem": "برای هر سناریو، لایه مناسب را انتخاب کنید و دلیل بنویسید:\n۱) CRUD کتاب‌ها با URL استاندارد.\n۲) Endpoint دریافت آمار پروفایل کاربر جاری.\n۳) لیست کتاب‌های یک نویسنده با فیلتر و جستجو.\n۴) CRUD کاربران به‌علاوه اکشن تغییر رمز عبور.",
+      "hints": ["به استاندارد بودن URL فکر کنید.", "به تعداد متدها.", "به نیاز به کنترل vs سادگی."],
+      "solution": "۱) **ModelViewSet** — CRUD کامل با URLهای استاندارد.\n۲) **@api_view یا APIView** — یک Endpoint خاص با منطق تجمیعی.\n۳) **ListAPIView** — فقط خواندن با فیلتر و جستجو.\n۴) **ViewSet** + **@action** — CRUD + عملیات غیر CRUD.",
+      "explanation": "انتخاب درست، کد را کوتاه، خوانا و قابل نگهداری می‌کند."
+    }
+  ],
+  "summary": [
+    "هفت لایه: `@api_view`, `APIView`, `GenericAPIView`, Mixins, Generic Views, ViewSet, ModelViewSet.",
+    "برای منطق ساده: `@api_view`.",
+    "برای چند متد: `APIView`.",
+    "برای CRUD با کنترل: Generic Views.",
+    "برای CRUD استاندارد با کد کم: ModelViewSet.",
+    "برای CRUD + اکشن سفارشی: ViewSet.",
+    "انتخاب بر اساس درخت تصمیم، نه مد.",
+    "هر Endpoint ممکن است انتخاب متفاوتی داشته باشد."
+  ],
+  "resources": [
+    { "title": "DRF — Views", "url": "https://www.django-rest-framework.org/api-guide/views/", "official": true },
+    { "title": "DRF — Generic views", "url": "https://www.django-rest-framework.org/api-guide/generic-views/", "official": true },
+    { "title": "DRF — ViewSets", "url": "https://www.django-rest-framework.org/api-guide/viewsets/", "official": true }
+  ]
+}

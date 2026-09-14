@@ -1,0 +1,281 @@
+{
+  "id": "ch-010",
+  "slug": "first-api",
+  "title": "اولین API",
+  "kicker": "فصل ۱۰",
+  "level": "beginner",
+  "estimatedMinutes": 40,
+  "lead": "در این فصل، اولین API واقعی خود را می‌سازیم: یک Endpoint ساده که به درخواست‌ها پاسخ می‌دهد.",
+  "sections": [
+    {
+      "id": "goal",
+      "title": "هدف",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌خواهیم یک Endpoint به نام `/api/hello/` بسازیم که پاسخ JSON برگرداند. سپس آن را گسترش می‌دهیم تا داده بگیرد و بازگرداند."
+        },
+        {
+          "type": "flow",
+          "steps": ["GET /api/hello/", "→", "200 OK", "→", "{\"message\": \"...\"}"]
+        }
+      ]
+    },
+    {
+      "id": "first-view",
+      "title": "گام ۱ — اولین نمای API",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "ساده‌ترین راه ساخت یک API در DRF، استفاده از دکوراتور `@api_view` است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\n\n\n@api_view([\"GET\"])\ndef hello(request):\n    return Response({\"message\": \"سلام از DRF!\"})"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`@api_view([\"GET\"])` — می‌گوید این تابع یک نمای DRF است و فقط متد GET را می‌پذیرد.",
+            "`request` — یک `Request` DRF، نه `HttpRequest` خام.",
+            "`Response` — داده پایتون می‌گیرد و بر اساس `Accept` به JSON (یا HTML در مرورگر) تبدیل می‌کند."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "first-url",
+      "title": "گام ۲ — مسیر",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from django.urls import path\nfrom .views import hello\n\nurlpatterns = [\n    path(\"hello/\", hello, name=\"hello\"),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "from django.contrib import admin\nfrom django.urls import path, include\n\nurlpatterns = [\n    path(\"admin/\", admin.site.urls),\n    path(\"api/\", include(\"catalog.urls\")),\n]"
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "title": "گام ۳ — تست",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "سرور را اجرا کنید و آدرس را در مرورگر یا با curl بزنید."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "python manage.py runserver\n\n# در ترمینال دیگر\ncurl http://127.0.0.1:8000/api/hello/"
+        },
+        {
+          "type": "paragraph",
+          "text": "پاسخ:"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\"message\": \"سلام از DRF!\"}"
+        },
+        {
+          "type": "paragraph",
+          "text": "اگر آدرس را در مرورگر باز کنید، به‌جای JSON خام، یک صفحه HTML زیبا می‌بینید. این **Browsable API** است که در فصل بعد کامل توضیح می‌دهیم."
+        }
+      ]
+    },
+    {
+      "id": "all-methods",
+      "title": "گام ۴ — پشتیبانی از همه متدها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بیایید `hello` را گسترش دهیم تا همه متدهای اصلی را بپذیرد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\nfrom rest_framework import status\n\n\n@api_view([\"GET\", \"POST\", \"PUT\", \"PATCH\", \"DELETE\"])\ndef hello(request):\n    if request.method == \"GET\":\n        return Response({\"message\": \"دریافت شد\", \"method\": \"GET\"})\n\n    if request.method == \"POST\":\n        return Response(\n            {\"message\": \"ساخته شد\", \"received\": request.data},\n            status=status.HTTP_201_CREATED,\n        )\n\n    if request.method == \"PUT\":\n        return Response({\"message\": \"جایگزین شد\", \"received\": request.data})\n\n    if request.method == \"PATCH\":\n        return Response({\"message\": \"ویرایش شد\", \"received\": request.data})\n\n    if request.method == \"DELETE\":\n        return Response(status=status.HTTP_204_NO_CONTENT)\n\n    # این خط هرگز اجرا نمی‌شود چون @api_view متدهای دیگر را رد می‌کند\n    return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نکته",
+          "text": "چون `@api_view` فقط متدهای تعریف‌شده را می‌پذیرد، اگر کسی متد دیگری بفرستد، DRF خودکار `405 Method Not Allowed` برمی‌گرداند."
+        }
+      ]
+    },
+    {
+      "id": "test-all",
+      "title": "گام ۵ — تست همه متدها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# GET\ncurl http://127.0.0.1:8000/api/hello/\n\n# POST با JSON\ncurl -X POST http://127.0.0.1:8000/api/hello/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"name\": \"Sara\"}'\n\n# PUT\ncurl -X PUT http://127.0.0.1:8000/api/hello/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"name\": \"Ali\"}'\n\n# PATCH\ncurl -X PATCH http://127.0.0.1:8000/api/hello/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"age\": 30}'\n\n# DELETE\ncurl -X DELETE http://127.0.0.1:8000/api/hello/\n\n# متد غیرمجاز — باید 405 بدهد\ncurl -X OPTIONS http://127.0.0.1:8000/api/hello/"
+        }
+      ]
+    },
+    {
+      "id": "class-view",
+      "title": "گام ۶ — نسخه کلاسی با APIView",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "روش دیگر نوشتن نما با کلاس `APIView` است. هر متد HTTP یک متد پایتون می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\n\n\nclass HelloView(APIView):\n    def get(self, request):\n        return Response({\"message\": \"دریافت شد\", \"method\": \"GET\"})\n\n    def post(self, request):\n        return Response(\n            {\"message\": \"ساخته شد\", \"received\": request.data},\n            status=status.HTTP_201_CREATED,\n        )\n\n    def put(self, request):\n        return Response({\"message\": \"جایگزین شد\", \"received\": request.data})\n\n    def patch(self, request):\n        return Response({\"message\": \"ویرایش شد\", \"received\": request.data})\n\n    def delete(self, request):\n        return Response(status=status.HTTP_204_NO_CONTENT)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from django.urls import path\nfrom .views import HelloView\n\nurlpatterns = [\n    path(\"hello/\", HelloView.as_view(), name=\"hello\"),\n]"
+        },
+        {
+          "type": "table",
+          "headers": ["مزیت APIView", "توضیح"],
+          "rows": [
+            ["سازمان‌دهی", "هر متد HTTP یک متد کلاس جداگانه"],
+            ["قابلیت توسعه", "می‌توانید متدهای کمکی اضافه کنید"],
+            ["دسترسی به self", "می‌توانید وضعیت روی instance نگه دارید"],
+            ["قابل ارث‌بری", "کلاس‌های دیگر می‌توانند از آن ارث‌بری کنند"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "when",
+      "title": "`@api_view` یا `APIView`؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["معیار", "`@api_view`", "`APIView`"],
+          "rows": [
+            ["منطق ساده", "بهتر", "زیادی است"],
+            ["چند متد HTTP", "خوب", "بهتر"],
+            ["نیاز به متدهای کمکی", "سخت", "طبیعی"],
+            ["ارث‌بری", "ممکن نیست", "بله"],
+            ["قابل تست", "خوب", "خوب"],
+            ["خوانایی", "فشرده", "سازمان‌یافته"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "`@api_view` برای منطق‌های کوچک.",
+          "better": "`APIView` برای چند متد مرتبط.",
+          "production": "Generic Views و ViewSetها برای CRUD؛ APIView فقط برای منطق‌های خاص."
+        }
+      ]
+    },
+    {
+      "id": "errors",
+      "title": "مدیریت خطا",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بیایید ببینیم اگر داده اشتباه بفرستیم، DRF چه می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# بدنه خالی\ncurl -X POST http://127.0.0.1:8000/api/hello/\n\n# Content-Type نامعتبر\ncurl -X POST http://127.0.0.1:8000/api/hello/ \\\n  -H \"Content-Type: text/plain\" \\\n  -d 'some plain text'\n\n# JSON نامعتبر\ncurl -X POST http://127.0.0.1:8000/api/hello/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{invalid json}'"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "رفتار DRF",
+          "text": "برای JSON نامعتبر، DRF `400 Bad Request` با پیام خطای واضح برمی‌گرداند. برای Content-Type ناشناخته، `415 Unsupported Media Type`."
+        }
+      ]
+    },
+    {
+      "id": "limitations",
+      "title": "محدودیت این رویکرد",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "این API کار می‌کند، اما هنوز کامل نیست:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**بدون اعتبارسنجی:** هر داده‌ای را قبول می‌کند.",
+            "**بدون مدل:** داده را ذخیره نمی‌کند.",
+            "**بدون احراز هویت:** هر کسی می‌تواند درخواست بفرستد.",
+            "**بدون مجوز:** همه به همه چیز دسترسی دارند.",
+            "**بدون صفحه‌بندی:** اگر داده زیاد شود، پاسخ سنگین می‌شود."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قدم بعدی",
+          "text": "در فصل‌های بعدی، این نقص‌ها را یکی‌یکی برطرف می‌کنیم: ابتدا Browsable API (فصل ۱۱)، سپس تست دستی (فصل ۱۲)، بعد Serializers (فصل ۱۳) و مدل‌ها."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-010-q1",
+      "tag": "کوییز",
+      "question": "دکوراتور `@api_view([\"GET\", \"POST\"])` چه کاری انجام می‌دهد؟",
+      "options": [
+        { "text": "فقط GET را می‌پذیرد.", "correct": false },
+        { "text": "تابع را به نمای DRF تبدیل می‌کند و فقط متدهای GET و POST را می‌پذیرد.", "correct": true, "explanation": "DRF خودکار بقیه متدها را با 405 رد می‌کند." },
+        { "text": "خروجی را به HTML تبدیل می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-010-q2",
+      "tag": "کوییز",
+      "question": "تفاوت اصلی `Response` DRF با `JsonResponse` Django چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "`Response` بر اساس هدر Accept، فرمت خروجی را انتخاب می‌کند (JSON، HTML، ...).", "correct": true, "explanation": "به همین دلیل Browsable API کار می‌کند." },
+        { "text": "`Response` فقط HTML می‌دهد.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-010-ex1",
+      "title": "تمرین — Endpoint خوش‌آمدگویی",
+      "problem": "یک Endpoint به نام `/api/welcome/` بسازید که:\n- با GET پیام `{\"message\": \"خوش آمدید\"}` برگرداند.\n- با POST داده `{\"name\": \"...\"}` را بگیرد و پیام `{\"greeting\": \"سلام، <نام>!\"}` برگرداند.\n- بقیه متدها را با 405 رد کند.",
+      "hints": ["از `@api_view([\"GET\", \"POST\"])` استفاده کنید.", "داده ورودی از `request.data` گرفته می‌شود.", "برای 405، کاری لازم نیست — DRF خودش انجام می‌دهد."],
+      "solution": "```python\n# catalog/views.py\nfrom rest_framework.decorators import api_view\nfrom rest_framework.response import Response\n\n\n@api_view([\"GET\", \"POST\"])\ndef welcome(request):\n    if request.method == \"GET\":\n        return Response({\"message\": \"خوش آمدید\"})\n\n    name = request.data.get(\"name\", \"مهمان\")\n    return Response({\"greeting\": f\"سلام، {name}!\"})\n```\n\n```python\n# catalog/urls.py\nfrom django.urls import path\nfrom .views import welcome\n\nurlpatterns = [\n    path(\"welcome/\", welcome, name=\"welcome\"),\n]\n```",
+      "explanation": "این الگو پایه‌ای است که در فصل‌های بعدی با Serializer و ViewSet جایگزین می‌شود، اما مفهوم یکسان است: دریافت درخواست، تولید پاسخ."
+    }
+  ],
+  "summary": [
+    "`@api_view` ساده‌ترین راه ساخت نمای DRF است.",
+    "متدهای مجاز را در لیست مشخص می‌کنید.",
+    "DRF خودکار متدهای غیرمجاز را با 405 رد می‌کند.",
+    "`APIView` نسخه کلاسی است؛ هر متد HTTP یک متد کلاس.",
+    "`Response` بر اساس `Accept` فرمت را انتخاب می‌کند.",
+    "JSON نامعتبر → `400 Bad Request`؛ Content-Type ناشناخته → `415`.",
+    "این رویکرد پایه است؛ در فصل‌های بعدی کامل می‌شود."
+  ],
+  "resources": [
+    { "title": "DRF — Function based views", "url": "https://www.django-rest-framework.org/api-guide/views/", "official": true },
+    { "title": "DRF — Class based views", "url": "https://www.django-rest-framework.org/api-guide/views/", "official": true }
+  ]
+}

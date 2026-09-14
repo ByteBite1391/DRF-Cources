@@ -1,0 +1,229 @@
+{
+  "id": "ch-011",
+  "slug": "browsable-api",
+  "title": "Browsable API",
+  "kicker": "فصل ۱۱",
+  "level": "beginner",
+  "estimatedMinutes": 20,
+  "lead": "یکی از زیباترین ویژگی‌های DRF: یک رابط وب تعاملی که به‌صورت خودکار ساخته می‌شود و به شما اجازه می‌دهد API را در مرورگر تست کنید.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "Browsable API چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Browsable API** یک صفحه HTML است که DRF به‌صورت خودکار برای هر Endpoint می‌سازد. وقتی درخواست با هدر `Accept: text/html` (مثل درخواست مرورگر) بیاید، DRF به‌جای JSON خام، یک رابط تعاملی برمی‌گرداند."
+        },
+        {
+          "type": "flow",
+          "steps": ["Browser", "Accept: text/html", "DRF", "Browsable HTML"]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مشاهده داده:** پاسخ JSON را به‌صورت درختی نمایش می‌دهد.",
+            "**ارسال درخواست:** فرم برای POST، PUT، PATCH.",
+            "**احراز هویت:** ورود/خروج کاربر از خود صفحه.",
+            "**تست سریع:** بدون نیاز به curl یا Postman."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "enable",
+      "title": "فعال‌سازی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Browsable API به‌طور پیش‌فرض فعال است اگر این دو شرط برقرار باشند:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "`BrowsableAPIRenderer` در `DEFAULT_RENDERER_CLASSES` باشد.",
+            "`django.contrib.staticfiles` در `INSTALLED_APPS` باشد و `DEBUG=True`."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n        \"rest_framework.renderers.BrowsableAPIRenderer\",\n    ],\n}"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "فقط در توسعه",
+          "text": "در محیط تولید، `BrowsableAPIRenderer` را حذف کنید. هم بار سرور کم می‌شود، هم سطح حمله کاهش می‌یابد. در ادامه چگونگی‌اش را می‌بینید."
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "title": "استفاده",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "سرور را اجرا کنید و به یک Endpoint بروید:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "filename": "browser",
+          "code": "http://127.0.0.1:8000/api/hello/"
+        },
+        {
+          "type": "paragraph",
+          "text": "صفحه‌ای مشابه این می‌بینید:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**بالا:** متد و URL.",
+            "**راست بالا:** دکمه ورود/خروج (اگر احراز هویت فعال باشد).",
+            "**وسط:** فرم ارسال داده — در POST، PUT، PATCH ظاهر می‌شود.",
+            "**پایین:** دکمه `OPTIONS`، `GET`، `HEAD`.",
+            "**نتیجه:** پاسخ با ساختار درختی زیبا."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "formats",
+      "title": "تغییر فرمت پاسخ",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید در URL، فرمت را مشخص کنید:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "# HTML (پیش‌فرض در مرورگر)\nhttp://127.0.0.1:8000/api/hello/\n\n# JSON\nhttp://127.0.0.1:8000/api/hello/?format=json\n\n# با پسوند\nhttp://127.0.0.1:8000/api/hello.json\n\n# با هدر Accept\ncurl -H \"Accept: application/json\" http://127.0.0.1:8000/api/hello/"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "فرمت‌سافیکس",
+          "text": "برای فعال بودن `.json` و `?format=`, باید رندرری با فرمت `json` ثبت شده باشد و `URL_FORMAT_OVERRIDE` فعال باشد."
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "احراز هویت در Browsable API",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر `SessionAuthentication` فعال باشد، می‌توانید از خود صفحه، با کاربر ادمین وارد شوید و درخواست‌های محافظت‌شده را تست کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticatedOrReadOnly\",\n    ],\n}"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**بدون لاگین:** فقط GET مجاز است.",
+            "**با لاگین:** POST، PUT، PATCH، DELETE هم مجاز می‌شوند (اگر مجوز داشته باشید).",
+            "**دکمه لاگین:** بالا-راست صفحه Browsable API."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "production",
+      "title": "در محیط تولید",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در تولید، Browsable API را غیرفعال کنید. بهترین روش، تفکیک تنظیمات بین محیط‌هاست."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n    ],\n}\n\nif DEBUG:\n    REST_FRAMEWORK[\"DEFAULT_RENDERER_CLASSES\"].append(\n        \"rest_framework.renderers.BrowsableAPIRenderer\"\n    )"
+        },
+        {
+          "type": "callout-level",
+          "basic": "BrowsableAPIRenderer همیشه فعال.",
+          "better": "تنظیمات محیطی: فقط در `DEBUG=True`.",
+          "production": "در تولید فقط JSONRenderer + مستندات تعاملی جداگانه (Swagger UI / ReDoc) روی محیط staging."
+        }
+      ]
+    },
+    {
+      "id": "customize",
+      "title": "سفارشی‌سازی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید بعضی جنبه‌های Browsable API را سفارشی کنید:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "REST_FRAMEWORK = {\n    # عنوان و توضیح صفحه Browsable\n    \"VIEW_NAME_FUNCTION\": \"myproject.utils.get_view_name\",\n    \"VIEW_DESCRIPTION_FUNCTION\": \"myproject.utils.get_view_description\",\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "نکته",
+          "text": "در ۹۹٪ پروژه‌ها، سفارشی‌سازی Browsable API لازم نیست. همین که فعال باشد و در تولید خاموش شود، کافی است."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-011-q1",
+      "tag": "کوییز",
+      "question": "Browsable API چه زمانی نمایش داده می‌شود؟",
+      "options": [
+        { "text": "همیشه، حتی برای درخواست‌های JSON.", "correct": false },
+        { "text": "وقتی درخواست با `Accept: text/html` بیاید و BrowsableAPIRenderer فعال باشد.", "correct": true, "explanation": "DRF بر اساس هدر Accept تصمیم می‌گیرد JSON بدهد یا HTML." },
+        { "text": "فقط با `?format=html`.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-011-q2",
+      "tag": "کوییز",
+      "question": "چرا در محیط تولید BrowsableAPIRenderer را حذف می‌کنیم؟",
+      "options": [
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false },
+        { "text": "چون بار سرور را زیاد می‌کند و سطح حمله را افزایش می‌دهد.", "correct": true, "explanation": "هرچه سطح حمله کمتر باشد، امنیت بیشتر است. Browsable API برای توسعه است، نه تولید." },
+        { "text": "چون از HTML استفاده می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-011-ex1",
+      "title": "تمرین — تست با Browsable API",
+      "problem": "یک Endpoint `/api/echo/` بسازید که هر داده‌ای در POST دریافت کند و همان را برگرداند. سپس از Browsable API استفاده کنید تا:\n- با GET پیام خوش‌آمد ببینید.\n- با POST داده `{\"msg\": \"hello\"}` بفرستید و پاسخ را ببینید.\n- فرمت JSON خام را هم ببینید.",
+      "hints": ["در Browsable API، فرم POST پایین صفحه است.", "برای JSON خام از `?format=json` استفاده کنید."],
+      "solution": "```python\n# catalog/views.py\nfrom rest_framework.decorators import api_view\nfrom rest_framework.response import Response\n\n\n@api_view([\"GET\", \"POST\"])\ndef echo(request):\n    if request.method == \"GET\":\n        return Response({\"message\": \"این یک Endpoint تست است\"})\n    return Response({\"received\": request.data})\n```\n\n```python\n# catalog/urls.py\npath(\"echo/\", echo, name=\"echo\"),\n```\n\nسپس در مرورگر:\n- `http://127.0.0.1:8000/api/echo/` — فرم HTML\n- `http://127.0.0.1:8000/api/echo/?format=json` — JSON خام",
+      "explanation": "Browsable API ابزار اصلی توسعه DRF است. یاد بگیرید چطور از آن برای تست سریع استفاده کنید."
+    }
+  ],
+  "summary": [
+    "Browsable API یک رابط HTML خودکار برای هر Endpoint است.",
+    "با `BrowsableAPIRenderer` فعال می‌شود.",
+    "برای تست سریع و مشاهده داده در مرورگر عالی است.",
+    "پشتیبانی از احراز هویت از خود صفحه.",
+    "تغییر فرمت با `?format=json` یا `.json`.",
+    "در تولید غیرفعال کنید — بار و سطح حمله کمتر."
+  ],
+  "resources": [
+    { "title": "DRF — Browsable API", "url": "https://www.django-rest-framework.org/topics/browsable-api/", "official": true }
+  ]
+}

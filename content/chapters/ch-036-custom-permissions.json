@@ -1,0 +1,405 @@
+{
+  "id": "ch-036",
+  "slug": "custom-permissions",
+  "title": "مجوزهای سفارشی",
+  "kicker": "فصل ۳۶",
+  "level": "advanced",
+  "estimatedMinutes": 45,
+  "lead": "مجوزهای آماده کافی نیستند برای پروژه‌های واقعی. این فصل نشان می‌دهد چطور مجوز سطح شیء، ترکیبی و دامنه‌ای بنویسیم.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا مجوز سفارشی؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مالکیت:** فقط صاحب شیء بتواند ویرایش کند.",
+            "**نقش:** فقط اعضای یک گروه خاص.",
+            "**وضعیت شیء:** فقط وقتی منتشر نشده قابل ویرایش است.",
+            "**رابطه:** فقط اعضای یک سازمان خاص.",
+            "**ترکیب:** ادمین یا مالک یا عضو تیم."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "الگوی اصلی",
+          "text": "دو متد `has_permission` و `has_object_permission` را پیاده می‌کنید و منطق دلخواه خودتان را می‌نویسید."
+        }
+      ]
+    },
+    {
+      "id": "owner",
+      "title": "مجوز مالکیت (IsOwner)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "رایج‌ترین مجوز سفارشی. فقط صاحب شیء اجازه دسترسی دارد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/permissions.py",
+          "code": "from rest_framework.permissions import BasePermission\n\n\nclass IsOwner(BasePermission):\n    message = \"شما مالک این شیء نیستید.\"\n\n    def has_object_permission(self, request, view, obj):\n        return obj.owner == request.user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class NoteDetailView(generics.RetrieveUpdateDestroyAPIView):\n    queryset = Note.objects.all()\n    serializer_class = NoteSerializer\n    permission_classes = [IsAuthenticated, IsOwner]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگو",
+          "text": "همیشه `IsAuthenticated` را کنار `IsOwner` بگذارید تا کاربر ناشناس اول رد شود (401 به‌جای 500)."
+        }
+      ]
+    },
+    {
+      "id": "owner-or-readonly",
+      "title": "IsOwnerOrReadOnly",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "خواندن برای همه، ویرایش فقط برای مالک. الگوی بسیار رایج."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/permissions.py",
+          "code": "from rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\nclass IsOwnerOrReadOnly(BasePermission):\n    message = \"فقط مالک می‌تواند این شیء را ویرایش یا حذف کند.\"\n\n    def has_object_permission(self, request, view, obj):\n        # متدهای خواندنی برای همه مجاز\n        if request.method in SAFE_METHODS:\n            return True\n        # متدهای نوشتنی فقط برای مالک\n        return obj.owner == request.user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"owner\").all()\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "SAFE_METHODS",
+          "text": "این ثابت شامل `GET`, `HEAD`, `OPTIONS` است. استفاده از آن، خوانایی را بالا می‌برد."
+        }
+      ]
+    },
+    {
+      "id": "role-based",
+      "title": "مجوز بر اساس نقش (Role)",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class IsEditor(BasePermission):\n    message = \"این عمل فقط برای ویرایشگرها مجاز است.\"\n\n    def has_permission(self, request, view):\n        user = request.user\n        return bool(\n            user and\n            user.is_authenticated and\n            user.groups.filter(name=\"editor\").exists()\n        )\n\n\nclass IsModerator(BasePermission):\n    message = \"این عمل فقط برای مدیران محتوا مجاز است.\"\n\n    def has_permission(self, request, view):\n        user = request.user\n        return bool(\n            user and\n            user.is_authenticated and\n            user.groups.filter(name=\"moderator\").exists()\n        )"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ArticleViewSet(viewsets.ModelViewSet):\n    queryset = Article.objects.all()\n    serializer_class = ArticleSerializer\n\n    def get_permissions(self):\n        if self.action in (\"destroy\",):\n            return [IsModerator()]\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return [IsEditor()]\n        return [AllowAny()]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "گروه‌های Django",
+          "text": "Django به‌طور پیش‌فرض گروه‌ها را دارد. برای مدیریت ساده، در پنل ادمین گروه بسازید و کاربران را اضافه کنید."
+        }
+      ]
+    },
+    {
+      "id": "combined",
+      "title": "مجوز ترکیبی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید «ادمین یا مالک» یا «نویسنده یا ویرایشگر». منطق را در یک مجوز بنویسید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class IsOwnerOrAdmin(BasePermission):\n    message = \"فقط مالک یا ادمین می‌تواند این عمل را انجام دهد.\"\n\n    def has_object_permission(self, request, view, obj):\n        user = request.user\n        if user.is_staff:\n            return True\n        return obj.owner == user\n\n\nclass IsAuthorOrEditorOrReadOnly(BasePermission):\n    message = \"فقط نویسنده یا ویرایشگر می‌تواند این را تغییر دهد.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        user = request.user\n        if user.is_staff:\n            return True\n        if user.groups.filter(name=\"editor\").exists():\n            return True\n        return obj.author == user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ArticleViewSet(viewsets.ModelViewSet):\n    queryset = Article.objects.all()\n    serializer_class = ArticleSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrEditorOrReadOnly]"
+        }
+      ]
+    },
+    {
+      "id": "state-based",
+      "title": "مجوز بر اساس وضعیت شیء",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی فقط در شرایط خاصی می‌توان ویرایش کرد (مثلاً فقط وقتی منتشر نشده)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CanEditUnpublishedOnly(BasePermission):\n    message = \"کتاب‌های منتشرشده قابل ویرایش نیستند.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        if obj.is_published:\n            return False\n        return obj.owner == request.user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CanBeDeleted(BasePermission):\n    message = \"این سفارش را نمی‌توان حذف کرد.\"\n\n    def has_object_permission(self, request, view, obj):\n        # فقط سفارش‌های در وضعیت pending قابل حذف‌اند\n        return obj.status == \"pending\""
+        }
+      ]
+    },
+    {
+      "id": "domain-based",
+      "title": "مجوز بر اساس دامنه (Tenant/Organization)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای سیستم‌های چند-مستأجری (Multi-tenant)، کاربر فقط باید داده سازمان خودش را ببیند و ویرایش کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class IsInSameOrganization(BasePermission):\n    message = \"شما به این سازمان دسترسی ندارید.\"\n\n    def has_permission(self, request, view):\n        user = request.user\n        if not user or not user.is_authenticated:\n            return False\n        return user.organization_id is not None\n\n    def has_object_permission(self, request, view, obj):\n        if request.user.is_staff:\n            return True\n        return obj.organization_id == request.user.organization_id"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class InvoiceViewSet(viewsets.ModelViewSet):\n    serializer_class = InvoiceSerializer\n    permission_classes = [IsAuthenticated, IsInSameOrganization]\n\n    def get_queryset(self):\n        # فقط فاکتورهای سازمان کاربر\n        if self.request.user.is_staff:\n            return Invoice.objects.all()\n        return Invoice.objects.filter(\n            organization=self.request.user.organization\n        )"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "دو لایه",
+          "text": "۱) در `get_queryset` فقط داده سازمان کاربر را برگردانید. ۲) با `has_object_permission` مطمئن شوید کاربر نمی‌تواند با `pk` شیء سازمان دیگر را بگیرد."
+        }
+      ]
+    },
+    {
+      "id": "object-level-pattern",
+      "title": "الگوی کامل: کاربر فقط اطلاعات خودش",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "مثال واقعی: کاربر فقط بتواند اطلاعات متعلق به خودش را ویرایش کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notes/permissions.py",
+          "code": "from rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\nclass IsNoteOwner(BasePermission):\n    message = \"فقط صاحب این یادداشت می‌تواند آن را تغییر دهد.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        return obj.owner == request.user"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notes/views.py",
+          "code": "from rest_framework import viewsets\nfrom rest_framework.permissions import IsAuthenticated\n\n\nclass NoteViewSet(viewsets.ModelViewSet):\n    serializer_class = NoteSerializer\n    permission_classes = [IsAuthenticated, IsNoteOwner]\n    lookup_field = \"slug\"\n\n    def get_queryset(self):\n        # فقط یادداشت‌های خود کاربر\n        # این خط باعث می‌شود 404 بدهد به‌جای 403 برای یادداشت دیگران\n        return (\n            Note.objects\n            .filter(owner=self.request.user)\n            .select_related(\"owner\")\n        )\n\n    def perform_create(self, serializer):\n        serializer.save(owner=self.request.user)"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# کاربر سارا — یادداشت‌های خودش را می‌بیند\ncurl -H \"Authorization: Bearer <sara-token>\" \\\n  http://127.0.0.1:8000/api/notes/\n# → 200، لیست یادداشت‌های سارا\n\n# علی تلاش می‌کند یادداشت سارا را بگیرد\ncurl -H \"Authorization: Bearer <ali-token>\" \\\n  http://127.0.0.1:8000/api/notes/sara-secret-note/\n# → 404 Not Found (نه 403)\n# چون get_queryset اصلاً آن را برنمی‌گرداند"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "403 در برابر 404",
+          "text": "اگر فقط `has_object_permission` بگذارید، کاربر 403 می‌گیرد که به‌معنای «وجود دارد اما اجازه نداری» است. با فیلتر کردن `get_queryset`، 404 می‌گیرد که امن‌تر است — کاربر نمی‌فهمد شیء وجود دارد یا نه."
+        }
+      ]
+    },
+    {
+      "id": "readonly-vs-write",
+      "title": "مجوز فقط برای نوشتن",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class IsAdminOrReadOnly(BasePermission):\n    message = \"فقط ادمین می‌تواند این را تغییر دهد.\"\n\n    def has_permission(self, request, view):\n        if request.method in SAFE_METHODS:\n            return True\n        return bool(request.user and request.user.is_staff)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CategoryViewSet(viewsets.ModelViewSet):\n    queryset = Category.objects.all()\n    serializer_class = CategorySerializer\n    permission_classes = [IsAdminOrReadOnly]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "سطح ویو کافی است",
+          "text": "اگر مجوز به مالکیت شیء وابسته نیست (مثل نقش)، فقط `has_permission` کافی است. `has_object_permission` برای وقتی است که مجوز به خود شیء بستگی دارد."
+        }
+      ]
+    },
+    {
+      "id": "message-i18n",
+      "title": "پیام‌های خطا و i18n",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پیام خطا را می‌توانید به فارسی بنویسید یا با i18n ترجمه کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.utils.translation import gettext_lazy as _\nfrom rest_framework.permissions import BasePermission\n\n\nclass IsOwner(BasePermission):\n    message = _(\"شما مالک این شیء نیستید.\")\n\n    def has_object_permission(self, request, view, obj):\n        return obj.owner == request.user"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "gettext_lazy",
+          "text": "`gettext_lazy` ترجمه را به زمان اجرا موکول می‌کند. برای پیام‌های تعریف‌شده در زمان import، از این استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# تنظیمات i18n\ndjango-admin makemessages -l fa\ndjango-admin compilemessages"
+        }
+      ]
+    },
+    {
+      "id": "compose",
+      "title": "ترکیب منطقی مجوزها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF مجوزها را با AND ترکیب می‌کند. برای OR، خودتان بنویسید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# AND — هر دو باید True باشند\npermission_classes = [IsAuthenticated, IsOwner]\n\n\n# OR — یکی کافی است\nclass IsOwnerOrAdmin(BasePermission):\n    def has_object_permission(self, request, view, obj):\n        return request.user.is_staff or obj.owner == request.user\n\n\n# NOT — معکوس کردن\nclass IsNotBanned(BasePermission):\n    def has_permission(self, request, view):\n        if not request.user.is_authenticated:\n            return True   # کاربر ناشناس ربطی ندارد\n        return not request.user.is_banned"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ترکیب پیچیده: ادمین یا (مالک و منتشرنشده)\nclass CanEditArticle(BasePermission):\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        if request.user.is_staff:\n            return True\n        return obj.author == request.user and not obj.is_published"
+        }
+      ]
+    },
+    {
+      "id": "testing",
+      "title": "تست مجوزها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "مجوزها را حتماً تست کنید — یکی از نقاطی که باگ امنیتی می‌سازد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notes/tests/test_permissions.py",
+          "code": "from rest_framework.test import APITestCase\nfrom rest_framework import status\nfrom django.contrib.auth import get_user_model\nfrom notes.models import Note\n\nUser = get_user_model()\n\n\nclass NotePermissionTests(APITestCase):\n    def setUp(self):\n        self.owner = User.objects.create_user(username=\"owner\", password=\"pass12345\")\n        self.other = User.objects.create_user(username=\"other\", password=\"pass12345\")\n        self.admin = User.objects.create_user(\n            username=\"admin\", password=\"pass12345\", is_staff=True,\n        )\n        self.note = Note.objects.create(\n            owner=self.owner, title=\"یادداشت من\", content=\"...\",\n        )\n\n    def test_owner_can_edit(self):\n        self.client.force_authenticate(self.owner)\n        response = self.client.patch(\n            f\"/api/notes/{self.note.id}/\",\n            {\"title\": \"ویرایش\"},\n        )\n        self.assertEqual(response.status_code, status.HTTP_200_OK)\n\n    def test_other_cannot_edit(self):\n        self.client.force_authenticate(self.other)\n        response = self.client.patch(\n            f\"/api/notes/{self.note.id}/\",\n            {\"title\": \"ویرایش\"},\n        )\n        # بسته به طراحی، 403 یا 404\n        self.assertIn(\n            response.status_code,\n            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),\n        )\n\n    def test_anonymous_cannot_create(self):\n        response = self.client.post(\"/api/notes/\", {\"title\": \"x\"})\n        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)\n\n    def test_admin_can_delete(self):\n        self.client.force_authenticate(self.admin)\n        response = self.client.delete(f\"/api/notes/{self.note.id}/\")\n        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چه چیزهایی را تست کنیم؟",
+          "text": "۱) کاربر ناشناس. ۲) کاربر وارد‌شده اما نه مالک. ۳) مالک. ۴) ادمین. ۵) وضعیت‌های خاص (منتشرشده، حذف‌شده)."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود `has_object_permission` برای مالکیت",
+          "why": "IDOR — کاربر می‌تواند شیء دیگران را ویرایش کند.",
+          "when": "وقتی فقط `has_permission` می‌نویسید.",
+          "fix": "`has_object_permission` را با مقایسه `obj.owner == request.user` پیاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `obj.owner` بدون بررسی None",
+          "why": "خطای AttributeError اگر شیء owner نداشته باشد.",
+          "when": "وقتی مدل شما owner اختیاری دارد.",
+          "fix": "`return obj.owner_id == request.user.id` (بدون دسترسی به شیء)."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "`has_object_permission` در APIView خام",
+          "why": "در APIView که خودتان شیء را می‌گیرید، این متد اجرا نمی‌شود.",
+          "when": "وقتی از APIView استفاده می‌کنید.",
+          "fix": "بعد از `get_object`، `self.check_object_permissions(request, obj)` را صدا بزنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیام‌های خطای فنی",
+          "why": "کاربر نمی‌فهمد چه کار کند.",
+          "when": "وقتی پیام پیش‌فرض DRF را رها می‌کنید.",
+          "fix": "`message` را به فارسی و واضح تنظیم کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازگرداندن 403 برای شیء ناموجود",
+          "why": "افشای وجود شیء (Information Disclosure).",
+          "when": "وقتی می‌خواهید 403 بدهید بدون فیلتر queryset.",
+          "fix": "در `get_queryset` فیلتر کنید تا 404 بدهد."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود تست مجوز",
+          "why": "باگ امنیتی در تولید.",
+          "when": "وقتی فقط خوشحالید که Endpoint کار می‌کند.",
+          "fix": "برای هر مجوز، تست برای همه نقش‌ها بنویسید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-036-q1",
+      "tag": "کوییز",
+      "question": "برای مجوز سطح شیء (مالکیت)، کدام متد را پیاده می‌کنیم؟",
+      "options": [
+        { "text": "`has_permission`", "correct": false },
+        { "text": "`has_object_permission`", "correct": true, "explanation": "این متد بعد از پیدا کردن شیء اجرا می‌شود و به obj دسترسی دارد." },
+        { "text": "`check_permissions`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-036-q2",
+      "tag": "کوییز",
+      "question": "چرا در پروژه‌های واقعی توصیه می‌شود `get_queryset` را بر اساس کاربر فیلتر کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون باعث 404 (به‌جای 403) می‌شود و وجود شیء را افشا نمی‌کند.", "correct": true, "explanation": "این کار از IDOR و Information Disclosure جلوگیری می‌کند." },
+        { "text": "چون DRF مجبور می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-036-q3",
+      "tag": "کوییز",
+      "question": "در `has_object_permission`، تفاوت 403 و 404 چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "403 یعنی «وجود دارد اما اجازه نداری»؛ 404 یعنی «نمی‌دانم وجود دارد».", "correct": true, "explanation": "404 امن‌تر است چون وجود شیء را افشا نمی‌کند." },
+        { "text": "404 برای DELETE و 403 برای PUT است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-036-ex1",
+      "title": "تمرین — مجوز کامل برای سیستم بلاگ",
+      "problem": "برای یک سیستم بلاگ، مجوز بنویسید که:\n- خواندن پست‌ها و کامنت‌ها برای همه.\n- ساخت پست و کامنت فقط برای کاربران وارد‌شده.\n- ویرایش و حذف پست فقط برای نویسنده یا ادمین.\n- ویرایش و حذف کامنت فقط برای نویسنده یا ادمین.\n- پست‌های منتشرشده قابل ویرایش نیستند مگر برای ادمین.",
+      "hints": ["دو مجوز جدا: `IsAuthorOrAdminOrReadOnly` و `CanEditPost`.", "برای پست، وضعیت منتشرشده را چک کنید.", "برای کامنت، فقط مالکیت کافی است."],
+      "solution": "**`blog/permissions.py`**\n```python\nfrom rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\nclass IsAuthorOrAdminOrReadOnly(BasePermission):\n    message = \"فقط نویسنده یا ادمین می‌تواند این را تغییر دهد.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        user = request.user\n        if user.is_staff:\n            return True\n        return obj.author == user\n\n\nclass CanEditPost(BasePermission):\n    message = \"پست‌های منتشرشده فقط توسط ادمین قابل ویرایش هستند.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        if request.user.is_staff:\n            return True\n        if obj.is_published:\n            return False\n        return obj.author == request.user\n```\n\n**`blog/views.py`**\n```python\nfrom rest_framework import viewsets\nfrom rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated\nfrom .permissions import IsAuthorOrAdminOrReadOnly, CanEditPost\nfrom .models import Post, Comment\nfrom .serializers import PostSerializer, CommentSerializer\n\n\nclass PostViewSet(viewsets.ModelViewSet):\n    queryset = Post.objects.select_related(\"author\").all()\n    serializer_class = PostSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, CanEditPost]\n\n    def perform_create(self, serializer):\n        serializer.save(author=self.request.user)\n\n\nclass CommentViewSet(viewsets.ModelViewSet):\n    queryset = Comment.objects.select_related(\"author\", \"post\").all()\n    serializer_class = CommentSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrAdminOrReadOnly]\n\n    def perform_create(self, serializer):\n        serializer.save(author=self.request.user)\n```\n\n**تست:**\n```python\nclass BlogPermissionTests(APITestCase):\n    def setUp(self):\n        self.author = User.objects.create_user(username=\"author\", password=\"pass12345\")\n        self.other = User.objects.create_user(username=\"other\", password=\"pass12345\")\n        self.admin = User.objects.create_user(username=\"admin\", password=\"pass12345\", is_staff=True)\n        self.draft = Post.objects.create(author=self.author, title=\"Draft\", is_published=False)\n        self.published = Post.objects.create(author=self.author, title=\"Pub\", is_published=True)\n\n    def test_author_can_edit_draft(self):\n        self.client.force_authenticate(self.author)\n        response = self.client.patch(f\"/api/posts/{self.draft.id}/\", {\"title\": \"X\"})\n        self.assertEqual(response.status_code, 200)\n\n    def test_author_cannot_edit_published(self):\n        self.client.force_authenticate(self.author)\n        response = self.client.patch(f\"/api/posts/{self.published.id}/\", {\"title\": \"X\"})\n        self.assertEqual(response.status_code, 403)\n\n    def test_admin_can_edit_published(self):\n        self.client.force_authenticate(self.admin)\n        response = self.client.patch(f\"/api/posts/{self.published.id}/\", {\"title\": \"X\"})\n        self.assertEqual(response.status_code, 200)\n```",
+      "explanation": "این الگو نشان می‌دهد چطور چند شرط (مالکیت + وضعیت + نقش) را در یک یا چند کلاس مجوز ترکیب کنیم."
+    }
+  ],
+  "summary": [
+    "مجوز سفارشی: `BasePermission` + `has_permission` / `has_object_permission`.",
+    "`IsOwner` و `IsOwnerOrReadOnly` — الگوهای رایج.",
+    "مجوز نقشی: با `groups.filter(name=...)`.",
+    "مجوز وضعیتی: بررسی `obj.is_published` یا `obj.status`.",
+    "مجوز دامنه‌ای: با `organization_id` یا `tenant`.",
+    "ترکیب: DRF با AND ترکیب می‌کند؛ OR را خودتان بنویسید.",
+    "برای امنیت بیشتر: `get_queryset` را فیلتر کنید تا 404 بدهد به‌جای 403.",
+    "تست مجوزها: برای همه نقش‌ها.",
+    "پیام خطا: به فارسی، با `message` یا i18n."
+  ],
+  "resources": [
+    { "title": "DRF — Custom permissions", "url": "https://www.django-rest-framework.org/api-guide/permissions/#custom-permissions", "official": true },
+    { "title": "OWASP — Broken Access Control", "url": "https://owasp.org/Top10/A01_2021-Broken_Access_Control/", "official": true }
+  ]
+}

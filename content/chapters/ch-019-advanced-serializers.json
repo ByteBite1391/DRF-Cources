@@ -1,0 +1,318 @@
+{
+  "id": "ch-019",
+  "slug": "advanced-serializers",
+  "title": "سریالایزرهای پیشرفته",
+  "kicker": "فصل ۱۹",
+  "level": "advanced",
+  "estimatedMinutes": 50,
+  "lead": "از سطح مقدماتی سریالایزرها عبور می‌کنیم و به تکنیک‌هایی می‌رسیم که در پروژه‌های واقعی و پیچیده ضروری‌اند.",
+  "sections": [
+    {
+      "id": "serializer-method",
+      "title": "SerializerMethodField",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای فیلدهای محاسبه‌شده که در مدل نیستند. مقدار از یک متد `get_<field_name>` گرفته می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    price_with_tax = serializers.SerializerMethodField()\n    is_new = serializers.SerializerMethodField()\n    status_label = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"price\", \"price_with_tax\", \"is_new\", \"status_label\"]\n\n    def get_price_with_tax(self, obj):\n        return round(float(obj.price) * 1.10, 2)\n\n    def get_is_new(self, obj):\n        from datetime import date, timedelta\n        return obj.published_at >= date.today() - timedelta(days=90)\n\n    def get_status_label(self, obj):\n        return \"فعال\" if obj.is_active else \"غیرفعال\""
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "دسترسی به request",
+          "text": "در متد `get_<field>` می‌توانید به `self.context[\"request\"]` دسترسی داشته باشید — مفید برای شخصی‌سازی پاسخ بر اساس کاربر."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def get_is_favorited(self, obj):\n    request = self.context.get(\"request\")\n    if not request or not request.user.is_authenticated:\n        return False\n    return obj.favorited_by.filter(user=request.user).exists()"
+        }
+      ]
+    },
+    {
+      "id": "hidden-field",
+      "title": "HiddenField",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فیلدی که نه در ورودی ظاهر می‌شود، نه در خروجی. فقط در سرور استفاده می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ReviewSerializer(serializers.ModelSerializer):\n    user = serializers.HiddenField(default=serializers.CurrentUserDefault())\n\n    class Meta:\n        model = Review\n        fields = [\"id\", \"book\", \"user\", \"rating\", \"comment\"]\n        read_only_fields = [\"id\"]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی مالکیت خودکار",
+          "text": "این بهترین راه برای پر کردن `user` از request است. کلاینت نه می‌بیند، نه می‌تواند دستکاری کند."
+        }
+      ]
+    },
+    {
+      "id": "current-user-default",
+      "title": "CurrentUserDefault",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "یک مقدار پیش‌فرض که کاربر جاری را برمی‌گرداند. نیازمند `context['request']` است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class NoteSerializer(serializers.ModelSerializer):\n    owner = serializers.HiddenField(default=serializers.CurrentUserDefault())\n\n    class Meta:\n        model = Note\n        fields = [\"id\", \"title\", \"body\", \"owner\"]\n\n    def create(self, validated_data):\n        # owner به‌طور خودکار در validated_data است\n        return Note.objects.create(**validated_data)"
+        }
+      ]
+    },
+    {
+      "id": "to-representation",
+      "title": "سفارشی‌سازی to_representation",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "متد `to_representation()` شیء پایتون را به دیکشنری قابل سریال‌سازی تبدیل می‌کند. بازنویسی آن برای تغییر خروجی بدون افزودن فیلد است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"price\", \"is_active\"]\n\n    def to_representation(self, instance):\n        data = super().to_representation(instance)\n\n        # حذف فیلد برای کاربران ناشناس\n        request = self.context.get(\"request\")\n        if not request or not request.user.is_authenticated:\n            data.pop(\"price\", None)\n\n        # تبدیل قیمت به شکل خوانا\n        if \"price\" in data:\n            data[\"price_display\"] = f\"{data['price']} تومان\"\n\n        # افزودن فیلد بدون تعریف جداگانه\n        data[\"status\"] = \"active\" if instance.is_active else \"archived\"\n\n        return data"
+        },
+        {
+          "type": "callout-level",
+          "basic": "استفاده از `SerializerMethodField` برای هر فیلد اضافی.",
+          "better": "بازنویسی `to_representation` برای تغییر ساختار کلی.",
+          "production": "دو سریالایزر جدا برای سناریوهای مختلف (عمومی، کاربر، ادمین) به‌جای شرط‌های پیچیده در `to_representation`."
+        }
+      ]
+    },
+    {
+      "id": "to-internal-value",
+      "title": "سفارشی‌سازی to_internal_value",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "متد `to_internal_value()` داده خام ورودی را به مقادیر پایتون قابل استفاده تبدیل می‌کند. بازنویسی آن برای نرمال‌سازی ورودی مفید است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookCreateSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\"]\n\n    def to_internal_value(self, data):\n        # نرمال‌سازی قبل از اعتبارسنجی\n        if isinstance(data, dict):\n            data = data.copy()\n            if \"title\" in data and isinstance(data[\"title\"], str):\n                data[\"title\"] = data[\"title\"].strip()\n            if \"isbn\" in data and isinstance(data[\"isbn\"], str):\n                data[\"isbn\"] = data[\"isbn\"].replace(\"-\", \"\").strip()\n        return super().to_internal_value(data)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی؟",
+          "text": "وقتی می‌خواهید ورودی را قبل از اعتبارسنجی نرمال کنید (حذف فاصله، تبدیل به حروف کوچک، پاک‌سازی فرمت). اما مراقب باشید که اعتبارسنجی را دور نزنید."
+        }
+      ]
+    },
+    {
+      "id": "custom-create-update",
+      "title": "create و update سفارشی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class OrderSerializer(serializers.ModelSerializer):\n    items = OrderItemSerializer(many=True)\n\n    class Meta:\n        model = Order\n        fields = [\"id\", \"customer\", \"items\", \"status\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]\n\n    def create(self, validated_data):\n        items_data = validated_data.pop(\"items\")\n        order = Order.objects.create(**validated_data)\n        OrderItem.objects.bulk_create([\n            OrderItem(order=order, **item) for item in items_data\n        ])\n        return order\n\n    def update(self, instance, validated_data):\n        items_data = validated_data.pop(\"items\", None)\n\n        for attr, value in validated_data.items():\n            setattr(instance, attr, value)\n        instance.save()\n\n        if items_data is not None:\n            instance.items.all().delete()\n            OrderItem.objects.bulk_create([\n                OrderItem(order=instance, **item) for item in items_data\n            ])\n        return instance"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "bulk_create",
+          "text": "برای ساخت چندین آیتم، `bulk_create` بسیار سریع‌تر از حلقه با `create` است."
+        }
+      ]
+    },
+    {
+      "id": "list-serializer",
+      "title": "ListSerializer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی `many=True` استفاده می‌کنید، DRF یک `ListSerializer` می‌سازد. می‌توانید آن را سفارشی کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListSerializer(serializers.ListSerializer):\n    def create(self, validated_data):\n        books = [Book(**item) for item in validated_data]\n        return Book.objects.bulk_create(books)\n\n    def update(self, instance, validated_data):\n        # instance: QuerySet از Bookها\n        book_mapping = {book.id: book for book in instance}\n        updated = []\n        for item in validated_data:\n            book = book_mapping.get(item.get(\"id\"))\n            if book:\n                for attr, value in item.items():\n                    setattr(book, attr, value)\n                updated.append(book)\n        Book.objects.bulk_update(updated, [\"title\", \"price\"])\n        return updated\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"price\"]\n        list_serializer_class = BookListSerializer"
+        }
+      ]
+    },
+    {
+      "id": "base-serializer",
+      "title": "BaseSerializer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر کنترل کامل روی رفتار می‌خواهید، از `BaseSerializer` ارث‌بری کنید و متدهای `to_representation` و `to_internal_value` را دستی پیاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class TemperatureSerializer(serializers.BaseSerializer):\n    \"\"\"تبدیل بین سلسیوس و فارنهایت.\"\"\"\n\n    def to_representation(self, instance):\n        # instance: عدد سلسیوس\n        return {\n            \"celsius\": instance,\n            \"fahrenheit\": round(instance * 9 / 5 + 32, 1),\n        }\n\n    def to_internal_value(self, data):\n        if \"celsius\" not in data:\n            raise serializers.ValidationError({\"celsius\": \"الزامی است.\"})\n        try:\n            value = float(data[\"celsius\"])\n        except (TypeError, ValueError):\n            raise serializers.ValidationError({\"celsius\": \"عدد نامعتبر.\"})\n        if value < -273.15:\n            raise serializers.ValidationError({\"celsius\": \"کمتر از صفر مطلق.\"})\n        return value"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی؟",
+          "text": "`BaseSerializer` برای داده‌های غیرمعمول (نه مدل Django). در ۹۵٪ موارد به آن نیاز ندارید."
+        }
+      ]
+    },
+    {
+      "id": "dynamic-fields",
+      "title": "فیلدهای پویا (Dynamic Fields)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید کلاینت مشخص کند چه فیلدهایی می‌خواهد: `?fields=id,title,price`."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DynamicFieldsModelSerializer(serializers.ModelSerializer):\n    def __init__(self, *args, **kwargs):\n        fields = kwargs.pop(\"fields\", None)\n        super().__init__(*args, **kwargs)\n        if fields is not None:\n            allowed = set(fields)\n            existing = set(self.fields)\n            for field_name in existing - allowed:\n                self.fields.pop(field_name)\n\n\nclass BookSerializer(DynamicFieldsModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\", \"description\", \"created_at\"]\n\n\n# در ویو\nfields = request.query_params.get(\"fields\")\nfields = fields.split(\",\") if fields else None\nserializer = BookSerializer(book, fields=fields)\n\n# GET /api/books/1/?fields=id,title,price"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "با احتیاط",
+          "text": "فیلدهای پویا انعطاف می‌دهند اما می‌توانند API را غیرقابل پیش‌بینی کنند. کلاینت‌ها به ساختار ثابت وابسته‌اند. اگر استفاده می‌کنید، مستندسازی کنید و برای حذف فیلدهای حساس محدودیت بگذارید."
+        }
+      ]
+    },
+    {
+      "id": "separate-read-write",
+      "title": "الگوی Read/Write جدا",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "الگوی رایج در پروژه‌های واقعی: دو سریالایزر جدا برای خواندن و نوشتن. ورودی ساده، خروجی کامل."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# خواندن — داده کامل\nclass BookReadSerializer(serializers.ModelSerializer):\n    author = AuthorSerializer(read_only=True)\n    categories = CategorySerializer(many=True, read_only=True)\n    reviews_count = serializers.IntegerField(source=\"reviews.count\", read_only=True)\n    average_rating = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Book\n        fields = [\n            \"id\", \"title\", \"author\", \"categories\",\n            \"isbn\", \"price\", \"reviews_count\", \"average_rating\",\n        ]\n\n    def get_average_rating(self, obj):\n        from django.db.models import Avg\n        result = obj.reviews.aggregate(avg=Avg(\"rating\"))[\"avg\"]\n        return round(result, 2) if result else None\n\n\n# نوشتن — ورودی ساده\nclass BookWriteSerializer(serializers.ModelSerializer):\n    categories = serializers.SlugRelatedField(\n        many=True,\n        slug_field=\"slug\",\n        queryset=Category.objects.all(),\n        required=False,\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"categories\", \"isbn\", \"price\"]\n        read_only_fields = [\"id\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در ViewSet\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\").prefetch_related(\"categories\", \"reviews\")\n\n    def get_serializer_class(self):\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer\n        return BookReadSerializer"
+        }
+      ]
+    },
+    {
+      "id": "nested-writable",
+      "title": "نوشتن تودرتو کامل",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "الگوی جامع برای نوشتن ساختارهای تودرتوی چندسطحی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class OrderItemSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = OrderItem\n        fields = [\"id\", \"product\", \"quantity\", \"unit_price\"]\n        read_only_fields = [\"id\"]\n\n\nclass OrderSerializer(serializers.ModelSerializer):\n    items = OrderItemSerializer(many=True)\n\n    class Meta:\n        model = Order\n        fields = [\"id\", \"customer\", \"items\", \"status\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]\n\n    def validate_items(self, value):\n        if not value:\n            raise serializers.ValidationError(\"سفارش باید حداقل یک آیتم داشته باشد.\")\n        return value\n\n    def create(self, validated_data):\n        items_data = validated_data.pop(\"items\")\n        with transaction.atomic():\n            order = Order.objects.create(**validated_data)\n            OrderItem.objects.bulk_create([\n                OrderItem(order=order, **item) for item in items_data\n            ])\n        return order\n\n    def update(self, instance, validated_data):\n        items_data = validated_data.pop(\"items\", None)\n        with transaction.atomic():\n            for attr, value in validated_data.items():\n                setattr(instance, attr, value)\n            instance.save()\n\n            if items_data is not None:\n                instance.items.all().delete()\n                OrderItem.objects.bulk_create([\n                    OrderItem(order=instance, **item) for item in items_data\n                ])\n        return instance"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "transaction.atomic",
+          "text": "برای عملیات چندگانه دیتابیسی، `transaction.atomic` را استفاده کنید. اگر یک مرحله شکست بخورد، همه برمی‌گردند."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `SerializerMethodField` برای چیزهای سنگین",
+          "why": "برای هر شیء صدا زده می‌شود. اگر داخلش کوئری بزنید، N+1 می‌شود.",
+          "when": "وقتی فیلد محاسبه‌شده به دیتابیس وابسته است.",
+          "fix": "از `annotate` در QuerySet استفاده کنید و نتیجه را با `SerializerMethodField` یا `source` برگردانید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازنویسی `to_representation` برای منطق کسب‌وکار",
+          "why": "منطق در سریالایزر پنهان می‌شود، تست سخت‌تر.",
+          "when": "وقتی می‌خواهید فیلد را بر اساس نقشی مخفی کنید.",
+          "fix": "سریالایزرهای جدا برای سناریوهای مختلف یا استفاده از `get_serializer_class`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `transaction.atomic` در create/update چندمرحله‌ای",
+          "why": "اگر مرحله وسط خطا بدهد، داده ناقص در دیتابیس می‌ماند.",
+          "when": "وقتی چند مدل را در یک درخواست تغییر می‌دهید.",
+          "fix": "همه را داخل `with transaction.atomic():` بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فیلدهای پویا بدون محدودیت",
+          "why": "کلاینت می‌تواند فیلدهای حساس را درخواست کند یا ساختار را ناپایدار کند.",
+          "when": "وقتی `DynamicFieldsModelSerializer` می‌سازید.",
+          "fix": "لیست سفید فیلدهای مجاز داشته باشید و فیلدهای حساس را همیشه حذف کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نوشتن `create` بدون مدیریت روابط معکوس",
+          "why": "داده ناقص یا خطای IntegrityError.",
+          "when": "وقتی سریالایزر تودرتو با رابطه معکوس دارید.",
+          "fix": "در `create`، ابتدا مدل اصلی را بسازید، بعد فرزندان را با `bulk_create` اضافه کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-019-q1",
+      "tag": "کوییز",
+      "question": "برای نرمال‌سازی داده ورودی قبل از اعتبارسنجی، کدام متد را بازنویسی می‌کنیم؟",
+      "options": [
+        { "text": "`to_representation`", "correct": false },
+        { "text": "`to_internal_value`", "correct": true, "explanation": "این متد داده خام را قبل از اعتبارسنجی تبدیل می‌کند." },
+        { "text": "`validate`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-019-q2",
+      "tag": "کوییز",
+      "question": "چرا الگوی read/write جدا توصیه می‌شود؟",
+      "options": [
+        { "text": "چون DRF مجبور می‌کند.", "correct": false },
+        { "text": "چون شکل ورودی و خروجی معمولاً متفاوت است و جدا کردن، کد را تمیزتر می‌کند.", "correct": true, "explanation": "ورودی ساده، خروجی کامل — این تفکیک باعث خوانایی و نگهداری بهتر می‌شود." },
+        { "text": "چون سریع‌تر است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-019-ex1",
+      "title": "تمرین — سریالایزر تودرتوی کامل",
+      "problem": "یک سیستم «سفارش» بسازید که در یک درخواست POST، سفارش + آیتم‌ها را بسازد. اگر یکی از آیتم‌ها معتبر نبود، هیچ چیزی ذخیره نشود.",
+      "hints": ["از `transaction.atomic` استفاده کنید.", "سریالایزر تودرتو با `many=True`.", "در `validate_items` حداقل یک آیتم را الزامی کنید."],
+      "solution": "```python\nfrom django.db import transaction\nfrom rest_framework import serializers\nfrom .models import Order, OrderItem, Product\n\n\nclass OrderItemSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = OrderItem\n        fields = [\"product\", \"quantity\", \"unit_price\"]\n\n    def validate_quantity(self, value):\n        if value <= 0:\n            raise serializers.ValidationError(\"تعداد باید مثبت باشد.\")\n        return value\n\n\nclass OrderSerializer(serializers.ModelSerializer):\n    items = OrderItemSerializer(many=True)\n\n    class Meta:\n        model = Order\n        fields = [\"id\", \"customer\", \"items\", \"status\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]\n\n    def validate_items(self, value):\n        if not value:\n            raise serializers.ValidationError(\"سفارش باید حداقل یک آیتم داشته باشد.\")\n        return value\n\n    def create(self, validated_data):\n        items_data = validated_data.pop(\"items\")\n        with transaction.atomic():\n            order = Order.objects.create(**validated_data)\n            OrderItem.objects.bulk_create([\n                OrderItem(order=order, **item) for item in items_data\n            ])\n        return order\n```",
+      "explanation": "این الگو پایه‌ای برای سیستم‌های سفارش، فاکتور و هر ساختار سلسله‌مراتبی است."
+    }
+  ],
+  "summary": [
+    "`SerializerMethodField` برای فیلدهای محاسبه‌شده؛ به `context` دسترسی دارد.",
+    "`HiddenField` + `CurrentUserDefault` برای مالکیت خودکار.",
+    "`to_representation` برای تغییر خروجی؛ `to_internal_value` برای نرمال‌سازی ورودی.",
+    "`create`/`update` سفارشی برای ساختارهای پیچیده.",
+    "`ListSerializer` برای bulk operation.",
+    "`BaseSerializer` برای کنترل کامل (نادر).",
+    "فیلدهای پویا با `DynamicFieldsModelSerializer` — با احتیاط.",
+    "الگوی read/write جدا برای پروژه‌های واقعی.",
+    "transaction.atomic برای عملیات چندمرحله‌ای."
+  ],
+  "resources": [
+    { "title": "DRF — Serializers (advanced)", "url": "https://www.django-rest-framework.org/api-guide/serializers/", "official": true },
+    { "title": "DRF — Writable nested serializers", "url": "https://www.django-rest-framework.org/api-guide/serializers/#writable-nested-serializers", "official": true }
+  ]
+}

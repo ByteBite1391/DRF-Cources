@@ -1,0 +1,335 @@
+{
+  "id": "ch-009",
+  "slug": "installation",
+  "title": "نصب و راه‌اندازی",
+  "kicker": "فصل ۹",
+  "level": "beginner",
+  "estimatedMinutes": 25,
+  "lead": "در این فصل، محیط را آماده می‌کنیم و اولین اسکلت پروژه DRF را می‌سازیم.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "نمای کلی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "قبل از نوشتن اولین خط DRF، باید محیط را آماده کنیم. در این فصل:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "محیط مجازی Python می‌سازیم.",
+            "Django و DRF را نصب می‌کنیم.",
+            "یک پروژه و یک اپلیکیشن Django می‌سازیم.",
+            "DRF را در `settings.py` فعال می‌کنیم.",
+            "سرور را اجرا می‌کنیم و مطمئن می‌شویم همه چیز کار می‌کند."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prerequisites",
+      "title": "پیش‌نیازها",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["پیش‌نیاز", "نسخه پیشنهادی", "بررسی"],
+          "rows": [
+            ["Python", "3.11 یا بالاتر", "`python --version`"],
+            ["pip", "آخرین نسخه", "`pip --version`"],
+            ["Git (اختیاری)", "آخرین نسخه", "`git --version`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نسخه‌ها",
+          "text": "این مستندات بر پایه Python 3.11+، Django 5.0+ و DRF 3.15+ نوشته شده است. اگر نسخه قدیمی‌تری دارید، اکثر مطالب هنوز کار می‌کنند اما ممکن است بعضی APIها متفاوت باشند."
+        }
+      ]
+    },
+    {
+      "id": "venv",
+      "title": "گام ۱ — محیط مجازی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "محیط مجازی، پکیج‌های پروژه شما را از Python سیستم جدا می‌کند. این کار از تداخل نسخه‌ها جلوگیری می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ساخت پوشه پروژه\nmkdir library-api\ncd library-api\n\n# ساخت محیط مجازی\npython -m venv .venv\n\n# فعال‌سازی — لینوکس / مک\nsource .venv/bin/activate\n\n# فعال‌سازی — ویندوز (PowerShell)\n.venv\\Scripts\\Activate.ps1\n\n# فعال‌سازی — ویندوز (CMD)\n.venv\\Scripts\\activate.bat\n\n# بررسی — باید مسیر .venv را ببینید\nwhich python    # لینوکس/مک\nwhere python    # ویندوز"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "پس از فعال‌سازی",
+          "text": "در پرامپت ترمینال، پیشوند `(.venv)` ظاهر می‌شود. هر پکیجی که نصب می‌کنید، فقط در این محیط نصب می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "install",
+      "title": "گام ۲ — نصب Django و DRF",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# نصب Django و DRF\npip install django djangorestframework\n\n# بررسی نسخه‌ها\npython -m django --version\npython -c \"import rest_framework; print(rest_framework.VERSION)\"\n\n# ذخیره لیست پکیج‌ها\npip freeze > requirements.txt"
+        },
+        {
+          "type": "paragraph",
+          "text": "فایل `requirements.txt` به‌این شکل خواهد بود:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "filename": "requirements.txt",
+          "code": "Django==5.0.1\ndjangorestframework==3.15.0\nsqlparse==0.4.4\ntzdata==2024.1\nasgiref==3.7.2"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا requirements.txt؟",
+          "text": "برای اینکه هم‌تیمی‌های شما (و سرور تولید) بتوانند با یک دستور، همان پکیج‌ها را با همان نسخه‌ها نصب کنند: `pip install -r requirements.txt`."
+        }
+      ]
+    },
+    {
+      "id": "project",
+      "title": "گام ۳ — ساخت پروژه Django",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# نکته مهم: '.' در انتها یعنی فایل‌ها در همین پوشه ساخته شوند\ndjango-admin startproject library_api .\n\n# ساختار به‌دست‌آمده:\n# library-api/\n# ├── .venv/\n# ├── manage.py\n# ├── requirements.txt\n# └── library_api/\n#     ├── __init__.py\n#     ├── settings.py\n#     ├── urls.py\n#     ├── asgi.py\n#     └── wsgi.py"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "نقطه انتهایی",
+          "text": "بدون نقطه انتهایی، Django یک پوشه اضافی می‌سازد: `library-api/library_api/`. این کار ساختار را شلوغ می‌کند. همیشه از `.` استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "app",
+      "title": "گام ۴ — ساخت اپلیکیشن",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ساخت اپلیکیشن 'catalog'\npython manage.py startapp catalog\n\n# ساختار جدید:\n# library-api/\n# ├── catalog/\n# │   ├── __init__.py\n# │   ├── admin.py\n# │   ├── apps.py\n# │   ├── migrations/\n# │   ├── models.py\n# │   ├── tests.py\n# │   └── views.py\n# └── library_api/"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "گام ۵ — تنظیمات",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فایل `library_api/settings.py` را باز کنید و DRF و اپلیکیشن را ثبت کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "INSTALLED_APPS = [\n    # Django\n    \"django.contrib.admin\",\n    \"django.contrib.auth\",\n    \"django.contrib.contenttypes\",\n    \"django.contrib.sessions\",\n    \"django.contrib.messages\",\n    \"django.contrib.staticfiles\",\n\n    # Third-party\n    \"rest_framework\",          # ← DRF\n\n    # Local\n    \"catalog\",                 # ← اپلیکیشن ما\n]"
+        },
+        {
+          "type": "paragraph",
+          "text": "همچنین تنظیمات پایه DRF را اضافه کنید:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticatedOrReadOnly\",\n    ],\n    \"DEFAULT_PAGINATION_CLASS\": \"rest_framework.pagination.PageNumberPagination\",\n    \"PAGE_SIZE\": 20,\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n        \"rest_framework.renderers.BrowsableAPIRenderer\",\n    ],\n}"
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون تنظیمات `REST_FRAMEWORK`. DRF پیش‌فرض‌ها را استفاده می‌کند.",
+          "better": "تنظیمات حداقلی: احراز هویت، مجوز، صفحه‌بندی.",
+          "production": "تفکیک محیط توسعه و تولید: در تولید `BrowsableAPIRenderer` را حذف کن، صفحه‌بندی سخت‌گیرانه، Throttle فعال، JWT یا Token."
+        }
+      ]
+    },
+    {
+      "id": "migrate",
+      "title": "گام ۶ — مایگریشن اولیه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Django چند جدول پیش‌فرض دارد (کاربران، گروه‌ها، نشست‌ها، ادمین). با یک دستور، این جدول‌ها را می‌سازیم."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "python manage.py migrate"
+        },
+        {
+          "type": "paragraph",
+          "text": "خروجی مشابه این خواهد بود:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "Operations to perform:\n  Apply all migrations: admin, auth, contenttypes, sessions\nRunning migrations:\n  Applying contenttypes.0001_initial... OK\n  Applying auth.0001_initial... OK\n  Applying admin.0001_initial... OK\n  ...\n  Applying sessions.0001_initial... OK"
+        }
+      ]
+    },
+    {
+      "id": "superuser",
+      "title": "گام ۷ — ساخت کاربر ادمین",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای دسترسی به پنل ادمین Django، یک کاربر superuser بسازید."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "python manage.py createsuperuser\n\n# Username: admin\n# Email: admin@example.com\n# Password: ********\n# Password (again): ********"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "رمز عبور قوی",
+          "text": "Django رمزهای ضعیف را رد می‌کند. رمز شامل حروف بزرگ، کوچک، اعداد و حداقل ۸ کاراکتر باشد. در تولید، از رمز واقعاً قوی استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "run",
+      "title": "گام ۸ — اجرای سرور",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "python manage.py runserver\n\n# Watching for file changes with StatReloader\n# Performing system checks...\n# Django version 5.0.1, using settings 'library_api.settings'\n# Starting development server at http://127.0.0.1:8000/\n# Quit the server with CONTROL-C."
+        },
+        {
+          "type": "paragraph",
+          "text": "حالا در مرورگر دو آدرس را بررسی کنید:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`http://127.0.0.1:8000/` — باید صفحه پیش‌فرض Django را ببینید (موشک).",
+            "`http://127.0.0.1:8000/admin/` — پنل ادمین. با کاربر superuser وارد شوید."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "تا اینجا چه ساختیم؟",
+          "text": "یک پروژه Django + DRF با دیتابیس SQLite و یک کاربر ادمین. این پایه‌ای است که در فصل بعد اولین API خود را روی آن می‌سازیم."
+        }
+      ]
+    },
+    {
+      "id": "git",
+      "title": "گام اختیاری — راه‌اندازی Git",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "قبل از شروع کدنویسی، Git را راه‌اندازی کنید."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "git init\n\n# ساخت فایل .gitignore\ncat > .gitignore << 'EOF'\n.venv/\n__pycache__/\n*.py[cod]\n*.sqlite3\ndb.sqlite3\n.env\n.DS_Store\n*.log\nEOF\n\ngit add .\ngit commit -m \"Initial Django + DRF setup\""
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هرگز کامیت نکنید",
+          "text": "`.venv/`، `db.sqlite3`، `.env` و `__pycache__/` را هرگز در Git نگه ندارید. این‌ها یا محلی‌اند یا حاوی اطلاعات حساس."
+        }
+      ]
+    },
+    {
+      "id": "checklist",
+      "title": "چک‌لیست نهایی",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**✓** محیط مجازی ساخته و فعال است.",
+            "**✓** Django و DRF نصب شده‌اند.",
+            "**✓** `requirements.txt` ساخته شده.",
+            "**✓** پروژه `library_api` ساخته شده.",
+            "**✓** اپلیکیشن `catalog` ساخته شده.",
+            "**✓** `rest_framework` و `catalog` در `INSTALLED_APPS`.",
+            "**✓** تنظیمات `REST_FRAMEWORK` اضافه شده.",
+            "**✓** مایگریشن‌ها اجرا شده‌اند.",
+            "**✓** کاربر superuser ساخته شده.",
+            "**✓** سرور با `runserver` اجرا می‌شود.",
+            "**✓** `/admin/` کار می‌کند.",
+            "**✓** Git راه‌اندازی شده (اختیاری)."
+          ]
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-009-q1",
+      "tag": "کوییز",
+      "question": "چرا از نقطه انتهایی در `django-admin startproject library_api .` استفاده می‌کنیم؟",
+      "options": [
+        { "text": "فقط یک قرارداد است، فرقی نمی‌کند.", "correct": false },
+        { "text": "تا پروژه در پوشه جاری ساخته شود، نه در یک پوشه تودرتو اضافی.", "correct": true, "explanation": "بدون نقطه، Django پوشه‌ای با نام پروژه می‌سازد و ساختار دو سطحی می‌شود." },
+        { "text": "برای فعال‌کردن حالت دیباگ.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-009-q2",
+      "tag": "کوییز",
+      "question": "کدام پکیج را باید در `INSTALLED_APPS` اضافه کنیم تا DRF فعال شود؟",
+      "options": [
+        { "text": "`django.rest_framework`", "correct": false },
+        { "text": "`rest_framework`", "correct": true, "explanation": "نام صحیح پکیج `rest_framework` است." },
+        { "text": "`drf`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-009-ex1",
+      "title": "تمرین — راه‌اندازی یک پروژه جدید",
+      "problem": "یک پروژه جدید به نام `blog_api` با اپلیکیشن `posts` بسازید. DRF را نصب و فعال کنید. تنظیمات پایه را اضافه کنید و مطمئن شوید سرور اجرا می‌شود.",
+      "hints": ["از `python -m venv .venv` شروع کنید.", "نقطه انتهایی را در `startproject` فراموش نکنید.", "تنظیمات `REST_FRAMEWORK` را با دقت وارد کنید."],
+      "solution": "```bash\nmkdir blog-api && cd blog-api\npython -m venv .venv\nsource .venv/bin/activate\npip install django djangorestframework\ndjango-admin startproject blog_api .\npython manage.py startapp posts\n```\n\nسپس در `blog_api/settings.py`:\n```python\nINSTALLED_APPS = [\n    # ...\n    \"rest_framework\",\n    \"posts\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticatedOrReadOnly\",\n    ],\n    \"DEFAULT_PAGINATION_CLASS\": \"rest_framework.pagination.PageNumberPagination\",\n    \"PAGE_SIZE\": 20,\n}\n```\n\n```bash\npython manage.py migrate\npython manage.py createsuperuser\npython manage.py runserver\n```",
+      "explanation": "این الگو را برای هر پروژه DRF جدید تکرار می‌کنید. تنها نام پروژه و اپلیکیشن تغییر می‌کند."
+    }
+  ],
+  "summary": [
+    "همیشه از محیط مجازی استفاده کنید.",
+    "`pip install django djangorestframework` — نصب.",
+    "`django-admin startproject name .` — پروژه (با نقطه انتهایی).",
+    "`python manage.py startapp name` — اپلیکیشن.",
+    "`rest_framework` و اپلیکیشن را در `INSTALLED_APPS` ثبت کنید.",
+    "تنظیمات `REST_FRAMEWORK` را در `settings.py` اضافه کنید.",
+    "`migrate` و `createsuperuser` را فراموش نکنید.",
+    "`runserver` برای اجرا.",
+    "`.venv/` و `db.sqlite3` را در Git نگه ندارید."
+  ],
+  "resources": [
+    { "title": "Django — Quick install guide", "url": "https://docs.djangoproject.com/en/stable/intro/install/", "official": true },
+    { "title": "DRF — Installation", "url": "https://www.django-rest-framework.org/#installation", "official": true }
+  ]
+}

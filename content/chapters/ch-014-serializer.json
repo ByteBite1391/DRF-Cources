@@ -1,0 +1,279 @@
+{
+  "id": "ch-014",
+  "slug": "serializer",
+  "title": "Serializer",
+  "kicker": "فصل ۱۴",
+  "level": "beginner",
+  "estimatedMinutes": 40,
+  "lead": "در این فصل، اولین سریالایزر خود را می‌نویسیم و همه APIهای اصلی آن را یاد می‌گیریم.",
+  "sections": [
+    {
+      "id": "first",
+      "title": "اولین Serializer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "یک سریالایزر پایه، شبیه یک Form است. فیلدها را تعریف می‌کنید و DRF بقیه کارها را انجام می‌دهد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "from rest_framework import serializers\n\n\nclass BookSerializer(serializers.Serializer):\n    title = serializers.CharField(max_length=250)\n    author_name = serializers.CharField(max_length=150)\n    isbn = serializers.CharField(max_length=13)\n    price = serializers.DecimalField(max_digits=9, decimal_places=2)\n    published_at = serializers.DateField()\n    description = serializers.CharField(\n        required=False,\n        allow_blank=True,\n    )"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "کلاس از `serializers.Serializer` ارث‌بری می‌کند.",
+            "هر فیلد یک خط است.",
+            "پارامترها رفتار فیلد را تنظیم می‌کنند."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "serialize",
+      "title": "سریال‌سازی (پایتون → داده)",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "shell",
+          "code": ">>> from catalog.serializers import BookSerializer\n\n# یک دیکشنری فرضی (مثل نمونه مدل)\n>>> book = {\n...     \"title\": \"Clean Code\",\n...     \"author_name\": \"Robert C. Martin\",\n...     \"isbn\": \"9780132350884\",\n...     \"price\": \"42.50\",\n...     \"published_at\": \"2008-08-01\",\n... }\n\n>>> serializer = BookSerializer(book)\n>>> serializer.data\n{'title': 'Clean Code', 'author_name': 'Robert C. Martin',\n 'isbn': '9780132350884', 'price': '42.50',\n 'published_at': '2008-08-01', 'description': ''}"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نکته",
+          "text": "`.data` فقط خواندنی است. اگر بخواهید دوباره سریال‌سازی کنید، باید یک سریالایزر جدید بسازید."
+        }
+      ]
+    },
+    {
+      "id": "many",
+      "title": "سریال‌سازی چند شیء (many=True)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای لیست اشیاء، از `many=True` استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "books = [\n    {\"title\": \"Clean Code\", \"price\": \"42.50\", ...},\n    {\"title\": \"Refactoring\", \"price\": \"55.00\", ...},\n]\n\nserializer = BookSerializer(books, many=True)\nserializer.data\n# [{'title': 'Clean Code', ...}, {'title': 'Refactoring', ...}]"
+        }
+      ]
+    },
+    {
+      "id": "is-valid",
+      "title": "اعتبارسنجی (is_valid)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای واسریال‌سازی، داده را با `data=` پاس می‌دهید و `is_valid()` صدا می‌زنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": ">>> incoming = {\n...     \"title\": \"Clean Code\",\n...     \"author_name\": \"Robert C. Martin\",\n...     \"isbn\": \"9780132350884\",\n...     \"price\": \"42.50\",\n...     \"published_at\": \"2008-08-01\",\n... }\n>>> serializer = BookSerializer(data=incoming)\n>>> serializer.is_valid()\nTrue\n>>> serializer.validated_data\nOrderedDict([('title', 'Clean Code'), ...])\n\n# داده نامعتبر\n>>> bad = {\"title\": \"X\", \"price\": \"-5.00\"}\n>>> serializer = BookSerializer(data=bad)\n>>> serializer.is_valid()\nFalse\n>>> serializer.errors\n{'author_name': ['This field is required.'],\n 'isbn': ['This field is required.'],\n 'published_at': ['This field is required.'],\n 'price': ['Ensure this value is greater than or equal to 0.']}"
+        },
+        {
+          "type": "table",
+          "headers": ["متد/خاصیت", "کاربرد"],
+          "rows": [
+            ["`.is_valid()`", "اعتبارسنجی. برمی‌گرداند True/False"],
+            ["`.is_valid(raise_exception=True)`", "در صورت خطا، استثنا پرتاب می‌کند (به‌جای False)"],
+            ["`.errors`", "دیکشنری خطاها (فقط بعد از `is_valid`)"],
+            ["`.validated_data`", "داده معتبر و تبدیل‌شده (فقط اگر معتبر باشد)"],
+            ["`.data`", "داده خروجی برای سریال‌سازی"],
+            ["`.save()`", "ذخیره — `create()` یا `update()` را صدا می‌زند"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "title": "ذخیره (save)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای `Serializer` پایه، باید متدهای `create()` و `update()` را خودتان پیاده‌سازی کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "from rest_framework import serializers\nfrom .models import Author, Book\n\n\nclass BookSerializer(serializers.Serializer):\n    title = serializers.CharField(max_length=250)\n    author_name = serializers.CharField(max_length=150)\n    isbn = serializers.CharField(max_length=13)\n    price = serializers.DecimalField(max_digits=9, decimal_places=2)\n    published_at = serializers.DateField()\n\n    def create(self, validated_data):\n        author_name = validated_data.pop(\"author_name\")\n        author, _ = Author.objects.get_or_create(full_name=author_name)\n        return Book.objects.create(author=author, **validated_data)\n\n    def update(self, instance, validated_data):\n        author_name = validated_data.pop(\"author_name\", None)\n        if author_name:\n            author, _ = Author.objects.get_or_create(full_name=author_name)\n            instance.author = author\n        for attr, value in validated_data.items():\n            setattr(instance, attr, value)\n        instance.save()\n        return instance"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# استفاده\nserializer = BookSerializer(data=request.data)\nserializer.is_valid(raise_exception=True)\nbook = serializer.save()   # create() را صدا می‌زند\n\n# برای بروزرسانی\nserializer = BookSerializer(book, data=request.data, partial=True)\nserializer.is_valid(raise_exception=True)\nserializer.save()          # update() را صدا می‌زند"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "partial=True",
+          "text": "برای PATCH، از `partial=True` استفاده کنید تا فیلدهای نیامده خطا ندهند."
+        }
+      ]
+    },
+    {
+      "id": "save-kwargs",
+      "title": "پاس دادن مقادیر به save",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "گاهی می‌خواهید مقادیری را در زمان save تزریق کنید — مثلاً `user` که از request می‌آید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در ویو\nserializer.save(owner=request.user)\n\n# در سریالایزر\ndef create(self, validated_data):\n    owner = validated_data.pop(\"owner\")\n    return Book.objects.create(owner=owner, **validated_data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی رایج",
+          "text": "این الگو برای مالکیت خودکار عالی است. به‌جای اینکه کلاینت owner را بفرستد (که ناامن است)، شما آن را از request.user پر می‌کنید."
+        }
+      ]
+    },
+    {
+      "id": "read-only-fields",
+      "title": "فیلدهای read_only و write_only",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class UserSerializer(serializers.Serializer):\n    id = serializers.IntegerField(read_only=True)\n    username = serializers.CharField(max_length=150)\n    password = serializers.CharField(write_only=True, min_length=8)\n    full_name = serializers.CharField(read_only=True)\n    created_at = serializers.DateTimeField(read_only=True)"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**read_only=True:** فقط در خروجی نمایش داده می‌شود؛ در ورودی نادیده گرفته می‌شود.",
+            "**write_only=True:** فقط در ورودی پذیرفته می‌شود؛ در خروجی نمایش داده نمی‌شود.",
+            "**کاربرد read_only:** فیلدهای محاسبه‌شده، id، timestamp.",
+            "**کاربرد write_only:** رمز عبور، فیلدهای حساس."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fields-params",
+      "title": "پارامترهای مهم فیلدها",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["پارامتر", "معنی", "پیش‌فرض"],
+          "rows": [
+            ["`required`", "فیلد الزامی است؟", "`True`"],
+            ["`read_only`", "فقط خواندنی", "`False`"],
+            ["`write_only`", "فقط نوشتنی", "`False`"],
+            ["`default`", "مقدار پیش‌فرض", "—"],
+            ["`allow_null`", "می‌تواند null باشد؟", "`False`"],
+            ["`allow_blank`", "می‌تواند خالی باشد؟", "`False`"],
+            ["`validators`", "لیست اعتبارسنج‌ها", "—"],
+            ["`error_messages`", "پیام‌های خطای سفارشی", "—"],
+            ["`label`", "برچسب (برای Browsable API)", "نام فیلد"],
+            ["`help_text`", "راهنما", "—"],
+            ["`source`", "منبع در شیء (اگر نام متفاوت است)", "نام فیلد"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ProductSerializer(serializers.Serializer):\n    name = serializers.CharField(\n        max_length=120,\n        label=\"نام محصول\",\n        help_text=\"نام نمایشی محصول\",\n    )\n    price = serializers.DecimalField(\n        max_digits=8, decimal_places=2,\n        required=True,\n    )\n    stock = serializers.IntegerField(\n        min_value=0,\n        default=0,\n        error_messages={\"min_value\": \"موجودی نمی‌تواند منفی باشد.\"},\n    )\n    description = serializers.CharField(\n        required=False, allow_blank=True,\n    )\n    internal_code = serializers.CharField(\n        write_only=True,\n        error_messages={\"required\": \"کد داخلی اجباری است.\"},\n    )"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "صدا زدن `save()` قبل از `is_valid()`",
+          "why": "`.save()` بدون داده معتبر، خطا می‌دهد یا داده ناقص ذخیره می‌کند.",
+          "when": "وقتی عجله دارید و مراحل را رد می‌کنید.",
+          "fix": "همیشه `serializer.is_valid(raise_exception=True)` قبل از `save()`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `.data` برای نوشتن",
+          "why": "`.data` فقط خواندنی است. داده اعتبارسنجی‌نشده برمی‌گرداند.",
+          "when": "وقتی می‌خواهید داده اعتبارسنجی‌شده را استفاده کنید.",
+          "fix": "برای نوشتن از `.validated_data` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `partial=True` در PATCH",
+          "why": "PATCH با فیلدهای ناقص، خطای «required» می‌دهد.",
+          "when": "وقتی فقط می‌خواهید یک فیلد را تغییر دهید.",
+          "fix": "`Serializer(instance, data=..., partial=True)`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `read_only` روی فیلدهای محاسبه‌شده",
+          "why": "اگر read_only نباشد، DRF انتظار دارد کلاینت آن فیلد را بفرستد.",
+          "when": "وقتی فیلدی مثل `created_at` یا `full_name` محاسبه‌شده است.",
+          "fix": "`serializers.DateTimeField(read_only=True)`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیاده‌سازی نکردن `create` و `update`",
+          "why": "در `Serializer` پایه، این متدها وجود ندارند. `.save()` خطا می‌دهد.",
+          "when": "وقتی از `Serializer` پایه استفاده می‌کنید نه `ModelSerializer`.",
+          "fix": "این دو متد را پیاده‌سازی کنید یا از `ModelSerializer` استفاده کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-014-q1",
+      "tag": "کوییز",
+      "question": "کدام متد برای سریال‌سازی چندین شیء استفاده می‌شود؟",
+      "options": [
+        { "text": "`many=True` در زمان ساخت", "correct": true, "explanation": "`BookSerializer(books, many=True)`" },
+        { "text": "`list=True`", "correct": false },
+        { "text": "`multiple()`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-014-q2",
+      "tag": "کوییز",
+      "question": "تفاوت `.data` و `.validated_data` چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "`.data` داده خروجی (بعد از سریال‌سازی) است؛ `.validated_data` داده ورودی معتبر (بعد از واسریال‌سازی).", "correct": true, "explanation": "دو مفهوم متفاوت که ممکن است با هم اشتباه شوند." },
+        { "text": "`.data` فقط برای GET است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-014-ex1",
+      "title": "تمرین — اولین Serializer",
+      "problem": "یک `ProductSerializer` بسازید با فیلدهای `name` (حداکثر ۱۲۰)، `price` (Decimal)، `stock` (Integer با min=0)، `description` (اختیاری). سپس:\n- یک محصول فرضی را سریال‌سازی کنید.\n- یک داده نامعتبر بفرستید و خطاها را ببینید.",
+      "hints": ["از `serializers.Serializer` استفاده کنید.", "برای داده نامعتبر، price را منفی بفرستید.", "خطاها در `serializer.errors` هستند."],
+      "solution": "```python\nfrom rest_framework import serializers\n\n\nclass ProductSerializer(serializers.Serializer):\n    name = serializers.CharField(max_length=120)\n    price = serializers.DecimalField(max_digits=8, decimal_places=2)\n    stock = serializers.IntegerField(min_value=0, default=0)\n    description = serializers.CharField(required=False, allow_blank=True)\n\n\n# تست\nproduct = {\"name\": \"Keyboard\", \"price\": \"89.50\", \"stock\": 12}\ns = ProductSerializer(product)\nprint(s.data)\n\nbad = {\"name\": \"Mouse\", \"price\": \"-5.00\"}\ns = ProductSerializer(data=bad)\nprint(s.is_valid())   # False\nprint(s.errors)\n```",
+      "explanation": "این الگوی پایه ساخت هر Serializer است. پس از تسلط، سراغ ModelSerializer می‌رویم."
+    }
+  ],
+  "summary": [
+    "`Serializer` پایه با تعریف فیلدها کار می‌کند.",
+    "سریال‌سازی: `Serializer(instance)` → `.data`.",
+    "واسریال‌سازی: `Serializer(data=...)` → `.is_valid()` → `.validated_data`.",
+    "ذخیره: `.save()` → `create()` یا `update()`.",
+    "`many=True` برای لیست اشیاء.",
+    "`read_only` و `write_only` رفتار فیلد را تغییر می‌دهند.",
+    "در `Serializer` پایه، `create` و `update` را خودتان پیاده می‌کنید.",
+    "همیشه `is_valid(raise_exception=True)` قبل از `save()`."
+  ],
+  "resources": [
+    { "title": "DRF — Serializer", "url": "https://www.django-rest-framework.org/api-guide/serializers/", "official": true }
+  ]
+}

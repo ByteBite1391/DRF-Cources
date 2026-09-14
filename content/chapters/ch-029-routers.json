@@ -1,0 +1,319 @@
+{
+  "id": "ch-029",
+  "slug": "routers",
+  "title": "Routerها",
+  "kicker": "فصل ۲۹",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "Router مکانیزم DRF برای تولید خودکار URLها از ViewSetهاست. کد کمتری می‌نویسید و ساختار یکدستی دارید.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا Router؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بدون Router، برای هر ViewSet باید ۶ مسیر در `urls.py` تعریف کنید. Router این کار را خودکار می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# بدون Router — ۶ مسیر دستی\nurlpatterns = [\n    path(\"books/\", BookViewSet.as_view({\"get\": \"list\", \"post\": \"create\"})),\n    path(\"books/<int:pk>/\", BookViewSet.as_view({\n        \"get\": \"retrieve\",\n        \"put\": \"update\",\n        \"patch\": \"partial_update\",\n        \"delete\": \"destroy\",\n    })),\n]\n\n# با Router — یک خط\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\nurlpatterns = router.urls"
+        }
+      ]
+    },
+    {
+      "id": "defaultrouter",
+      "title": "DefaultRouter",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom .views import BookViewSet, CategoryViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\nrouter.register(r\"categories\", CategoryViewSet, basename=\"category\")\n\nurlpatterns = router.urls"
+        },
+        {
+          "type": "paragraph",
+          "text": "`DefaultRouter` این مسیرها را می‌سازد:"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "# ViewSet books\n/books/             list, create\n/books/{pk}/        retrieve, update, partial_update, destroy\n/books.json         فرمت JSON\n/books/{pk}.json    فرمت JSON\n\n# ViewSet categories\n/categories/\n/categories/{pk}/\n\n# API Root (فقط DefaultRouter)\n/                   لیست همه Endpointها\n\n# فرمت‌سافیکس (فقط DefaultRouter)\n/books.json\n/books/{pk}.json"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "API Root",
+          "text": "`DefaultRouter` یک صفحه ریشه در `/` می‌سازد که همه Endpointهای ثبت‌شده را لیست می‌کند. برای کشف API عالی است."
+        }
+      ]
+    },
+    {
+      "id": "simplerouter",
+      "title": "SimpleRouter",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`SimpleRouter` مسیرهای اصلی را می‌سازد اما API Root و فرمت‌سافیکس ندارد. سبک‌تر است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.routers import SimpleRouter\n\nrouter = SimpleRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = router.urls\n\n# فقط مسیرهای اصلی:\n# /books/\n# /books/{pk}/\n# بدون API Root، بدون فرمت‌سافیکس"
+        },
+        {
+          "type": "table",
+          "headers": ["ویژگی", "SimpleRouter", "DefaultRouter"],
+          "rows": [
+            ["مسیرهای اصلی", "✅", "✅"],
+            ["فرمت‌سافیکس (`.json`)", "❌", "✅"],
+            ["API Root (`/`)", "❌", "✅"],
+            ["سبک‌تر", "✅", "—"],
+            ["پیش‌فرض توصیه‌شده", "تولید", "توسعه"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "SimpleRouter برای همه چیز.",
+          "better": "DefaultRouter در توسعه، SimpleRouter در تولید.",
+          "production": "SimpleRouter + API Root جداگانه در یک Endpoint مشخص (`/api/`) با مستندات OpenAPI."
+        }
+      ]
+    },
+    {
+      "id": "register",
+      "title": "register()",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "router.register(prefix, viewset, basename=None)"
+        },
+        {
+          "type": "table",
+          "headers": ["پارامتر", "معنی", "مثال"],
+          "rows": [
+            ["`prefix`", "پیشوند URL", "`r\"books\"`"],
+            ["`viewset`", "کلاس ViewSet", "`BookViewSet`"],
+            ["`basename`", "نام پایه URLها (اختیاری)", "`\"book\"`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "basename چه زمانی لازم است؟",
+          "text": "اگر ViewSet شما `queryset` دارد، Router از نام مدل استفاده می‌کند. اگر `queryset` ندارید (فقط `get_queryset`)، باید `basename` بدهید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# با queryset — basename اختیاری\nrouter.register(r\"books\", BookViewSet)   # basename = \"book\"\n\n# بدون queryset — basename اجباری\nclass MyBookViewSet(viewsets.ModelViewSet):\n    serializer_class = BookSerializer\n    # queryset تعریف نشده — فقط get_queryset\n\n    def get_queryset(self):\n        return Book.objects.filter(owner=self.request.user)\n\nrouter.register(r\"my-books\", MyBookViewSet, basename=\"my-book\")"
+        }
+      ]
+    },
+    {
+      "id": "nested-routers",
+      "title": "مسیرهای تودرتو (Nested Routers)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF به‌طور پیش‌فرض Router تودرتو ندارد. اما پکیج `drf-nested-routers` این را فراهم می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "pip install drf-nested-routers"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom rest_framework_nested import routers\nfrom .views import BookViewSet, ReviewViewSet\n\n# Router اصلی\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\n# Router تودرتو\nbooks_router = routers.NestedDefaultRouter(\n    router, r\"books\", lookup=\"book\"\n)\nbooks_router.register(r\"reviews\", ReviewViewSet, basename=\"book-reviews\")\n\nurlpatterns = router.urls + books_router.urls\n\n# URLها:\n# /books/\n# /books/{pk}/\n# /books/{book_pk}/reviews/\n# /books/{book_pk}/reviews/{pk}/"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "class ReviewViewSet(viewsets.ModelViewSet):\n    serializer_class = ReviewSerializer\n\n    def get_queryset(self):\n        return Review.objects.filter(book_id=self.kwargs[\"book_pk\"])\n\n    def perform_create(self, serializer):\n        serializer.save(\n            book_id=self.kwargs[\"book_pk\"],\n            user=self.request.user,\n        )"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "جایگزین بدون پکیج",
+          "text": "اگر نمی‌خواهید وابستگی اضافه کنید، می‌توانید مسیرها را دستی تعریف کنید. اما برای پروژه‌های بزرگ، `drf-nested-routers` صرفه‌جویی در کد می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "custom-router",
+      "title": "Router سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر مسیرهای خاصی نیاز دارید که Router پیش‌فرض نمی‌سازد، Router سفارشی بنویسید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.routers import SimpleRouter, Route, DynamicRoute\n\n\nclass MyRouter(SimpleRouter):\n    routes = [\n        # مسیر سفارشی\n        Route(\n            url=r\"^books/published/{prefix}/$\",\n            mapping={\"get\": \"published\"},\n            name=\"{basename}-published\",\n            detail=False,\n            initkwargs={},\n        ),\n    ] + SimpleRouter.routes"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def published(self, request):\n        books = self.get_queryset().filter(is_published=True)\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)"
+        }
+      ]
+    },
+    {
+      "id": "format-suffix",
+      "title": "فرمت‌سافیکس",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "با `DefaultRouter`، می‌توانید در URL فرمت را مشخص کنید."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "/books/              → JSON (پیش‌فرض)\n/books.json          → JSON\n/books/?format=json  → JSON"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "نیاز به `format_suffix_patterns`",
+          "text": "برای پشتیبانی از فرمت‌سافیکس، باید `DefaultRouter` یا `format_suffix_patterns` استفاده کنید. `SimpleRouter` فرمت‌سافیکس ندارد."
+        }
+      ]
+    },
+    {
+      "id": "multiple-routers",
+      "title": "چند Router در یک پروژه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید چند Router داشته باشید — مثلاً برای API v1 و v2، یا برای بخش‌های مختلف."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_api/urls.py",
+          "code": "from django.contrib import admin\nfrom django.urls import path, include\n\nurlpatterns = [\n    path(\"admin/\", admin.site.urls),\n    path(\"api/v1/\", include(\"catalog.urls.v1\")),\n    path(\"api/v2/\", include(\"catalog.urls.v2\")),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls/v1.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom catalog.views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = router.urls"
+        }
+      ]
+    },
+    {
+      "id": "api-root",
+      "title": "API Root",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`DefaultRouter` یک API Root در `/` می‌سازد. اگر می‌خواهید در مسیر دیگری باشد:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom rest_framework.urls import path\nfrom .views import api_root\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = [\n    path(\"\", api_root),   # API Root در مسیر دلخواه\n    path(\"\", include(router.urls)),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\nfrom rest_framework.reverse import reverse\n\n\n@api_view([\"GET\"])\ndef api_root(request, format=None):\n    return Response({\n        \"books\": reverse(\"book-list\", request=request, format=format),\n        \"categories\": reverse(\"category-list\", request=request, format=format),\n        \"docs\": \"/api/docs/\",\n    })"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "نبود basename بدون queryset",
+          "why": "Router نمی‌تواند نام مسیرها را بسازد.",
+          "when": "وقتی ViewSet فقط `get_queryset` دارد.",
+          "fix": "`router.register(r\"books\", ViewSet, basename=\"book\")`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "prefix با `/` ابتدایی",
+          "why": "URL نادرست می‌سازد.",
+          "when": "وقتی از urls.py Django می‌آیید.",
+          "fix": "`router.register(r\"books\", ...)` نه `r\"/books\"`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "register کردن یک ViewSet دو بار",
+          "why": "URLهای تکراری و تضاد در reverse.",
+          "when": "وقتی می‌خواهید دو prefix داشته باشید.",
+          "fix": "یک prefix، یا دو ViewSet جدا یا router جدا."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "DefaultRouter در تولید",
+          "why": "API Root و فرمت‌سافیکس را افشا می‌کند.",
+          "when": "وقتی API عمومی است.",
+          "fix": "در تولید `SimpleRouter` یا API Root محدود."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Nested Router برای همه روابط",
+          "why": "URLها خیلی عمیق و پیچیده می‌شوند.",
+          "when": "وقتی همه روابط را تو در تو می‌کنید.",
+          "fix": "فقط برای روابط مهم و یک‌سطحی."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-029-q1",
+      "tag": "کوییز",
+      "question": "تفاوت `SimpleRouter` و `DefaultRouter` چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "`DefaultRouter` علاوه بر مسیرهای اصلی، API Root و فرمت‌سافیکس دارد.", "correct": true, "explanation": "SimpleRouter سبک‌تر و DefaultRouter کامل‌تر است." },
+        { "text": "`SimpleRouter` سریع‌تر است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-029-q2",
+      "tag": "کوییز",
+      "question": "`basename` چه زمانی اجباری است؟",
+      "options": [
+        { "text": "همیشه", "correct": false },
+        { "text": "وقتی ViewSet `queryset` ندارد و فقط `get_queryset` دارد.", "correct": true, "explanation": "بدون queryset، Router نمی‌تواند نام پایه بسازد." },
+        { "text": "فقط برای ModelViewSet", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-029-ex1",
+      "title": "تمرین — Router کامل با Nested",
+      "problem": "Routerهای لازم برای API وبلاگ بسازید:\n- CRUD پست‌ها.\n- CRUD کامنت‌ها زیر هر پست (`/posts/{post_pk}/comments/`).\n- لیست کامنت‌های همه پست‌ها در `/comments/`.",
+      "hints": ["از `DefaultRouter` برای پست‌ها و کامنت‌ها.", "از `drf-nested-routers` برای کامنت‌های زیر پست.", "برای هر ViewSet مسیر مناسب بسازید."],
+      "solution": "```python\n# urls.py\nfrom rest_framework.routers import DefaultRouter\nfrom rest_framework_nested import routers\nfrom .views import PostViewSet, CommentViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"posts\", PostViewSet, basename=\"post\")\nrouter.register(r\"comments\", CommentViewSet, basename=\"comment\")\n\nposts_router = routers.NestedDefaultRouter(router, r\"posts\", lookup=\"post\")\nposts_router.register(r\"comments\", CommentViewSet, basename=\"post-comments\")\n\nurlpatterns = router.urls + posts_router.urls\n```\n\n**نتیجه:**\n- `/posts/` — لیست و ساخت پست\n- `/posts/{pk}/` — جزئیات پست\n- `/posts/{post_pk}/comments/` — کامنت‌های پست (لیست و ساخت)\n- `/posts/{post_pk}/comments/{pk}/` — جزئیات کامنت\n- `/comments/` — همه کامنت‌ها (اختیاری)",
+      "explanation": "Nested Router الگوی رایج برای روابط یک‌سطحی است. برای روابط عمیق‌تر، احتیاط کنید."
+    }
+  ],
+  "summary": [
+    "Router URLها را از ViewSet خودکار می‌سازد.",
+    "`SimpleRouter` سبک، `DefaultRouter` کامل با API Root.",
+    "`register(prefix, viewset, basename=None)` — ثبت ViewSet.",
+    "`basename` اجباری اگر `queryset` ندارید.",
+    "`drf-nested-routers` برای مسیرهای تودرتو.",
+    "Router سفارشی با `Route` و `DynamicRoute`.",
+    "در تولید `SimpleRouter` یا محدود کردن API Root."
+  ],
+  "resources": [
+    { "title": "DRF — Routers", "url": "https://www.django-rest-framework.org/api-guide/routers/", "official": true },
+    { "title": "drf-nested-routers", "url": "https://github.com/alanjds/drf-nested-routers", "official": false }
+  ]
+}

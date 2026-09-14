@@ -1,0 +1,356 @@
+{
+  "id": "ch-044",
+  "slug": "renderers",
+  "title": "رندررها (Renderers)",
+  "kicker": "فصل ۴۴",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "رندررها داده پایتون را به فرمت خروجی (JSON، HTML، CSV) تبدیل می‌کنند. انتخاب درست، تجربه و کارایی را متحول می‌کند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "رندرر چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Renderer** کلاسی است که داده پایتون (dict، list) را به bytes قابل ارسال تبدیل می‌کند. انتخاب رندرر بر اساس هدر `Accept` و نوع درخواست انجام می‌شود."
+        },
+        {
+          "type": "flow",
+          "steps": ["Python data", "Renderer", "bytes", "Response"]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا اهمیت دارد؟",
+          "text": "با Renderer مناسب، یک Endpoint می‌تواند هم JSON بدهد، هم HTML مرورپذیر، هم CSV برای دانلود. همه از یک کد."
+        }
+      ]
+    },
+    {
+      "id": "builtin",
+      "title": "رندررهای آماده",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["Renderer", "Accept", "خروجی"],
+          "rows": [
+            ["`JSONRenderer`", "`application/json`", "JSON"],
+            ["`BrowsableAPIRenderer`", "`text/html`", "HTML تعاملی"],
+            ["`StaticHTMLRenderer`", "`text/html`", "HTML خام"],
+            ["`AdminRenderer`", "`text/html`", "نمای ادمین"],
+            ["`MultiPartRenderer`", "`multipart/form-data`", "برای تست‌های HTML"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n        \"rest_framework.renderers.BrowsableAPIRenderer\",\n    ],\n}"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "در تولید",
+          "text": "`BrowsableAPIRenderer` را در تولید حذف کنید — هم بار سرور کم می‌شود، هم سطح حمله کاهش می‌یابد."
+        }
+      ]
+    },
+    {
+      "id": "json-renderer",
+      "title": "JSONRenderer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "رایج‌ترین رندرر. داده را به JSON با فرمت‌بندی مناسب تبدیل می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "# تنظیمات JSON\nREST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n    ],\n}\n\n# در settings.py\nJSON_INDENT = None   # فشرده در تولید\nJSON_INDENT = 2      # خوانا در توسعه"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# تنظیمات پیشرفته\nclass PrettyJSONRenderer(JSONRenderer):\n    \"\"\"JSON خوانا با indent.\"\"\"\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        if renderer_context and renderer_context.get(\"indent\"):\n            self.indent = 2\n        return super().render(data, accepted_media_type, renderer_context)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "charset",
+          "text": "پیش‌فرض UTF-8 است که فارسی را درست پشتیبانی می‌کند. اگر `charset=None` بگذارید، DRF خودکار تشخیص می‌دهد."
+        }
+      ]
+    },
+    {
+      "id": "browsable",
+      "title": "BrowsableAPIRenderer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "رابط HTML تعاملی. وقتی مرورگر باز می‌کنید، به‌جای JSON خام، صفحه‌ای زیبا با فرم و داده می‌بینید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در ViewSet خاص\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, BrowsableAPIRenderer]\n\n\n# در settings.py سراسری\nREST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n        \"rest_framework.renderers.BrowsableAPIRenderer\",\n    ],\n}"
+        },
+        {
+          "type": "callout-level",
+          "basic": "BrowsableAPIRenderer همیشه فعال.",
+          "better": "فقط در `DEBUG=True`.",
+          "production": "در تولید فقط JSONRenderer. مستندات تعاملی جداگانه با Swagger UI."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "# الگوی امن: Browsable فقط در DEBUG\nREST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n    ],\n}\n\nif DEBUG:\n    REST_FRAMEWORK[\"DEFAULT_RENDERER_CLASSES\"].append(\n        \"rest_framework.renderers.BrowsableAPIRenderer\",\n    )"
+        }
+      ]
+    },
+    {
+      "id": "static-html",
+      "title": "StaticHTMLRenderer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای خروجی HTML آماده (بدون فرم). مفید برای Endpointهایی که HTML خام برمی‌گردانند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.renderers import StaticHTMLRenderer\nfrom rest_framework.decorators import api_view, renderer_classes\nfrom rest_framework.response import Response\n\n\n@api_view([\"GET\"])\n@renderer_classes([StaticHTMLRenderer])\ndef welcome(request):\n    html = \"&lt;h1&gt;خوش آمدید&lt;/h1&gt;&lt;p&gt;این یک صفحه HTML است.&lt;/p&gt;\"\n    return Response(html)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی؟",
+          "text": "برای صفحات ساده HTML که در فرانت‌اند استفاده نمی‌شوند (مثل گزارش، صفحه چاپ). در پروژه‌های معمولی نادر است."
+        }
+      ]
+    },
+    {
+      "id": "admin-renderer",
+      "title": "AdminRenderer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "نمایی شبیه پنل ادمین Django. برای Endpointهای ادمینی مفید است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.renderers import AdminRenderer\n\n\nclass AdminBookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, AdminRenderer]\n    permission_classes = [IsAdminUser]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "کاربرد",
+          "text": "اگر می‌خواهید یک رابط مدیریت ساده برای داده داشته باشید بدون ساخت frontend جداگانه، AdminRenderer گزینه خوبی است."
+        }
+      ]
+    },
+    {
+      "id": "csv-renderer",
+      "title": "رندرر CSV سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای دانلود داده به‌شکل CSV (Excel قابل بازکردن)."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/renderers.py",
+          "code": "import csv\nfrom io import StringIO\nfrom rest_framework.renderers import BaseRenderer\n\n\nclass CSVRenderer(BaseRenderer):\n    media_type = \"text/csv\"\n    format = \"csv\"\n    charset = \"utf-8\"\n\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        # اگر داده صفحه‌بندی‌شده است، results را بگیر\n        if isinstance(data, dict) and \"results\" in data:\n            data = data[\"results\"]\n\n        if not isinstance(data, list):\n            return \"\"\n\n        if not data:\n            return \"\"\n\n        # ساخت CSV\n        buffer = StringIO()\n        # BOM برای Excel فارسی\n        buffer.write(\"\\ufeff\")\n\n        writer = csv.writer(buffer)\n\n        # سرصفحه از کلیدهای رکورد اول\n        if isinstance(data[0], dict):\n            writer.writerow(data[0].keys())\n            for row in data:\n                writer.writerow(row.values())\n\n        return buffer.getvalue()"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, CSVRenderer]\n    pagination_class = None   # برای CSV، همه یک‌جا"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# درخواست CSV\ncurl -H \"Accept: text/csv\" \\\n  http://127.0.0.1:8000/api/books/ -o books.csv\n\n# در مرورگر\nhttp://127.0.0.1:8000/api/books/?format=csv"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "BOM برای Excel",
+          "text": "کاراکتر `\\ufeff` در ابتدای فایل باعث می‌شود Excel فارسی را درست نمایش دهد (به‌جای ????)."
+        }
+      ]
+    },
+    {
+      "id": "per-view",
+      "title": "تنظیم در سطح View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در APIView\nclass BookListView(APIView):\n    renderer_classes = [JSONRenderer, BrowsableAPIRenderer]\n\n    def get(self, request):\n        ...\n\n\n# در ViewSet\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, BrowsableAPIRenderer]\n\n\n# در @api_view\nfrom rest_framework.decorators import api_view, renderer_classes\n\n\n@api_view([\"GET\"])\n@renderer_classes([JSONRenderer, CSVRenderer])\ndef book_list(request):\n    ..."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "اکشن‌های سفارشی",
+          "text": "می‌توانید برای یک اکشن، رندرر متفاوت تعیین کنید اما `@action` گزینه `renderer_classes` ندارد. از `get_renderers` override استفاده کنید یا در متد سطح ویو."
+        }
+      ]
+    },
+    {
+      "id": "content-negotiation",
+      "title": "چگونه رندرر انتخاب می‌شود؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF بر اساس هدر `Accept` و پارامتر `?format=` تصمیم می‌گیرد."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# Accept header\ncurl -H \"Accept: application/json\" http://api/books/\ncurl -H \"Accept: text/html\" http://api/books/\ncurl -H \"Accept: text/csv\" http://api/books/\n\n# Query param\nhttp://api/books/?format=json\nhttp://api/books/?format=csv\n\n# Format suffix\nhttp://api/books.json\nhttp://api/books.csv"
+        },
+        {
+          "type": "table",
+          "headers": ["Accept", "انتخاب"],
+          "rows": [
+            ["`application/json`", "اولین رندرر با این media_type"],
+            ["`text/html`", "BrowsableAPIRenderer یا StaticHTMLRenderer"],
+            ["`text/csv`", "CSVRenderer (اگر تعریف شده)"],
+            ["`*/*`", "اولین رندرر در لیست"],
+            ["نامشخص و تعریف‌نشده", "`406 Not Acceptable`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "خطای 406",
+          "text": "اگر هیچ رندرری با `Accept` کلاینت تطابق نداشته باشد، DRF خطای `406 Not Acceptable` می‌دهد."
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "نکات امنیتی",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**BrowsableAPIRenderer در تولید:** حذف کنید.",
+            "**XSS در HTML:** اگر StaticHTMLRenderer استفاده می‌کنید، محتوا را escape کنید.",
+            "**فیلدهای حساس در CSV:** اگر CSV می‌دهید، مطمئن شوید فیلدهای حساس در serializer نیستند.",
+            "**CSV Injection:** فیلدهایی که با `=`, `+`, `-`, `@` شروع می‌شوند را با `'` پیشوند بزنید.",
+            "**AdminRenderer:** فقط برای ادمین‌ها."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def sanitize_csv_value(value):\n    \"\"\"جلوگیری از CSV Injection (فرمول‌های مخرب).\"\"\"\n    if isinstance(value, str) and value.startswith((\"=\", \"+\", \"-\", \"@\")):\n        return \"'\" + value\n    return value\n\n\nclass SafeCSVRenderer(BaseRenderer):\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        if isinstance(data, dict) and \"results\" in data:\n            data = data[\"results\"]\n        if not isinstance(data, list) or not data:\n            return \"\"\n\n        buffer = StringIO()\n        buffer.write(\"\\ufeff\")\n        writer = csv.writer(buffer)\n        if isinstance(data[0], dict):\n            writer.writerow(data[0].keys())\n            for row in data:\n                writer.writerow([\n                    sanitize_csv_value(v) for v in row.values()\n                ])\n        return buffer.getvalue()"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "BrowsableAPIRenderer در تولید",
+          "why": "بار سرور، سطح حمله، لو رفتن ساختار Endpointها.",
+          "when": "وقتی در settings سراسری می‌گذارید.",
+          "fix": "فقط در `DEBUG=True`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `JSONRenderer`",
+          "why": "اگر فقط رندرر سفارشی بگذارید، درخواست‌های معمولی JSON خطا می‌گیرند.",
+          "when": "وقتی `renderer_classes` را برای یک ویو تنظیم می‌کنید.",
+          "fix": "همیشه `JSONRenderer` را اول لیست بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود BOM در CSV فارسی",
+          "why": "Excel فارسی را ???? نشان می‌دهد.",
+          "when": "وقتی CSV برای کاربران ویندوز می‌سازید.",
+          "fix": "`buffer.write(\"\\ufeff\")`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود sanitize در CSV",
+          "why": "CSV Injection — فرمول‌های مخرب در Excel اجرا می‌شوند.",
+          "when": "وقتی داده کاربر در CSV می‌رود.",
+          "fix": "پیشوند `'` روی مقادیر خطرناک."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "صفحه‌بندی در CSV",
+          "why": "کاربر فقط صفحه اول را می‌گیرد، نه همه داده.",
+          "when": "وقتی می‌خواهید CSV کامل بدهید.",
+          "fix": "`pagination_class = None` برای ویو CSV."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-044-q1",
+      "tag": "کوییز",
+      "question": "چرا BrowsableAPIRenderer در تولید حذف می‌شود؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون بار سرور را زیاد و سطح حمله را افزایش می‌دهد.", "correct": true, "explanation": "در تولید، فقط JSONRenderer کافی است." },
+        { "text": "چون اجباری است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-044-q2",
+      "tag": "کوییز",
+      "question": "برای CSV فارسی، چرا BOM لازم است؟",
+      "options": [
+        { "text": "چون سرعت را افزایش می‌دهد.", "correct": false },
+        { "text": "چون بدون آن، Excel فارسی را ???? نمایش می‌دهد.", "correct": true, "explanation": "BOM به Excel می‌گوید فایل UTF-8 است." },
+        { "text": "چون Django اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-044-q3",
+      "tag": "کوییز",
+      "question": "انتخاب رندرر بر اساس چه هدری انجام می‌شود؟",
+      "options": [
+        { "text": "`Content-Type`", "correct": false },
+        { "text": "`Accept`", "correct": true, "explanation": "Accept برای خروجی است؛ Content-Type برای ورودی." },
+        { "text": "`Authorization`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-044-ex1",
+      "title": "تمرین — رندرر CSV با sanitize",
+      "problem": "یک CSVRenderer بنویسید که:\n- BOM برای Excel فارسی اضافه کند.\n- مقادیر خطرناک (شروع با =، +، -، @) را sanitize کند.\n- اگر داده صفحه‌بندی‌شده بود، results را بگیرد.\n- یک ویو برای دانلود کتاب‌ها با آن بسازید.",
+      "hints": ["از StringIO استفاده کنید.", "برای BOM: `buffer.write(\"\\ufeff\")`.", "sanitize با پیشوند `'`."],
+      "solution": "```python\n# renderers.py\nimport csv\nfrom io import StringIO\nfrom rest_framework.renderers import BaseRenderer\n\n\ndef sanitize(value):\n    if isinstance(value, str) and value.startswith((\"=\", \"+\", \"-\", \"@\", \"\\t\", \"\\r\")):\n        return \"'\" + value\n    return value\n\n\nclass SafeCSVRenderer(BaseRenderer):\n    media_type = \"text/csv\"\n    format = \"csv\"\n    charset = \"utf-8\"\n\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        if isinstance(data, dict) and \"results\" in data:\n            data = data[\"results\"]\n\n        if not isinstance(data, list) or not data:\n            return \"\"\n\n        buffer = StringIO()\n        buffer.write(\"\\ufeff\")   # BOM برای Excel فارسی\n        writer = csv.writer(buffer)\n\n        if isinstance(data[0], dict):\n            writer.writerow(data[0].keys())\n            for row in data:\n                writer.writerow([sanitize(v) for v in row.values()])\n\n        return buffer.getvalue()\n\n\n# views.py\nfrom rest_framework import viewsets\nfrom rest_framework.renderers import JSONRenderer\nfrom .renderers import SafeCSVRenderer\n\n\nclass BookExportViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Book.objects.select_related(\"author\")\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, SafeCSVRenderer]\n    pagination_class = None   # برای CSV کامل\n```\n\n**تست:**\n```bash\ncurl -H \"Accept: text/csv\" \\\n  http://127.0.0.1:8000/api/books/ -o books.csv\n```",
+      "explanation": "این رندرر تمام نکات امنیتی و کاربردی برای CSV در پروژه‌های فارسی را پوشش می‌دهد."
+    }
+  ],
+  "summary": [
+    "Renderer داده را به فرمت خروجی تبدیل می‌کند.",
+    "انتخاب بر اساس `Accept` و `?format=`.",
+    "رایج‌ترین: `JSONRenderer` و `BrowsableAPIRenderer`.",
+    "Browsable فقط در `DEBUG=True`.",
+    "رندرر سفارشی برای CSV، XML، YAML، ... .",
+    "BOM برای Excel فارسی (`\\ufeff`).",
+    "sanitize برای CSV Injection.",
+    "در CSV، صفحه‌بندی را غیرفعال کنید."
+  ],
+  "resources": [
+    { "title": "DRF — Renderers", "url": "https://www.django-rest-framework.org/api-guide/renderers/", "official": true },
+    { "title": "OWASP — CSV Injection", "url": "https://owasp.org/www-community/attacks/CSV_Injection", "official": true }
+  ]
+}

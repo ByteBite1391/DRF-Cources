@@ -1,0 +1,249 @@
+{
+  "id": "ch-008",
+  "slug": "drf",
+  "title": "Django REST Framework",
+  "kicker": "فصل ۸",
+  "level": "beginner",
+  "estimatedMinutes": 30,
+  "lead": "در این فصل می‌فهمیم DRF چیست، چرا وجود دارد و چه چیزی به Django اضافه می‌کند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "DRF چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Django REST Framework** (به‌اختصار DRF) یک کتابخانه قدرتمند و بالغ برای ساخت APIهای وب روی Django است. Django خودش برای ساخت صفحات HTML طراحی شده؛ DRF لایه‌ای روی آن می‌گذارد که کار با داده (به‌جای HTML) را استاندارد و ساده می‌کند."
+        },
+        {
+          "type": "flow",
+          "steps": ["Django", "+", "DRF", "=", "REST API"]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**بالغ:** بیش از یک دهه توسعه، هزاران پروژه واقعی.",
+            "**مستندشده:** یکی از بهترین مستندات در اکوسیستم Python.",
+            "**قابل توسعه:** تقریباً هر بخش قابل جایگزینی و سفارشی‌سازی است.",
+            "**جمع‌ومحور:** جامعه فعال و پکیج‌های جانبی فراوان."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "why",
+      "title": "چرا DRF وجود دارد؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Django برای رندر HTML طراحی شده. برای ساخت API، باید داده را به JSON تبدیل کنید، ورودی را اعتبارسنجی کنید، احراز هویت را مدیریت کنید و ده‌ها کار دیگر. DRF همه این‌ها را استاندارد و آماده می‌کند."
+        },
+        {
+          "type": "table",
+          "headers": ["نیاز", "بدون DRF", "با DRF"],
+          "rows": [
+            ["تبدیل مدل به JSON", "دستی `dict` ساختن", "`ModelSerializer` — خودکار"],
+            ["اعتبارسنجی ورودی", "دستی `if/else`", "فیلدها و `validate_*`"],
+            ["احراز هویت", "خودتان بنویسید", "Session، Token، JWT آماده"],
+            ["مجوز", "خودتان بنویسید", "کلاس‌های آماده + سفارشی"],
+            ["صفحه‌بندی", "دستی `LIMIT/OFFSET`", "کلاس‌های آماده"],
+            ["فیلتر و جستجو", "دستی QuerySet", "django-filter + SearchFilter"],
+            ["مدیریت خطا", "همه جا `try/except`", "استثناهای DRF"],
+            ["مستندات", "خودتان بنویسید", "OpenAPI خودکار"],
+            ["تست", "Client پایه", "`APIClient` + `APITestCase`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده کلی",
+          "text": "DRF به شما نمی‌گوید «چه کاری انجام بده». می‌گوید «چگونه استاندارد انجام بده». هر جا خواستید، می‌توانید از چارچوبش خارج شوید."
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "title": "DRF چه مشکلی را حل می‌کند؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بدون DRF، هر تیم API خودش را از صفر می‌سازد و هر بار با همان مشکلات دست‌وپنجه نرم می‌کند: اعتبارسنجی ناقص، خطاهای ناهمگون، نبود صفحه‌بندی، نبود احراز هویت استاندارد، نبود مستندات."
+        },
+        {
+          "type": "callout-level",
+          "basic": "یک View دستی بنویس که JSON برگرداند.",
+          "better": "از `APIView` و `Serializer` استفاده کن.",
+          "production": "از `ModelViewSet`، `Serializer` پیشرفته، احراز هویت، مجوز، فیلتر، صفحه‌بندی، تست، مستندات و بهینه‌سازی استفاده کن."
+        }
+      ]
+    },
+    {
+      "id": "architecture",
+      "title": "معماری DRF",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF از چند لایه تشکیل می‌شود که هر لایه نقش مشخصی دارد. درک این معماری به شما کمک می‌کند بدانید هر قطعه کد در کجا قرار می‌گیرد."
+        },
+        {
+          "type": "flow",
+          "steps": ["Request", "Parser", "Authentication", "Permission", "View", "Serializer", "Model/ORM", "Renderer", "Response"]
+        },
+        {
+          "type": "table",
+          "headers": ["لایه", "نقش", "فصل"],
+          "rows": [
+            ["Parser", "خواندن بدنه درخواست (JSON، فرم، فایل)", "۱۱، ۴۳"],
+            ["Authentication", "تعیین هویت کاربر", "۷، ۳۱–۳۴"],
+            ["Permission", "تعیین مجوز", "۸، ۳۵–۳۶"],
+            ["Throttle", "محدودیت نرخ درخواست", "۱۳، ۴۸"],
+            ["View", "منطق اصلی Endpoint", "۵، ۲۲–۲۷"],
+            ["ViewSet", "چند عملیات در یک کلاس", "۶، ۲۸–۳۰"],
+            ["Serializer", "تبدیل داده + اعتبارسنجی", "۳، ۱۳–۱۹"],
+            ["Renderer", "تبدیل داده به فرمت خروجی (JSON، HTML)", "۱۱، ۴۴"],
+            ["Router", "تولید URLهای ViewSet", "۶، ۲۹"],
+            ["Schema", "تولید مستندات OpenAPI", "۱۶، ۵۳–۵۵"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "django-vs-drf",
+      "title": "Django در برابر DRF",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF جایگزین Django نیست — روی آن سوار می‌شود. شما همچنان از مدل‌ها، ORM، مایگریشن‌ها، ادمین و ساختار پروژه Django استفاده می‌کنید. DRF فقط لایه API را اضافه می‌کند."
+        },
+        {
+          "type": "table",
+          "headers": ["موضوع", "Django خالص", "DRF"],
+          "rows": [
+            ["خروجی", "HTML (Template)", "JSON / XML / هر فرمت"],
+            ["اعتبارسنجی", "Form و ModelForm", "Serializer و ModelSerializer"],
+            ["نماینده داده", "Context Dictionary", "Serializer"],
+            ["نمای تابعی", "`def view(request)`", "`@api_view([...])`"],
+            ["نمای کلاسی", "`View`", "`APIView`"],
+            ["CRUD کامل", "دستی با چند ویو", "`ModelViewSet` با چند خط"],
+            ["مسیریابی", "`urls.py` دستی", "`Router` خودکار"],
+            ["احراز هویت", "Session و Cookie", "Session + Token + JWT + سفارشی"],
+            ["تست", "`Client` و `TestCase`", "`APIClient` و `APITestCase`"],
+            ["مستندات", "خودتان", "OpenAPI خودکار"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ecosystem",
+      "title": "اکوسیستم DRF",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF خودش ابزارهای اصلی را دارد، اما اکوسیستم پکیج‌های جانبی آن بخش زیادی از نیازهای واقعی را پوشش می‌دهد."
+        },
+        {
+          "type": "table",
+          "headers": ["پکیج", "کاربرد", "فصل"],
+          "rows": [
+            ["`djangorestframework-simplejwt`", "احراز هویت JWT", "۳۳"],
+            ["`django-filter`", "فیلترکردن پیشرفته", "۳۸"],
+            ["`drf-spectacular`", "تولید OpenAPI 3 و مستندات", "۵۳–۵۵"],
+            ["`drf-nested-routers`", "مسیرهای تو در تو مثل `/books/42/reviews/`", "۲۹"],
+            ["`django-cors-headers`", "مدیریت CORS", "۱۹، ۶۳"],
+            ["`djoser`", "Endpointهای آماده احراز هویت", "۳۴"],
+            ["`drf-extensions`", "ابزارهای تکمیلی برای ViewSetها", "۱۹"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "توصیه",
+          "text": "قبل از افزودن هر پکیج، بپرسید: آیا DRF خودش این کار را انجام می‌دهد؟ هر وابستگی، بار نگهداری آینده است. فقط در صورت نیاز واقعی اضافه کنید."
+        }
+      ]
+    },
+    {
+      "id": "when-not",
+      "title": "چه زمانی DRF را انتخاب نکنیم؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF برای بیشتر APIهای مبتنی بر Django عالی است، اما همیشه بهترین گزینه نیست."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**اگر داده رابطه‌ای ندارید و فقط چند Endpoint ساده می‌خواهید:** Django Ninja یا FastAPI سبک‌تر و سریع‌ترند.",
+            "**اگر به async بومی نیاز دارید:** FastAPI یا Django Ninja با async راحت‌ترند. DRF هنوز عمدتاً sync است.",
+            "**اگر GraphQL می‌خواهید:** Graphene-Django مناسب‌تر است.",
+            "**اگر پروژه کوچک و تیمی کوچک دارید:** ممکن است مجبور شوید از DRF بیش از حد استفاده کنید.",
+            "**اگر فقط یک API عمومی می‌سازید و به پنل ادمین و ORM Django نیاز ندارید:** FastAPI گزینه بهتری است."
+          ]
+        },
+        {
+          "type": "anti-pattern",
+          "title": "انتخاب DRF چون مد است",
+          "why": "هر ابزار جای خودش را دارد. DRF برای APIهای داده‌محور روی Django عالی است، ولی اگر نیازی به Django ندارید، شاید ابزار بهتری وجود دارد.",
+          "when": "وقتی تیم فقط با DRF آشنایی دارد و به‌جای بررسی گزینه‌ها، مستقیم به آن می‌رود.",
+          "fix": "قبل از انتخاب، نیازها را بنویسید و با ۲-۳ گزینه مقایسه کنید. اما اگر Django را دارید، DRF تقریباً همیشه انتخاب درستی است."
+        }
+      ]
+    },
+    {
+      "id": "next",
+      "title": "قدم بعدی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در فصل بعد، DRF را نصب می‌کنیم و پروژه را آماده می‌کنیم. سپس در فصل ۱۰ اولین API واقعی را می‌سازیم."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-008-q1",
+      "tag": "کوییز",
+      "question": "کدام گزینه درباره DRF درست است؟",
+      "options": [
+        { "text": "DRF یک وب‌سرور جداگانه است که جای Django را می‌گیرد.", "correct": false },
+        { "text": "DRF روی Django سوار می‌شود و لایه‌ای برای ساخت API اضافه می‌کند.", "correct": true, "explanation": "DRF جایگزین Django نیست؛ روی مدل‌ها، ORM و ساختار آن سوار می‌شود." },
+        { "text": "DRF فقط برای احراز هویت استفاده می‌شود.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-008-q2",
+      "tag": "کوییز",
+      "question": "کدام پکیج برای احراز هویت JWT در DRF رایج‌تر است؟",
+      "options": [
+        { "text": "`django-filter`", "correct": false },
+        { "text": "`djangorestframework-simplejwt`", "correct": true, "explanation": "این پکیج استاندارد عملی برای JWT در DRF است." },
+        { "text": "`drf-nested-routers`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-008-ex1",
+      "title": "تمرین — چه زمانی DRF نه؟",
+      "problem": "برای هر سناریو بگویید DRF مناسب است یا نه و چرا:\n۱) یک API برای یک اپلیکیشن فروشگاهی که Django دارد.\n۲) یک API کوچک برای یک اسکریپت داخلی با ۲ Endpoint.\n۳) یک API عمومی با نیازهای async سنگین.",
+      "hints": ["به اکوسیستم موجود نگاه کنید.", "به پیچیدگی و مقیاس فکر کنید."],
+      "solution": "۱) **بله** — Django دارید، DRF انتخاب طبیعی است.\n۲) **شاید نه** — Django Ninja یا حتی یک View ساده کافی است. DRF ممکن است بیش‌ازحد باشد.\n۳) **شاید نه** — FastAPI یا Django Ninja با async بومی مناسب‌ترند.",
+      "explanation": "انتخاب ابزار باید بر اساس نیاز واقعی باشد، نه بر اساس محبوبیت."
+    }
+  ],
+  "summary": [
+    "DRF یک کتابخانه Python برای ساخت API روی Django است.",
+    "DRF جایگزین Django نیست؛ روی آن سوار می‌شود.",
+    "مزیت اصلی: استانداردسازی و صرفه‌جویی در زمان.",
+    "معماری DRF لایه‌ای است: Parser → Auth → Permission → View → Serializer → Renderer.",
+    "اکوسیستم DRF با پکیج‌های جانبی قدرتمند است.",
+    "DRF همیشه بهترین گزینه نیست — بسته به نیاز انتخاب کنید."
+  ],
+  "resources": [
+    { "title": "Django REST Framework — مستندات رسمی", "url": "https://www.django-rest-framework.org/", "official": true },
+    { "title": "DRF — Community", "url": "https://www.django-rest-framework.org/community/", "official": true }
+  ]
+}

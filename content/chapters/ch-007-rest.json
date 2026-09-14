@@ -1,0 +1,310 @@
+{
+  "id": "ch-007",
+  "slug": "rest",
+  "title": "REST",
+  "kicker": "فصل ۷",
+  "level": "beginner",
+  "estimatedMinutes": 30,
+  "lead": "REST یک سبک معماری است، نه یک استاندارد اجباری. این فصل اصولی را که در طراحی API باید رعایت کنیم توضیح می‌دهد.",
+  "sections": [
+    {
+      "id": "definition",
+      "title": "REST چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**REST** مخفف Representational State Transfer است. یک سبک معماری برای سیستم‌های توزیع‌شده که اولین بار توسط Roy Fielding در سال ۲۰۰۰ توصیف شد."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "سبک، نه استاندارد",
+          "text": "REST یک سبک است. هیچ ابزاری نمی‌تواند بگوید «این REST است، آن نیست». فقط می‌توان گفت «این RESTful‌تر است» یا «کمتر»."
+        }
+      ]
+    },
+    {
+      "id": "principles",
+      "title": "شش اصل REST",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["اصل", "معنی"],
+          "rows": [
+            ["Client-Server", "کلاینت و سرور مستقل‌اند؛ هرکدام جداگانه تکامل می‌یابند"],
+            ["Stateless", "هر درخواست خودکفاست؛ سرور وضعیت نگه نمی‌دارد"],
+            ["Cacheable", "پاسخ‌ها باید قابل کش باشند"],
+            ["Uniform Interface", "رابط یکنواخت: URL، متد، کد وضعیت"],
+            ["Layered System", "می‌توان لایه‌های میانی (پروکسی، لودبالانسر) داشت"],
+            ["Code on Demand (اختیاری)", "سرور می‌تواند کد اجرایی بفرستد (نادر)"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resources",
+      "title": "منابع (Resources)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در REST، همه چیز یک «منبع» است. منبع یک مفهوم است — نه یک فایل، نه یک رکورد دیتابیس. می‌تواند یک کتاب، یک سفارش، یک کاربر، یک فهرست باشد."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "هر منبع یک شناسه یکتا دارد (URL).",
+            "منابع می‌توانند رابطه داشته باشند (کتاب ← نویسنده).",
+            "منابع می‌توانند مجموعه باشند (لیست کتاب‌ها).",
+            "منابع می‌توانند سلسله‌مراتبی باشند (`/books/42/reviews/7/`)."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "representations",
+      "title": "بازنمایی‌ها (Representations)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی می‌گویید «کتاب ۴۲»، سرور نمی‌تواند خود کتاب را بفرستد. یک **بازنمایی** از کتاب می‌فرستد — معمولاً JSON، گاهی XML یا فرمت دیگر."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**JSON:** رایج‌ترین بازنمایی در APIهای مدرن.",
+            "**XML:** در بعضی سیستم‌های قدیمی و SOAP.",
+            "**HTML:** برای Browsable API یا سایت‌های سنتی.",
+            "**CSV:** برای دانلود داده‌های جدولی.",
+            "**نوع بازنمایی** بر اساس هدر `Accept` انتخاب می‌شود."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stateless",
+      "title": "بدون حالت بودن",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در REST، سرور بین درخواست‌ها هیچ وضعیتی از کلاینت نگه نمی‌دارد. این اصل باعث مقیاس‌پذیری و کش‌پذیری می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "# ❌ بد — سرور وضعیت نگه می‌دارد\nPOST /login\n→ سرور یک session در حافظه می‌سازد و id می‌دهد\n\n# ✅ خوب — بدون حالت\nPOST /login\n→ سرور یک توکن امضاشده می‌دهد\n→ هر درخواست بعدی: Authorization: Bearer <token>\n→ سرور توکن را بررسی می‌کند، بدون نگه‌داشتن وضعیت"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "در DRF",
+          "text": "هم `SessionAuthentication` و هم `TokenAuthentication` هر دو موجودند. برای APIهای عمومی و مقیاس‌پذیر، Token یا JWT توصیه می‌شود. برای مرورگر در همان دامنه، Session هم کار می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "uniform",
+      "title": "رابط یکنواخت",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "همه منابع باید با یک الگوی یکسان در دسترس باشند. این یعنی کلاینت لازم نیست برای هر منبع، روش جدید یاد بگیرد."
+        },
+        {
+          "type": "table",
+          "headers": ["عملیات", "متد + URL", "پاسخ"],
+          "rows": [
+            ["لیست", "`GET /books/`", "`200` + آرایه"],
+            ["ساخت", "`POST /books/`", "`201` + منبع ساخته‌شده"],
+            ["یک منبع", "`GET /books/42/`", "`200` + منبع"],
+            ["جایگزینی", "`PUT /books/42/`", "`200` + منبع"],
+            ["ویرایش", "`PATCH /books/42/`", "`200` + منبع"],
+            ["حذف", "`DELETE /books/42/`", "`204`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "طراحی URLهای RESTful",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**اسم جمع، نه فعل:** `/books/` نه `/getBooks/`.",
+            "**حروف کوچک و خط تیره:** `/user-profiles/` نه `/UserProfiles/`.",
+            "**بدون پسوند فایل:** `/books/` نه `/books.json`.",
+            "**سلسله‌مراتب با `/`:** `/books/42/reviews/`.",
+            "**جداکننده در چند کلمه:** خط تیره `-`، نه آندرلاین `_`.",
+            "**بدون عملیات در URL:** به‌جای `/books/42/delete/` از `DELETE /books/42/`."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "`/getAllBooks`, `/createBook`, `/deleteBook/42`",
+          "better": "`/books`, `/books/42` با متد درست",
+          "production": "`/api/v1/books/`, `/api/v1/books/42/reviews/` — نسخه‌بندی + سلسله‌مراتب + خط تیره در slug"
+        }
+      ]
+    },
+    {
+      "id": "http-semantics",
+      "title": "استفاده درست از متدهای HTTP",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**GET** فقط برای خواندن. هیچ تغییری در سرور ایجاد نکن.",
+            "**POST** برای ساخت منابع جدید یا عملیات غیرایدِم‌پوتنت.",
+            "**PUT** برای جایگزینی کامل. اگر فیلدی نفرستند، پیش‌فرض می‌گیرد.",
+            "**PATCH** برای ویرایش جزئی. فقط فیلدهای ارسالی تغییر می‌کنند.",
+            "**DELETE** برای حذف. ایدِم‌پوتنت.",
+            "**HEAD** برای بررسی وجود منبع بدون دانلود بدنه.",
+            "**OPTIONS** برای کشف قابلیت‌ها و CORS Preflight."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوهای رایج REST",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "فعل در URL",
+          "why": "URL باید منبع را توصیف کند، نه عملیات. عملیات با متد HTTP بیان می‌شود.",
+          "when": "همیشه. این اشتباه رایج‌ترین ضدالگوی REST است.",
+          "fix": "به‌جای `POST /books/42/delete/` از `DELETE /books/42/` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از GET برای تغییر داده",
+          "why": "GET باید امن باشد. استفاده از آن برای تغییر، با کش، خزنده‌ها و Prefetch مرورگر ناسازگار است.",
+          "when": "وقتی می‌خواهید کار سریع انجام دهید.",
+          "fix": "از POST، PUT، PATCH یا DELETE استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازگرداندن کد 200 برای همه چیز",
+          "why": "کلاینت نمی‌فهمد چه اتفاقی افتاده. خطاها را نمی‌تواند به‌درستی مدیریت کند.",
+          "when": "وقتی در تیم، فرهنگ «همه چیز 200» وجود دارد.",
+          "fix": "از کدهای وضعیت دقیق استفاده کنید: 201، 400، 401، 403، 404، 409 و..."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "صفحات نامحدود",
+          "why": "بازگرداندن هزاران رکورد در یک پاسخ، سرور و کلاینت را خفه می‌کند.",
+          "when": "وقتی برای اولین بار API می‌نویسید.",
+          "fix": "از صفحه‌بندی (Pagination) استفاده کنید — در فصل ۴۱."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود احراز هویت و مجوز",
+          "why": "هر کسی به هر چیزی دسترسی دارد.",
+          "when": "همیشه در پروژه‌های واقعی.",
+          "fix": "حداقل `IsAuthenticated` و در پروژه‌های جدی، مجوز سطح شیء."
+        }
+      ]
+    },
+    {
+      "id": "maturity",
+      "title": "مدل بلوغ Richardson",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Leonard Richardson چهار سطح برای REST پیشنهاد کرد:"
+        },
+        {
+          "type": "table",
+          "headers": ["سطح", "توضیح", "مثال"],
+          "rows": [
+            ["۰", "یک URL، یک متد (RPC)", "`POST /api` با `action=create_book`"],
+            ["۱", "URLهای جدا برای هر منبع", "`/books/`، `/books/42/`"],
+            ["۲", "استفاده درست از متدهای HTTP + کد وضعیت", "`GET`, `POST`, `DELETE`, `201`, `404`"],
+            ["۳", "HATEOAS — پاسخ شامل لینک به اقدامات بعدی", "`{\"links\": {\"author\": \"/authors/7/\"}}`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "سطح ۲ در عمل",
+          "text": "بیشتر APIهای مدرن در سطح ۲ هستند. سطح ۳ (HATEOAS) جذاب است اما پیچیدگی و هزینه دارد و در بسیاری از موارد ضروری نیست."
+        }
+      ]
+    },
+    {
+      "id": "hateoas",
+      "title": "HATEOAS",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**HATEOAS** یعنی Hypermedia as the Engine of Application State. پاسخ API شامل لینک‌هایی است که کلاینت را به اقدامات بعدی راهنمایی می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"id\": 42,\n  \"title\": \"Clean Code\",\n  \"_links\": {\n    \"self\": {\"href\": \"/api/books/42/\"},\n    \"author\": {\"href\": \"/api/authors/7/\"},\n    \"reviews\": {\"href\": \"/api/books/42/reviews/\"},\n    \"delete\": {\"href\": \"/api/books/42/\", \"method\": \"DELETE\"}\n  }\n}"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مزیت:** کلاینت نیازی به دانستن URLهای ثابت ندارد.",
+            "**مزیت:** سرور می‌تواند URLها را تغییر دهد بدون شکستن کلاینت.",
+            "**هزینه:** پاسخ‌ها بزرگ‌تر می‌شوند.",
+            "**هزینه:** پیاده‌سازی در کلاینت پیچیده‌تر می‌شود.",
+            "**توصیه:** برای APIهای داخلی ساده، ارزشش را ندارد."
+          ]
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-007-q1",
+      "tag": "کوییز",
+      "question": "کدام URL استاندارد REST است؟",
+      "options": [
+        { "text": "`GET /getAllBooks`", "correct": false },
+        { "text": "`GET /books/`", "correct": true, "explanation": "اسم جمع + بدون فعل + متد GET." },
+        { "text": "`POST /books/delete/42`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-007-q2",
+      "tag": "کوییز",
+      "question": "کدام گزینه درباره بدون حالت بودن درست است؟",
+      "options": [
+        { "text": "سرور وضعیت کلاینت را در حافظه نگه می‌دارد.", "correct": false },
+        { "text": "هر درخواست خودکفاست و سرور وضعیت نگه نمی‌دارد.", "correct": true, "explanation": "این ویژگی مقیاس‌پذیری و کش را ممکن می‌کند." },
+        { "text": "کلاینت نباید کوکی داشته باشد.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-007-ex1",
+      "title": "تمرین — طراحی API برای یک وبلاگ",
+      "problem": "برای یک سیستم وبلاگ، URLها و متدهای Endpointهای زیر را طراحی کنید: لیست پست‌ها، ساخت پست، دیدن یک پست، ویرایش پست، حذف پست، لیست کامنت‌های یک پست، ساخت کامنت، حذف کامنت.",
+      "hints": ["از اسم جمع استفاده کنید.", "برای زیرمنابع، مسیر تو در تو بسازید.", "حذف کامنت را با مسیر کامل بنویسید."],
+      "solution": "```\nGET    /api/posts/                 لیست پست‌ها\nPOST   /api/posts/                 ساخت پست\nGET    /api/posts/42/              دیدن پست ۴۲\nPATCH  /api/posts/42/              ویرایش پست\nDELETE /api/posts/42/              حذف پست\n\nGET    /api/posts/42/comments/     لیست کامنت‌های پست ۴۲\nPOST   /api/posts/42/comments/     ساخت کامنت\nDELETE /api/posts/42/comments/7/   حذف کامنت ۷\n```",
+      "explanation": "این الگوی سلسله‌مراتبی استاندارد REST برای زیرمنابع است."
+    }
+  ],
+  "summary": [
+    "REST یک سبک معماری است، نه استاندارد.",
+    "شش اصل REST: Client-Server، Stateless، Cacheable، Uniform Interface، Layered، Code on Demand.",
+    "URL = منبع، متد = عملیات، کد وضعیت = نتیجه.",
+    "URLها با اسم جمع، حروف کوچک و خط تیره.",
+    "بدون حالت بودن، مقیاس‌پذیری و کش را ممکن می‌کند.",
+    "HATEOAS سطح ۳ بلوغ است و همیشه لازم نیست.",
+    "ضدالگوها را بشناسید: فعل در URL، GET برای تغییر، 200 برای همه چیز."
+  ],
+  "resources": [
+    { "title": "Roy Fielding — REST Dissertation", "url": "https://ics.uci.edu/~fielding/pubs/dissertation/top.htm", "official": true },
+    { "title": "Martin Fowler — Richardson Maturity Model", "url": "https://martinfowler.com/articles/richardsonMaturityModel.html", "official": false }
+  ]
+}

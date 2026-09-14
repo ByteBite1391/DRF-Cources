@@ -1,0 +1,374 @@
+{
+  "id": "ch-003",
+  "slug": "web-fundamentals",
+  "title": "مبانی وب",
+  "kicker": "فصل ۳",
+  "level": "beginner",
+  "estimatedMinutes": 30,
+  "lead": "پیش از هر چیز باید بدانیم وقتی یک مرورگر با یک سرور حرف می‌زند، دقیقاً چه اتفاقی می‌افتد.",
+  "sections": [
+    {
+      "id": "client-server",
+      "title": "کلاینت و سرور",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**کلاینت (Client)** برنامه‌ای است که درخواست می‌فرستد. **سرور (Server)** برنامه‌ای است که به درخواست پاسخ می‌دهد. کلاینت و سرور می‌توانند روی یک دستگاه یا دستگاه‌های متفاوت باشند."
+        },
+        {
+          "type": "flow",
+          "steps": ["Client", "Request →", "Server", "← Response"]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**مرورگر** — یک کلاینت HTTP. درخواست می‌فرستد و پاسخ را رندر می‌کند.",
+            "**اپلیکیشن موبایل** — یک کلاینت HTTP. داده JSON می‌گیرد و نمایش می‌دهد.",
+            "**سرویس دیگر** — یک برنامه سرور که به‌جای انسان، ماشین مصرف می‌کند.",
+            "**curl / Postman / Insomnia** — ابزارهایی برای تست دستی API."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "http",
+      "title": "پروتکل HTTP",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**HTTP** پروتکل حاکم بر ارتباط کلاینت و سرور است. یک پروتکل متنی، بدون حالت و مبتنی بر درخواست-پاسخ."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**متنی:** می‌توانید درخواست و پاسخ را به‌صورت متن بخوانید.",
+            "**بدون حالت (Stateless):** سرور بین درخواست‌ها وضعیت کلاینت را نگه نمی‌دارد. هر درخواست خودکفا است.",
+            "**مبتنی بر درخواست-پاسخ:** یک درخواست، یک پاسخ."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا بدون حالت مهم است؟",
+          "text": "چون یعنی می‌توانید سرور را افقی مقیاس دهید. اگر همه سرورها بدون حالت باشند، هر کدام می‌تواند هر درخواستی را پاسخ دهد. اگر حالت داشته باشند، درخواست‌ها باید به سرور درست برسند."
+        }
+      ]
+    },
+    {
+      "id": "https",
+      "title": "HTTPS",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "HTTPS همان HTTP است، اما روی یک لایه رمزنگاری (TLS). همه داده‌ها بین کلاینت و سرور رمزنگاری می‌شوند و کلاینت مطمئن می‌شود سرور واقعی است."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**رمزنگاری:** کسی که وسط راه گوش می‌دهد، نمی‌تواند محتوا را بخواند.",
+            "**اصالت:** کلاینت مطمئن می‌شود با سرور واقعی حرف می‌زند، نه با یک دزد.",
+            "**یکپارچگی:** داده بین راه تغییر نمی‌کند."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هرگز روی HTTP خام",
+          "text": "اطلاعات حساس (رمز، توکن، اطلاعات شخصی) را هرگز روی HTTP خام نفرستید. حتی در توسعه محلی، رفتارتان را طوری تنظیم کنید که همیشه HTTPS در نظر گرفته شود."
+        }
+      ]
+    },
+    {
+      "id": "url",
+      "title": "URL",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "URL یک آدرس است که می‌گوید «کجا» و «چه چیزی» می‌خواهید."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "https://api.example.com:443/books/42/?format=json#chapter-3\n│       │                │   │       │  │        │\n│       │                │   │       │  │        └─ fragment\n│       │                │   │       │  └─ query string\n│       │                │   │       └─ path\n│       │                │   └─ port\n│       │                └─ host\n│       └─ scheme (protocol)\n└─ scheme"
+        },
+        {
+          "type": "table",
+          "headers": ["بخش", "معنی", "مثال"],
+          "rows": [
+            ["scheme", "پروتکل", "`https`"],
+            ["host", "دامنه سرور", "`api.example.com`"],
+            ["port", "پورت (پیش‌فرض ۴۴۳ برای HTTPS)", "`443`"],
+            ["path", "مسیر منبع", "`/books/42/`"],
+            ["query", "پارامترهای اختیاری", "`?format=json`"],
+            ["fragment", "بخش داخلی صفحه", "`#chapter-3`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "endpoint",
+      "title": "Endpoint",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Endpoint** ترکیب یک URL و یک متد HTTP است. مثلاً `GET /books/` یک Endpoint است و `POST /books/` یک Endpoint دیگر."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`GET /books/` — لیست کتاب‌ها",
+            "`POST /books/` — ساخت کتاب جدید",
+            "`GET /books/42/` — دریافت کتاب شماره ۴۲",
+            "`PUT /books/42/` — جایگزینی کامل کتاب ۴۲",
+            "`DELETE /books/42/` — حذف کتاب ۴۲"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "request",
+      "title": "درخواست (Request)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "هر درخواست HTTP از چهار بخش تشکیل می‌شود: خط شروع، هدرها، خط خالی و بدنه."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "POST /api/books/ HTTP/1.1          ← خط شروع\nHost: api.example.com               ← هدرها\nContent-Type: application/json\nAuthorization: Token 9f2c1b7a\nAccept: application/json\n                                    ← خط خالی\n{                                   ← بدنه\n  \"title\": \"Clean Code\",\n  \"price\": \"42.50\"\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["بخش", "کارکرد"],
+          "rows": [
+            ["خط شروع", "متد + path + نسخه HTTP"],
+            ["هدرها", "اطلاعات متا: Host، Content-Type، Authorization، Accept، ..."],
+            ["بدنه (Body)", "داده ارسالی — فقط در POST، PUT و PATCH"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "response",
+      "title": "پاسخ (Response)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پاسخ هم ساختاری مشابه دارد: خط وضعیت، هدرها، خط خالی و بدنه."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "HTTP/1.1 201 Created                ← خط وضعیت\nContent-Type: application/json      ← هدرها\nContent-Length: 62\nLocation: /api/books/42/\n                                    ← خط خالی\n{                                   ← بدنه\n  \"id\": 42,\n  \"title\": \"Clean Code\",\n  \"price\": \"42.50\"\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["بخش", "کارکرد"],
+          "rows": [
+            ["خط وضعیت", "نسخه HTTP + کد وضعیت + توضیح"],
+            ["هدرها", "اطلاعات متا: Content-Type، Content-Length، Location، Set-Cookie، ..."],
+            ["بدنه", "داده بازگشتی — JSON، HTML، خالی و غیره"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "headers",
+      "title": "هدرها (Headers)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "هدرها اطلاعات جانبی درخواست یا پاسخ هستند. مهم‌ترین‌ها برای کار با DRF:"
+        },
+        {
+          "type": "table",
+          "headers": ["هدر", "معنی", "کاربرد"],
+          "rows": [
+            ["`Content-Type`", "نوع بدنه درخواست", "انتخاب Parser در DRF"],
+            ["`Accept`", "نوع پاسخ مورد نظر", "انتخاب Renderer در DRF"],
+            ["`Authorization`", "اطلاعات احراز هویت", "تعیین کاربر در DRF"],
+            ["`User-Agent`", "شناسه کلاینت", "آمار و دیباگ"],
+            ["`Cache-Control`", "سیاست کش", "کش در مرورگر و پروکسی"],
+            ["`X-Request-ID`", "شناسه درخواست", "ردیابی در لاگ‌ها"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "params",
+      "title": "Query و Path Parameters",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "دو نوع پارامتر در URL داریم: پارامتر مسیر (Path) و پارامتر پرس‌وجو (Query)."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET /api/books/42/?format=json&fields=title\n                 │              │\n                 │              └─ query parameters\n                 └─ path parameter"
+        },
+        {
+          "type": "table",
+          "headers": ["نوع", "محل", "مثال", "کاربرد"],
+          "rows": [
+            ["Path", "داخل مسیر", "`/books/42/`", "شناسایی منبع خاص"],
+            ["Query", "بعد از `?`", "`?sort=price&order=desc`", "فیلتر، صفحه‌بندی، مرتب‌سازی"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در DRF:\npk = self.kwargs[\"pk\"]           # پارامتر مسیر\nquery = self.request.query_params  # پارامتر پرس‌وجو\nsort = query.get(\"sort\", \"created_at\")"
+        }
+      ]
+    },
+    {
+      "id": "cookies-sessions",
+      "title": "کوکی و نشست",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "چون HTTP بدون حالت است، برای یادآوری کاربر بین درخواست‌ها از **کوکی (Cookie)** و **نشست (Session)** استفاده می‌شود."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**کوکی:** یک قطعه داده کوچک که مرورگر ذخیره می‌کند و در هر درخواست به همان دامنه می‌فرستد.",
+            "**نشست:** داده سمت سرور که با یک شناسه (session id) به کوکی متصل می‌شود.",
+            "**کاربرد در DRF:** `SessionAuthentication` از همین مکانیزم استفاده می‌کند."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "Set-Cookie: sessionid=abc123; HttpOnly; Secure; SameSite=Lax"
+        }
+      ]
+    },
+    {
+      "id": "json",
+      "title": "JSON",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**JSON** قالب استاندارد تبادل داده در APIهای مدرن است. سبک، خوانا و مستقل از زبان."
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"id\": 42,\n  \"title\": \"Clean Code\",\n  \"author\": {\n    \"id\": 7,\n    \"name\": \"Robert C. Martin\"\n  },\n  \"tags\": [\"programming\", \"craft\"],\n  \"price\": \"42.50\",\n  \"in_stock\": true,\n  \"published_at\": null\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["نوع JSON", "معادل Python"],
+          "rows": [
+            ["object `{}`", "`dict`"],
+            ["array `[]`", "`list`"],
+            ["string", "`str`"],
+            ["number", "`int` / `float`"],
+            ["true / false", "`True` / `False`"],
+            ["null", "`None`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "xml",
+      "title": "XML (برای مقایسه)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**XML** قالب قدیمی‌تر و پرجزئیات‌تری است. هنوز در بعضی سیستم‌های سازمانی و SOAP استفاده می‌شود. برای APIهای جدید، JSON پیشنهاد می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "html",
+          "code": "<book>\n  <id>42</id>\n  <title>Clean Code</title>\n  <author>\n    <id>7</id>\n    <name>Robert C. Martin</name>\n  </author>\n  <tags>\n    <tag>programming</tag>\n    <tag>craft</tag>\n  </tags>\n  <price>42.50</price>\n  <in_stock>true</in_stock>\n</book>"
+        }
+      ]
+    },
+    {
+      "id": "content-type-accept",
+      "title": "Content-Type و Accept",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "دو هدر کلیدی که در DRF تعیین‌کننده رفتار هستند:"
+        },
+        {
+          "type": "table",
+          "headers": ["هدر", "جهت", "معنی", "تأثیر در DRF"],
+          "rows": [
+            ["`Content-Type`", "کلاینت → سرور", "نوع بدنه درخواست", "انتخاب Parser"],
+            ["`Accept`", "کلاینت → سرور", "نوع پاسخ مورد نظر", "انتخاب Renderer"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# ارسال JSON و درخواست JSON\ncurl -X POST https://api.example.com/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Accept: application/json\" \\\n  -d '{\"title\": \"Clean Code\"}'"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "در DRF",
+          "text": "اگر `Accept` را نفرستید، DRF پیش‌فرض JSON می‌فرستد. اگر `Content-Type` را نفرستید، DRF ممکن است نتواند بدنه را پارس کند و خطای `415 Unsupported Media Type` یا `400 Bad Request` بدهد."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-003-q1",
+      "tag": "کوییز",
+      "question": "«بدون حالت» (Stateless) در HTTP یعنی چه؟",
+      "options": [
+        { "text": "سرور نمی‌تواند داده ذخیره کند.", "correct": false },
+        { "text": "سرور بین درخواست‌ها وضعیت کلاینت را نگه نمی‌دارد؛ هر درخواست خودکفاست.", "correct": true, "explanation": "این ویژگی مقیاس‌پذیری افقی را ممکن می‌کند." },
+        { "text": "کلاینت نمی‌تواند کوکی ذخیره کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-003-q2",
+      "tag": "کوییز",
+      "question": "کدام هدر تعیین می‌کند DRF کدام Parser را انتخاب کند؟",
+      "options": [
+        { "text": "`Accept`", "correct": false },
+        { "text": "`Content-Type`", "correct": true, "explanation": "Content-Type مربوط به بدنه درخواست است و Parser را تعیین می‌کند. Accept برای پاسخ و Renderer است." },
+        { "text": "`Authorization`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-003-ex1",
+      "title": "تمرین — تحلیل URL",
+      "problem": "URL زیر را تحلیل کنید و بگویید هر بخش چیست:\n`https://api.shop.ir:8443/v2/products/42/reviews/?page=2&limit=10`",
+      "hints": ["به ترتیب از چپ به راست نگاه کنید.", "پورت‌های پیش‌فرض: ۸۰ برای HTTP و ۴۴۳ برای HTTPS."],
+      "solution": "- scheme: `https`\n- host: `api.shop.ir`\n- port: `8443` (پورت سفارشی)\n- path: `/v2/products/42/reviews/`\n- query: `page=2` و `limit=10`",
+      "explanation": "URL کامل شامل همه این بخش‌هاست. در DRF معمولاً فقط path و query اهمیت مستقیم دارند."
+    }
+  ],
+  "summary": [
+    "کلاینت درخواست می‌فرستد، سرور پاسخ می‌دهد.",
+    "HTTP پروتکل بدون حالت، متنی و مبتنی بر درخواست-پاسخ است.",
+    "HTTPS همان HTTP با رمزنگاری TLS است.",
+    "URL شامل scheme، host، port، path، query و fragment است.",
+    "Endpoint = متد + URL.",
+    "Request شامل خط شروع، هدرها و بدنه است.",
+    "Response شامل خط وضعیت، هدرها و بدنه است.",
+    "Content-Type برای Parser و Accept برای Renderer.",
+    "پارامترهای مسیر (path) و پرس‌وجو (query) دو نوع متفاوت‌اند.",
+    "JSON قالب استاندارد APIهای مدرن است."
+  ],
+  "resources": [
+    { "title": "MDN — HTTP", "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP", "official": false },
+    { "title": "RFC 9110 — HTTP Semantics", "url": "https://www.rfc-editor.org/rfc/rfc9110.html", "official": true }
+  ]
+}

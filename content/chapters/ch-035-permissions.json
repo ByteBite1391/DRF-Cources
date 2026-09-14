@@ -1,0 +1,442 @@
+{
+  "id": "ch-035",
+  "slug": "permissions",
+  "title": "مجوزها (Permissions)",
+  "kicker": "فصل ۳۵",
+  "level": "intermediate",
+  "estimatedMinutes": 40,
+  "lead": "احراز هویت گفت «تو کی هستی». مجوز می‌گوید «چه کاری مجاز هستی». این فصل همه مجوزهای آماده DRF را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "concept",
+      "title": "مفهوم مجوز",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Permission** (مجوز) تعیین می‌کند آیا کاربر جاری اجازه انجام این عمل خاص را دارد یا نه. در DRF، مجوز در سطح نما تعریف می‌شود و در سطح شیء هم قابل بررسی است."
+        },
+        {
+          "type": "flow",
+          "steps": ["Authentication", "→ user", "Permission", "→ allow/deny", "Handler"]
+        },
+        {
+          "type": "table",
+          "headers": ["حالت", "پاسخ", "کد"],
+          "rows": [
+            ["بدون احراز هویت + نیاز به Auth", "رد", "`401 Unauthorized`"],
+            ["احراز هویت + بدون مجوز", "رد", "`403 Forbidden`"],
+            ["مجوز داده شد", "اجرا", "—"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "تفکیک مهم",
+          "text": "**401** یعنی «نگفتی کی هستی». **403** یعنی «گفتی، اما اجازه نداری». این تفکیک برای دیباگ و طراحی API حیاتی است."
+        }
+      ]
+    },
+    {
+      "id": "how-it-works",
+      "title": "چگونه کار می‌کند؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "هر کلاس مجوز باید دو متد داشته باشد (اختیاری، اما توصیه می‌شود):"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class MyPermission(BasePermission):\n    message = \"پیام خطا\"\n\n    def has_permission(self, request, view):\n        \"\"\"بررسی سطح نما — قبل از رسیدن به شیء.\"\"\"\n        # True = اجازه، False = رد\n        return True\n\n    def has_object_permission(self, request, view, obj):\n        \"\"\"بررسی سطح شیء — بعد از پیدا کردن شیء.\"\"\"\n        # True = اجازه، False = رد\n        return True"
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "زمان اجرا", "دسترسی به شیء"],
+          "rows": [
+            ["`has_permission`", "قبل از get_object()", "خیر"],
+            ["`has_object_permission`", "بعد از get_object()", "بله"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "نکته مهم",
+          "text": "`has_object_permission` فقط زمانی صدا زده می‌شود که ویو `get_object()` را صدا بزند. در `APIView` خام که خودتان با ORM شیء را می‌گیرید، این متد اجرا نمی‌شود مگر دستی `self.check_object_permissions(request, obj)` صدا بزنید."
+        }
+      ]
+    },
+    {
+      "id": "allow-any",
+      "title": "AllowAny",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "همه اجازه دارند — حتی کاربران ناشناس. برای Endpointهای عمومی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import AllowAny\n\n\nclass PublicBookListView(APIView):\n    permission_classes = [AllowAny]\n\n    def get(self, request):\n        return Response(BookSerializer(Book.objects.all(), many=True).data)"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "پیش‌فرض DRF",
+          "text": "`AllowAny` پیش‌فرض DRF است اگر `DEFAULT_PERMISSION_CLASSES` را تنظیم نکنید. این یک ریسک امنیتی است — در تولید حتماً تغییر دهید."
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون تنظیمات — پیش‌فرض AllowAny.",
+          "better": "AllowAny فقط روی Endpointهای عمومی (لیست، جزئیات).",
+          "production": "AllowAny صریح + مستندسازی + Audit روی Endpointهای عمومی که داده می‌دهند."
+        }
+      ]
+    },
+    {
+      "id": "is-authenticated",
+      "title": "IsAuthenticated",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فقط کاربران وارد‌شده. پرکاربردترین مجوز در APIها."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import IsAuthenticated\n\n\nclass MyProfileView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def get(self, request):\n        return Response({\n            \"username\": request.user.username,\n            \"email\": request.user.email,\n        })"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# بدون توکن → 401\ncurl http://127.0.0.1:8000/api/me/\n\n# با توکن → 200\ncurl -H \"Authorization: Bearer <token>\" \\\n  http://127.0.0.1:8000/api/me/"
+        }
+      ]
+    },
+    {
+      "id": "is-admin",
+      "title": "IsAdminUser",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "فقط کاربرانی که `is_staff=True` دارند. برای Endpointهای ادمینی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import IsAdminUser\n\n\nclass AdminStatsView(APIView):\n    permission_classes = [IsAdminUser]\n\n    def get(self, request):\n        return Response({\n            \"total_users\": User.objects.count(),\n            \"total_books\": Book.objects.count(),\n        })"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "is_staff در برابر is_superuser",
+          "text": "`IsAdminUser` فقط `is_staff=True` را چک می‌کند، نه `is_superuser`. اگر می‌خواهید فقط ابرکاربران دسترسی داشته باشند، مجوز سفارشی بسازید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class IsSuperUser(BasePermission):\n    def has_permission(self, request, view):\n        return bool(request.user and request.user.is_superuser)"
+        }
+      ]
+    },
+    {
+      "id": "is-authenticated-or-readonly",
+      "title": "IsAuthenticatedOrReadOnly",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "خواندن برای همه، نوشتن فقط برای کاربران وارد‌شده. الگوی رایج برای APIهای عمومی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import IsAuthenticatedOrReadOnly\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]"
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "بدون احراز هویت", "با احراز هویت"],
+          "rows": [
+            ["GET", "✅", "✅"],
+            ["HEAD", "✅", "✅"],
+            ["OPTIONS", "✅", "✅"],
+            ["POST", "❌ (401)", "✅"],
+            ["PUT", "❌ (401)", "✅"],
+            ["PATCH", "❌ (401)", "✅"],
+            ["DELETE", "❌ (401)", "✅"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "SAFE_METHODS",
+          "text": "DRF از ثابت `SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')` استفاده می‌کند. هر متدی خارج از این لیست، «نوشتنی» در نظر گرفته می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "django-model-permissions",
+      "title": "DjangoModelPermissions",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "بر پایه مجوزهای مدل Django (`add`, `change`, `delete`, `view`). کاربر باید از طریق ادمین یا کد، این مجوزها را داشته باشد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import DjangoModelPermissions\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [DjangoModelPermissions]"
+        },
+        {
+          "type": "table",
+          "headers": ["متد HTTP", "مجوز مدل لازم"],
+          "rows": [
+            ["POST", "`add_<model>`"],
+            ["PUT / PATCH", "`change_<model>`"],
+            ["DELETE", "`delete_<model>`"],
+            ["GET / HEAD / OPTIONS", "بدون (پیش‌فرض)"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# نسخه‌ای که GET را هم بررسی می‌کند\nclass DjangoModelPermissionsWithRead(DjangoModelPermissions):\n    perms_map = {\n        \"GET\": [\"%(app_label)s.view_%(model_name)s\"],\n        \"OPTIONS\": [],\n        \"HEAD\": [\"%(app_label)s.view_%(model_name)s\"],\n        \"POST\": [\"%(app_label)s.add_%(model_name)s\"],\n        \"PUT\": [\"%(app_label)s.change_%(model_name)s\"],\n        \"PATCH\": [\"%(app_label)s.change_%(model_name)s\"],\n        \"DELETE\": [\"%(app_label)s.delete_%(model_name)s\"],\n    }"
+        }
+      ]
+    },
+    {
+      "id": "django-object-permissions",
+      "title": "DjangoObjectPermissions",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای مجوز در سطح شیء. نیاز به پکیج `django-guardian` دارد."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "pip install django-guardian"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"guardian\",\n]\n\nAUTHENTICATION_BACKENDS = [\n    \"django.contrib.auth.backends.ModelBackend\",\n    \"guardian.backends.ObjectPermissionBackend\",\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import DjangoObjectPermissions\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [DjangoObjectPermissions]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from guardian.shortcuts import assign_perm\n\n# دادن مجوز به کاربر برای یک کتاب خاص\nassign_perm(\"change_book\", user, book)\nassign_perm(\"delete_book\", user, book)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی؟",
+          "text": "برای سیستم‌هایی که مجوز در سطح هر رکورد متفاوت است (مثل Google Docs که هر سند مالک و اشتراک‌گذار دارد). در بیشتر پروژه‌ها، مجوز سفارشی `IsOwner` کافی است."
+        }
+      ]
+    },
+    {
+      "id": "combining",
+      "title": "ترکیب مجوزها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید چند مجوز را با هم ترکیب کنید. DRF همه را AND می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.permissions import IsAuthenticated, IsAdminUser\n\n\nclass AdminOnlyView(APIView):\n    permission_classes = [IsAuthenticated, IsAdminUser]\n    # یعنی: باید هم وارد شده باشد، هم ادمین"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "AND منطقی",
+          "text": "DRF همه مجوزها را بررسی می‌کند و همه باید True برگردانند. برای OR، مجوز سفارشی بنویسید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class IsAdminOrOwner(BasePermission):\n    def has_object_permission(self, request, view, obj):\n        return (\n            request.user.is_staff or\n            obj.owner == request.user\n        )"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "تنظیمات پیش‌فرض",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n}"
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون تنظیمات — AllowAny.",
+          "better": "IsAuthenticatedOrReadOnly سراسری + تنظیم هر View.",
+          "production": "IsAuthenticated سراسری (امن‌ترین پیش‌فرض) + AllowAny صریح روی Endpointهای عمومی + Audit Log."
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "هشدار امنیتی",
+          "text": "برای پروژه‌های جدید، `IsAuthenticated` را پیش‌فرض بگذارید. اگر Endpoint خاصی باید عمومی باشد، روی همان ویو `AllowAny` صریح بگذارید. این کار «امن به‌صورت پیش‌فرض» (Secure by Default) است."
+        }
+      ]
+    },
+    {
+      "id": "per-view",
+      "title": "تنظیم در سطح View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در APIView\nclass PublicView(APIView):\n    permission_classes = [AllowAny]\n\n\n# در Generic View\nclass MyBookListView(generics.ListCreateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n\n# در ViewSet\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticatedOrReadOnly]\n\n    @action(detail=True, methods=[\"post\"], permission_classes=[IsAuthenticated])\n    def favorite(self, request, pk=None):\n        # این اکشن خاص، فقط برای کاربران احراز هویت‌شده\n        ..."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "اکشن‌های سفارشی",
+          "text": "با `@action(permission_classes=[...])` می‌توانید مجوز خاص برای یک اکشن تعریف کنید که روی مجوز ViewSet سوار می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "dynamic",
+      "title": "مجوزهای پویا",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "با `get_permissions` می‌توانید مجوز را بر اساس متد، اکشن یا شرایط دیگر تغییر دهید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get_permissions(self):\n        if self.action in (\"list\", \"retrieve\"):\n            return [AllowAny()]\n        if self.action == \"destroy\":\n            return [IsAdminUser()]\n        if self.action in (\"update\", \"partial_update\"):\n            return [IsAuthenticated(), IsOwnerOrReadOnly()]\n        return [IsAuthenticated()]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n}\n\n# در ویو:\nclass PublicBookView(APIView):\n    permission_classes = [AllowAny]"
+        },
+        {
+          "type": "callout-level",
+          "basic": "یک مجوز برای همه.",
+          "better": "`get_permissions` بر اساس متد.",
+          "production": "`get_permissions` بر اساس اکشن + مجوز سطح شیء + تست اختصاصی برای هر سناریو."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "چک کردن احراز هویت در مجوز",
+          "why": "اختلاط مسئولیت‌ها؛ باید در Auth بررسی شود.",
+          "when": "وقتی کاربر را در `has_permission` چک می‌کنید.",
+          "fix": "اگر کاربر باید وارد باشد، `IsAuthenticated` را در `permission_classes` بگذارید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `has_object_permission` برای مالکیت",
+          "why": "کاربر می‌تواند شیء دیگران را ویرایش کند (IDOR).",
+          "when": "وقتی فقط `has_permission` را پیاده می‌کنید.",
+          "fix": "`has_object_permission` را برای مقایسه مالکیت پیاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیام خطای مبهم",
+          "why": "دیباگ سخت، تجربه کاربری ضعیف.",
+          "when": "وقتی `message` را تعریف نمی‌کنید.",
+          "fix": "`message = \"فقط مالک می‌تواند این را ویرایش کند.\"`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "AllowAny سراسری",
+          "why": "همه به همه چیز دسترسی دارند.",
+          "when": "وقتی `DEFAULT_PERMISSION_CLASSES` را تنظیم نمی‌کنید.",
+          "fix": "`IsAuthenticated` سراسری + `AllowAny` صریح روی ویوهای عمومی."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `is_admin` به‌جای `is_staff`",
+          "why": "Django فیلد `is_admin` ندارد. اشتباه رایج از زبان‌های دیگر.",
+          "when": "وقتی از PHP/Laravel آمده‌اید.",
+          "fix": "در Django: `is_staff` و `is_superuser`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بررسی دستی مجوز در ویو",
+          "why": "تکرار، خطاپذیر، ناهمگون.",
+          "when": "وقتی عادت دارید در هر ویو `if user.is_staff` بنویسید.",
+          "fix": "کلاس مجوز بنویسید و در `permission_classes` بگذارید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-035-q1",
+      "tag": "کوییز",
+      "question": "تفاوت `has_permission` و `has_object_permission` چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "`has_permission` قبل از پیدا کردن شیء و سطح ویو اجرا می‌شود؛ `has_object_permission` بعد از پیدا کردن شیء.", "correct": true, "explanation": "این تفکیک برای مجوزهای مالکیت ضروری است." },
+        { "text": "`has_object_permission` فقط برای POST است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-035-q2",
+      "tag": "کوییز",
+      "question": "کدام مجوز برای APIهای عمومی با امکان نوشتن برای کاربران وارد‌شده مناسب است؟",
+      "options": [
+        { "text": "`AllowAny`", "correct": false },
+        { "text": "`IsAuthenticatedOrReadOnly`", "correct": true, "explanation": "خواندن برای همه، نوشتن برای احراز هویت‌شده." },
+        { "text": "`IsAdminUser`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-035-q3",
+      "tag": "کوییز",
+      "question": "برای پروژه جدید، امن‌ترین پیش‌فرض `DEFAULT_PERMISSION_CLASSES` چیست؟",
+      "options": [
+        { "text": "`AllowAny`", "correct": false },
+        { "text": "`IsAuthenticated`", "correct": true, "explanation": "Secure by Default — Endpointهای عمومی `AllowAny` صریح می‌گذارند." },
+        { "text": "`IsAdminUser`", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-035-ex1",
+      "title": "تمرین — مجوز سطح ویو",
+      "problem": "برای یک ViewSet کتاب:\n- `list` و `retrieve`: برای همه آزاد.\n- `create`: فقط کاربران وارد‌شده.\n- `update` و `partial_update`: فقط مالک (owner).\n- `destroy`: فقط ادمین.\n\nاز `get_permissions` استفاده کنید.",
+      "hints": ["`self.action` نام اکشن است.", "برای مالکیت، `IsOwnerOrReadOnly` جدا بنویسید.", "برای ادمین، `IsAdminUser`."],
+      "solution": "```python\nfrom rest_framework import viewsets\nfrom rest_framework.permissions import (\n    AllowAny, IsAuthenticated, IsAdminUser, BasePermission, SAFE_METHODS,\n)\n\n\nclass IsOwnerOrReadOnly(BasePermission):\n    message = \"فقط مالک می‌تواند این را تغییر دهد.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        return obj.owner == request.user\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get_permissions(self):\n        if self.action in (\"list\", \"retrieve\"):\n            return [AllowAny()]\n        if self.action == \"create\":\n            return [IsAuthenticated()]\n        if self.action == \"destroy\":\n            return [IsAdminUser()]\n        if self.action in (\"update\", \"partial_update\"):\n            return [IsAuthenticated(), IsOwnerOrReadOnly()]\n        return [IsAuthenticated()]\n```",
+      "explanation": "این الگو در پروژه‌های واقعی رایج است: مجوز بر اساس اکشن + سطح شیء."
+    }
+  ],
+  "summary": [
+    "Permission = مجوز انجام عمل.",
+    "`has_permission` سطح ویو، `has_object_permission` سطح شیء.",
+    "مجوزهای آماده: `AllowAny`, `IsAuthenticated`, `IsAdminUser`, `IsAuthenticatedOrReadOnly`, `DjangoModelPermissions`, `DjangoObjectPermissions`.",
+    "ترکیب مجوزها با AND.",
+    "پیش‌فرض DRF: `AllowAny` — تغییر دهید.",
+    "`get_permissions` برای مجوزهای پویا.",
+    "برای مالکیت: `has_object_permission`.",
+    "Secure by Default: `IsAuthenticated` سراسری + `AllowAny` صریح."
+  ],
+  "resources": [
+    { "title": "DRF — Permissions", "url": "https://www.django-rest-framework.org/api-guide/permissions/", "official": true },
+    { "title": "django-guardian", "url": "https://django-guardian.readthedocs.io/", "official": true }
+  ]
+}

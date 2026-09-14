@@ -1,0 +1,308 @@
+{
+  "id": "ch-025",
+  "slug": "mixins",
+  "title": "Mixins",
+  "kicker": "فصل ۲۵",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "Mixinها قطعه‌های آماده رفتار هستند که کنار هم می‌چینید. درک آن‌ها کلید فهم نماهای جنریک است.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "Mixin چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**Mixin** یک کلاس کوچک است که یک رفتار خاص را پیاده می‌کند و برای ترکیب با کلاس‌های دیگر طراحی شده. در DRF، Mixinها برای عملیات CRUD استفاده می‌شوند."
+        },
+        {
+          "type": "flow",
+          "steps": ["Mixin List", "+", "Mixin Create", "+", "GenericAPIView", "=", "ListCreateAPIView"]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا Mixin؟",
+          "text": "به‌جای اینکه هر ترکیبی از عملیات را به‌صورت کلاس جدا بسازند، DRF Mixinها را ترکیب می‌کند. `ListCreateAPIView` = List + Create + GenericAPIView."
+        }
+      ]
+    },
+    {
+      "id": "the-five",
+      "title": "پنج Mixin اصلی",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["Mixin", "متد", "کار"],
+          "rows": [
+            ["`ListModelMixin`", "`list()`", "لیست کردن اشیاء"],
+            ["`CreateModelMixin`", "`create()`", "ساخت شیء جدید"],
+            ["`RetrieveModelMixin`", "`retrieve()`", "دریافت یک شیء"],
+            ["`UpdateModelMixin`", "`update()` + `partial_update()`", "ویرایش کامل یا جزئی"],
+            ["`DestroyModelMixin`", "`destroy()`", "حذف شیء"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "list-mixin",
+      "title": "ListModelMixin",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class ListModelMixin:\n    def list(self, request, *args, **kwargs):\n        queryset = self.filter_queryset(self.get_queryset())\n        page = self.paginate_queryset(queryset)\n        if page is not None:\n            serializer = self.get_serializer(page, many=True)\n            return self.get_paginated_response(serializer.data)\n        serializer = self.get_serializer(queryset, many=True)\n        return Response(serializer.data)"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**QuerySet** را از `get_queryset` می‌گیرد.",
+            "**فیلتر** را اعمال می‌کند (`filter_queryset`).",
+            "**صفحه‌بندی** می‌کند (`paginate_queryset`).",
+            "**سریال‌سازی** با `many=True`.",
+            "**پاسخ** با `Response` یا `get_paginated_response`."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "create-mixin",
+      "title": "CreateModelMixin",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CreateModelMixin:\n    def create(self, request, *args, **kwargs):\n        serializer = self.get_serializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        self.perform_create(serializer)\n        headers = self.get_success_headers(serializer.data)\n        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)\n\n    def perform_create(self, serializer):\n        serializer.save()\n\n    def get_success_headers(self, data):\n        try:\n            return {\"Location\": str(data[api_settings.URL_FIELD_NAME])}\n        except (TypeError, KeyError):\n            return {}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "perform_create",
+          "text": "این متد جدا شده تا بتوانید آن را بازنویسی کنید بدون بازنویسی کل `create`. رایج‌ترین کار: `serializer.save(owner=self.request.user)`."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookCreateView(generics.CreateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def perform_create(self, serializer):\n        serializer.save(owner=self.request.user)"
+        }
+      ]
+    },
+    {
+      "id": "retrieve-mixin",
+      "title": "RetrieveModelMixin",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class RetrieveModelMixin:\n    def retrieve(self, request, *args, **kwargs):\n        instance = self.get_object()\n        serializer = self.get_serializer(instance)\n        return Response(serializer.data)"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`get_object()`** شیء را با lookup پیدا می‌کند.",
+            "**بررسی مجوز سطح شیء** خودکار انجام می‌شود.",
+            "**404** اگر پیدا نشود.",
+            "**403** اگر مجوز نداشته باشد."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "update-mixin",
+      "title": "UpdateModelMixin",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class UpdateModelMixin:\n    def update(self, request, *args, **kwargs):\n        partial = kwargs.pop(\"partial\", False)\n        instance = self.get_object()\n        serializer = self.get_serializer(instance, data=request.data, partial=partial)\n        serializer.is_valid(raise_exception=True)\n        self.perform_update(serializer)\n\n        if getattr(instance, \"_prefetched_objects_cache\", None):\n            instance._prefetched_objects_cache = {}\n\n        return Response(serializer.data)\n\n    def partial_update(self, request, *args, **kwargs):\n        kwargs[\"partial\"] = True\n        return self.update(request, *args, **kwargs)\n\n    def perform_update(self, serializer):\n        serializer.save()"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "PUT و PATCH",
+          "text": "`update` برای PUT (جایگزینی کامل) و `partial_update` برای PATCH (ویرایش جزئی). هر دو از یک متد استفاده می‌کنند، فقط `partial` متفاوت است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookUpdateView(generics.UpdateAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def perform_update(self, serializer):\n        serializer.save(updated_by=self.request.user)"
+        }
+      ]
+    },
+    {
+      "id": "destroy-mixin",
+      "title": "DestroyModelMixin",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class DestroyModelMixin:\n    def destroy(self, request, *args, **kwargs):\n        instance = self.get_object()\n        self.perform_destroy(instance)\n        return Response(status=status.HTTP_204_NO_CONTENT)\n\n    def perform_destroy(self, instance):\n        instance.delete()"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# Soft delete — به‌جای حذف واقعی\nclass BookDeleteView(generics.DestroyAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def perform_destroy(self, instance):\n        instance.is_deleted = True\n        instance.deleted_at = timezone.now()\n        instance.save(update_fields=[\"is_deleted\", \"deleted_at\"])"
+        }
+      ]
+    },
+    {
+      "id": "combining",
+      "title": "ترکیب Mixinها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید Mixinها را به دلخواه ترکیب کنید. ترتیب مهم است: Mixinها اول، `GenericAPIView` آخر."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import mixins, generics\n\n\n# ListCreate — فقط لیست و ساخت\nclass BookListCreateView(\n    mixins.ListModelMixin,\n    mixins.CreateModelMixin,\n    generics.GenericAPIView,\n):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get(self, request, *args, **kwargs):\n        return self.list(request, *args, **kwargs)\n\n    def post(self, request, *args, **kwargs):\n        return self.create(request, *args, **kwargs)\n\n\n# ReadOnly — فقط لیست و جزئیات\nclass BookReadOnlyView(\n    mixins.ListModelMixin,\n    mixins.RetrieveModelMixin,\n    generics.GenericAPIView,\n):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get(self, request, *args, **kwargs):\n        if \"pk\" in kwargs:\n            return self.retrieve(request, *args, **kwargs)\n        return self.list(request, *args, **kwargs)"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "ترتیب ارث‌بری مهم است",
+          "text": "Mixinها باید قبل از `GenericAPIView` بیایند. دلیل: MRO (Method Resolution Order) در Python. اگر برعکس بگذارید، متدهای Mixin نادیده گرفته می‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "concrete-alternative",
+      "title": "چرا Mixin دستی ننویسیم؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در ۹۹٪ موارد، از کلاس‌های Concrete که DRF ارائه می‌دهد استفاده کنید:"
+        },
+        {
+          "type": "table",
+          "headers": ["کلاس Concrete", "ترکیب"],
+          "rows": [
+            ["`ListAPIView`", "ListModelMixin + GenericAPIView"],
+            ["`CreateAPIView`", "CreateModelMixin + GenericAPIView"],
+            ["`ListCreateAPIView`", "ListModelMixin + CreateModelMixin + GenericAPIView"],
+            ["`RetrieveAPIView`", "RetrieveModelMixin + GenericAPIView"],
+            ["`UpdateAPIView`", "UpdateModelMixin + GenericAPIView"],
+            ["`DestroyAPIView`", "DestroyModelMixin + GenericAPIView"],
+            ["`RetrieveUpdateAPIView`", "Retrieve + Update + GenericAPIView"],
+            ["`RetrieveDestroyAPIView`", "Retrieve + Destroy + GenericAPIView"],
+            ["`RetrieveUpdateDestroyAPIView`", "Retrieve + Update + Destroy + GenericAPIView"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "استفاده از `ListCreateAPIView` برای همه چیز.",
+          "better": "انتخاب کلاس Concrete مناسب برای هر Endpoint.",
+          "production": "کلاس Concrete + بازنویسی `perform_create` و `get_queryset` + ترکیب با Mixinهای سفارشی برای منطق خاص."
+        }
+      ]
+    },
+    {
+      "id": "custom-mixin",
+      "title": "Mixin سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید Mixinهای خودتان بسازید که کد مشترک را بین Viewها به اشتراک می‌گذارند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class OwnerMixin:\n    \"\"\"مالک را از request.user پر می‌کند.\"\"\"\n\n    def perform_create(self, serializer):\n        serializer.save(owner=self.request.user)\n\n\nclass SoftDeleteMixin:\n    \"\"\"به‌جای حذف واقعی، is_deleted را True می‌کند.\"\"\"\n\n    def perform_destroy(self, instance):\n        instance.is_deleted = True\n        instance.save(update_fields=[\"is_deleted\"])\n\n\nclass TimestampMixin:\n    \"\"\"created_by و updated_by را پر می‌کند.\"\"\"\n\n    def perform_create(self, serializer):\n        serializer.save(\n            created_by=self.request.user,\n            updated_by=self.request.user,\n        )\n\n    def perform_update(self, serializer):\n        serializer.save(updated_by=self.request.user)\n\n\n# استفاده\nclass NoteViewSet(\n    OwnerMixin,\n    SoftDeleteMixin,\n    viewsets.ModelViewSet,\n):\n    queryset = Note.objects.all()\n    serializer_class = NoteSerializer"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "مزیت Mixin سفارشی",
+          "text": "کد مشترک را یک جا نگه می‌دارید. اگر فردا تصمیم گرفتید owner را از یک راه دیگر پر کنید، فقط یک کلاس تغییر می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "ترتیب اشتباه در ارث‌بری",
+          "why": "Mixinها باید اول، `GenericAPIView` آخر. اگر برعکس، متدهای Mixin نادیده گرفته می‌شوند.",
+          "when": "وقتی Mixin دستی ترکیب می‌کنید.",
+          "fix": "`class View(Mixins.List, Mixins.Create, GenericAPIView)`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازنویسی `create` به‌جای `perform_create`",
+          "why": "کد DRF را تکرار می‌کنید و راحت خطا می‌دهد.",
+          "when": "وقتی می‌خواهید owner را پر کنید.",
+          "fix": "فقط `perform_create` را بازنویسی کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `perform_destroy`",
+          "why": "اگر می‌خواهید soft delete کنید، باید `perform_destroy` را بازنویسی کنید.",
+          "when": "وقتی حذف واقعی نمی‌خواهید.",
+          "fix": "`def perform_destroy(self, instance): instance.is_deleted = True; instance.save()`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "ترکیب Mixinهای ناسازگار",
+          "why": "مثلاً `ListModelMixin` روی نمایی که `queryset` ندارد.",
+          "when": "وقتی Mixin دستی ترکیب می‌کنید.",
+          "fix": "همیشه `GenericAPIView` با `queryset` و `serializer_class`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Mixin سفارشی برای هر چیز",
+          "why": "اگر فقط یک ویو از آن استفاده می‌کند، Mixin ارزش ندارد.",
+          "when": "وقتی تازه با Mixin آشنا شده‌اید.",
+          "fix": "Mixin فقط برای کدی که در ۳+ ویو تکرار می‌شود."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-025-q1",
+      "tag": "کوییز",
+      "question": "کدام متد را برای پر کردن `owner` از `request.user` بازنویسی می‌کنیم؟",
+      "options": [
+        { "text": "`create`", "correct": false },
+        { "text": "`perform_create`", "correct": true, "explanation": "این متد جدا شده تا فقط همان را بازنویسی کنید." },
+        { "text": "`get_serializer`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-025-q2",
+      "tag": "کوییز",
+      "question": "ترتیب صحیح ارث‌بری چیست؟",
+      "options": [
+        { "text": "`GenericAPIView` اول، Mixinها بعد", "correct": false },
+        { "text": "Mixinها اول، `GenericAPIView` آخر", "correct": true, "explanation": "به‌دلیل MRO، Mixinها باید قبل از GenericAPIView بیایند." },
+        { "text": "ترتیب مهم نیست", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-025-ex1",
+      "title": "تمرین — Mixin ترکیبی دستی",
+      "problem": "یک نمای ReadOnly دستی بسازید که فقط `list` و `retrieve` داشته باشد (بدون ساخت/ویرایش/حذف). از Mixinها مستقیم استفاده کنید.",
+      "hints": ["از `mixins.ListModelMixin` و `mixins.RetrieveModelMixin` استفاده کنید.", "ترتیب: Mixinها اول، `GenericAPIView` آخر.", "متدهای GET را با logic تشخیص pk مدیریت کنید."],
+      "solution": "```python\nfrom rest_framework import mixins, generics\n\n\nclass BookReadOnlyView(\n    mixins.ListModelMixin,\n    mixins.RetrieveModelMixin,\n    generics.GenericAPIView,\n):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get(self, request, *args, **kwargs):\n        if \"pk\" in kwargs:\n            return self.retrieve(request, *args, **kwargs)\n        return self.list(request, *args, **kwargs)\n```\n\n```python\n# urls.py\npath(\"books/\", BookReadOnlyView.as_view()),\npath(\"books/<int:pk>/\", BookReadOnlyView.as_view()),\n```\n\n**نکته:** همین کار با `ReadOnlyModelViewSet` در ViewSet ساده‌تر است — در فصل ۲۸.",
+      "explanation": "این تمرین نشان می‌دهد Mixinها چطور کار می‌کنند. در عمل، از کلاس‌های Concrete استفاده کنید."
+    }
+  ],
+  "summary": [
+    "Mixinها قطعه‌های آماده رفتارند: List، Create، Retrieve، Update، Destroy.",
+    "Mixinها قبل از `GenericAPIView` می‌آیند (MRO).",
+    "کلاس‌های Concrete ترکیب آماده Mixinها هستند: `ListCreateAPIView`, `RetrieveUpdateDestroyAPIView` و... .",
+    "`perform_create`, `perform_update`, `perform_destroy` را برای منطق اضافه بازنویسی کنید.",
+    "Mixin سفارشی برای کد مشترک بین ۳+ ویو.",
+    "به‌ندرت Mixin دستی ترکیب می‌کنید — کلاس‌های Concrete کافی‌اند."
+  ],
+  "resources": [
+    { "title": "DRF — Mixins", "url": "https://www.django-rest-framework.org/api-guide/generic-views/#mixins", "official": true }
+  ]
+}

@@ -1,0 +1,350 @@
+{
+  "id": "ch-001",
+  "slug": "python-for-drf",
+  "title": "Python برای DRF",
+  "kicker": "فصل ۱",
+  "level": "beginner",
+  "estimatedMinutes": 25,
+  "lead": "فقط مفاهیم Python که برای کار با DRF لازم است — بدون تبدیل شدن به یک دوره کامل Python.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا Python را مرور می‌کنیم؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF یک کتابخانه Python است. مدل‌ها، سریالایزرها، ویوها و تنظیمات همه با Python نوشته می‌شوند. اگر این مفاهیم پایه‌ای را ندانید، در فصل‌های بعدی با syntax های ناآشنا گیر می‌کنید."
+        },
+        {
+          "type": "paragraph",
+          "text": "هدف این فصل این نیست که شما را به یک برنامه‌نویس Python تبدیل کند. هدف این است که وقتی در فصل بعد به کدی مثل `class BookSerializer(serializers.ModelSerializer)` می‌رسید، بدانید چرا `class` و چرا داخل پرانتز یک نام دیگر آمده است."
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "اگر Python می‌دانید",
+          "text": "اگر با Python راحت هستید، سریع از این فصل عبور کنید و به فصل ۲ بروید. فقط یک نگاه به بخش «کلاس و وراثت» و «دکوراتور» بیندازید چون در DRF بسیار استفاده می‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "variables",
+      "title": "متغیرها و انواع داده",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "متغیر یک نام برای اشاره به یک مقدار است. Python پویا نوع‌دار (dynamically typed) است — یعنی لازم نیست نوع متغیر را اعلام کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "name = \"Clean Code\"        # رشته — str\npages = 464                # عدد صحیح — int\nprice = 42.50              # عدد اعشاری — float\nin_stock = True            # بولی — bool\nnothing = None             # تهی — NoneType\ntags = [\"programming\", \"craft\"]   # لیست — list\npoint = (3, 5)             # تاپل — tuple\nsizes = {\"small\", \"large\"}  # مجموعه — set\nbook = {\"title\": \"Refactoring\", \"year\": 2018}   # دیکشنری — dict"
+        },
+        {
+          "type": "table",
+          "headers": ["نوع", "مثال", "کاربرد در DRF"],
+          "rows": [
+            ["str", "\"hello\"", "فیلدهای متنی مثل `CharField`"],
+            ["int", "42", "شناسه‌ها، شمارنده‌ها"],
+            ["float / Decimal", "42.50", "قیمت، امتیاز"],
+            ["bool", "True / False", "فیلدهای `BooleanField`"],
+            ["None", "None", "مقدار خالی، `null=True`"],
+            ["list", "[1, 2, 3]", "لیست آبجکت‌ها در سریالایزر"],
+            ["dict", "{\"key\": \"value\"}", "پاسخ JSON و `validated_data`"],
+            ["tuple", "(x, y)", "مقادیر ثابت، `choices`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "نکته",
+          "text": "در DRF، بیشترین چیزی که می‌بینید `dict` است — چون داده JSON و `validated_data` هر دو دیکشنری هستند."
+        }
+      ]
+    },
+    {
+      "id": "conditions",
+      "title": "شرط‌ها و حلقه‌ها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# شرط\nprice = 42.50\nif price > 100:\n    label = \"گران\"\nelif price > 20:\n    label = \"متوسط\"\nelse:\n    label = \"ارزان\"\n\n# حلقه روی لیست\nfor tag in [\"a\", \"b\", \"c\"]:\n    print(tag)\n\n# حلقه با اندیس\nfor i, tag in enumerate([\"a\", \"b\", \"c\"]):\n    print(i, tag)\n\n# حلقه روی دیکشنری\nfor key, value in {\"x\": 1, \"y\": 2}.items():\n    print(key, value)"
+        },
+        {
+          "type": "paragraph",
+          "text": "در DRF، حلقه‌ها و شرط‌ها را بیشتر داخل متدهای سریالایزر می‌بینید — مثلاً وقتی می‌خواهید یک فیلد را بر اساس نقش کاربر مخفی کنید:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def to_representation(self, instance):\n    data = super().to_representation(instance)\n    if not self.context[\"request\"].user.is_staff:\n        data.pop(\"internal_notes\", None)\n    return data"
+        }
+      ]
+    },
+    {
+      "id": "functions",
+      "title": "توابع",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "تابع یک بلوک کد قابل استفاده مجدد است. در Python با `def` تعریف می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def calculate_total(price, quantity, tax_rate=0.09):\n    \"\"\"قیمت کل را با مالیات برمی‌گرداند.\"\"\"\n    subtotal = price * quantity\n    return round(subtotal * (1 + tax_rate), 2)\n\n# فراخوانی\ntotal = calculate_total(42.50, 3)\nprint(total)   # 139.14"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "پارامتر پیش‌فرض: `tax_rate=0.09`",
+            "مقدار بازگشتی: با `return` — بدون آن `None` برمی‌گردد",
+            "مستندسازی: با سه‌علامت نقل‌قول `\"\"\"...\"\"\"`",
+            "آرگومان‌های کلیدواژه‌ای: `calculate_total(price=42.5, quantity=3)`"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "در DRF توابع در دو جا زیاد می‌بینید: متدهای سریالایزر (که در واقع تابع داخل کلاس هستند) و توابع مجوز/اعتبارسنجی."
+        }
+      ]
+    },
+    {
+      "id": "classes",
+      "title": "کلاس‌ها و اشیاء",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "کلاس یک «قالب» برای ساخت اشیاء است. شیء یک نمونه (instance) از آن کلاس است. DRF پر از کلاس است — `Serializer`، `APIView`، `ViewSet` و... همه کلاس هستند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class Book:\n    \"\"\"یک کتاب ساده.\"\"\"\n\n    def __init__(self, title, author, price):\n        # سازنده: هنگام ساخت شیء اجرا می‌شود\n        self.title = title\n        self.author = author\n        self.price = price\n\n    def __str__(self):\n        return f\"{self.title} by {self.author}\"\n\n    def discounted_price(self, percent):\n        return round(self.price * (1 - percent / 100), 2)\n\n\nbook = Book(\"Refactoring\", \"Martin Fowler\", 55.00)\nprint(book)                            # Refactoring by Martin Fowler\nprint(book.discounted_price(10))       # 49.5"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`__init__` — سازنده، هنگام ساخت شیء اجرا می‌شود",
+            "`self` — اشاره به خود شیء؛ همیشه اولین پارامتر متدها",
+            "`__str__` — بازنمایی متنی خوانا؛ در پنل ادمین و لاگ‌ها استفاده می‌شود",
+            "متدها — توابع داخل کلاس که به `self` دسترسی دارند"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inheritance",
+      "title": "وراثت (Inheritance)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وراثت یعنی یک کلاس می‌تواند از کلاس دیگری ارث‌بری کند و رفتارش را گسترش دهد یا تغییر دهد. این مفهوم در DRF **بسیار** پرکاربرد است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class Publication:\n    def __init__(self, title, year):\n        self.title = title\n        self.year = year\n\n    def summary(self):\n        return f\"{self.title} ({self.year})\"\n\n\nclass Book(Publication):\n    def __init__(self, title, year, author):\n        super().__init__(title, year)   # فراخوانی سازنده والد\n        self.author = author\n\n    def summary(self):\n        # بازنویسی متد والد و گسترش آن\n        base = super().summary()\n        return f\"{base} — {self.author}\"\n\n\nbook = Book(\"Clean Code\", 2008, \"Robert C. Martin\")\nprint(book.summary())   # Clean Code (2008) — Robert C. Martin"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا مهم است؟",
+          "text": "در DRF خواهید دید: `class BookSerializer(serializers.ModelSerializer)` — یعنی `BookSerializer` از `ModelSerializer` ارث‌بری می‌کند و همه رفتار آن را به ارث می‌برد. تنها چیزی که تغییر می‌دهید این است که بگویید «کدام مدل، کدام فیلدها»."
+        }
+      ]
+    },
+    {
+      "id": "decorators",
+      "title": "دکوراتورها (Decorators)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "دکوراتور یک تابع است که یک تابع یا متد دیگر را «می‌پیچد» و رفتارش را تغییر می‌دهد. با `@` بالای تابع نوشته می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def log_call(func):\n    \"\"\"هر بار که تابع صدا زده شود، یک پیام لاگ می‌کند.\"\"\"\n    def wrapper(*args, **kwargs):\n        print(f\"Calling {func.__name__}\")\n        return func(*args, **kwargs)\n    return wrapper\n\n\n@log_call\ndef greet(name):\n    return f\"Hello, {name}!\"\n\n\ngreet(\"Sara\")\n# Calling greet\n# 'Hello, Sara!'"
+        },
+        {
+          "type": "paragraph",
+          "text": "در DRF دکوراتورها همه‌جا هستند:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.decorators import api_view, permission_classes\nfrom rest_framework.permissions import IsAuthenticated\n\n\n@api_view([\"GET\", \"POST\"])\n@permission_classes([IsAuthenticated])\ndef book_list(request):\n    ..."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`@api_view` — می‌گوید این تابع یک نمای DRF است و چه متدهایی را می‌پذیرد.",
+            "`@permission_classes` — مجوزهای لازم را تعیین می‌کند.",
+            "`@action` — در ViewSetها برای اکشن سفارشی.",
+            "`@extend_schema` — برای غنی‌سازی مستندات OpenAPI."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exceptions",
+      "title": "استثناها (Exceptions)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی چیزی اشتباه پیش می‌رود، Python یک استثنا پرتاب می‌کند. می‌توانید آن را بگیرید و مدیریت کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        print(\"تقسیم بر صفر مجاز نیست\")\n        return None\n\n\nprint(divide(10, 2))   # 5.0\nprint(divide(10, 0))   # پیام خطا + None"
+        },
+        {
+          "type": "paragraph",
+          "text": "DRF بر پایه استثناها ساخته شده. مثلاً وقتی داده ورودی نامعتبر است، یک `ValidationError` پرتاب می‌شود و DRF آن را به پاسخ `400 Bad Request` تبدیل می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.exceptions import ValidationError, NotFound\n\n\ndef get_book_or_404(book_id):\n    try:\n        return Book.objects.get(pk=book_id)\n    except Book.DoesNotExist:\n        raise NotFound(\"کتاب مورد نظر پیدا نشد.\")\n\n\ndef validate_price(value):\n    if value <= 0:\n        raise ValidationError({\"price\": \"قیمت باید بزرگ‌تر از صفر باشد.\"})"
+        }
+      ]
+    },
+    {
+      "id": "modules",
+      "title": "ماژول‌ها و Import",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "کد Python در فایل‌هایی با پسوند `.py` نوشته می‌شود که به آن‌ها **ماژول** می‌گویند. برای استفاده از کد یک ماژول در ماژول دیگر، از `import` استفاده می‌کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# وارد کردن کل ماژول\nimport json\njson.loads('{\"a\": 1}')\n\n# وارد کردن یک نام خاص\nfrom datetime import date\ntoday = date.today()\n\n# وارد کردن با نام مستعار\nimport numpy as np\n\n# وارد کردن همه چیز (توصیه نمی‌شود)\nfrom math import *"
+        },
+        {
+          "type": "paragraph",
+          "text": "در DRF، importها معمولاً این‌گونه هستند:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import serializers, viewsets, status\nfrom rest_framework.decorators import action\nfrom rest_framework.response import Response\nfrom rest_framework.permissions import IsAuthenticated\nfrom django.contrib.auth.models import User"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "قاعده کلی",
+          "text": "همیشه از importهای مطلق و مشخص استفاده کنید. از `from x import *` پرهیز کنید چون معلوم نیست چه چیزی وارد می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "venv",
+      "title": "محیط مجازی و pip",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**محیط مجازی (Virtual Environment)** یک محیط Python جداست که پکیج‌های آن با سیستم اصلی تداخل ندارد. **pip** ابزار نصب پکیج‌های Python است."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "filename": "terminal",
+          "code": "# ساخت محیط مجازی\npython -m venv .venv\n\n# فعال‌سازی — لینوکس/مک\nsource .venv/bin/activate\n\n# فعال‌سازی — ویندوز (PowerShell)\n.venv\\Scripts\\Activate.ps1\n\n# نصب پکیج\npip install django djangorestframework\n\n# ذخیره لیست پکیج‌ها در requirements.txt\npip freeze > requirements.txt\n\n# نصب از فایل\npip install -r requirements.txt\n\n# خروج از محیط مجازی\ndeactivate"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**چرا محیط مجازی؟** تا نسخه‌های مختلف یک پکیج با هم تداخل نکنند.",
+            "**requirements.txt چیست؟** فایل متنی که لیست پکیج‌های پروژه را نگه می‌دارد.",
+            "**قاعده طلایی:** برای هر پروژه، یک محیط مجازی جدا."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "اشتباه رایج",
+          "text": "پکیج‌ها را روی Python سیستم نصب نکنید. با این کار بعداً برای پروژه‌های دیگر به مشکل می‌خورید. همیشه از محیط مجازی استفاده کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-001-q1",
+      "tag": "کوییز",
+      "question": "کدام گزینه درباره `self` درست است؟",
+      "options": [
+        { "text": "یک نام رزرو شده در Python است که فقط در توابع استفاده می‌شود.", "correct": false },
+        { "text": "اشاره‌ای به شیء جاری در متدهای کلاس است و همیشه اولین پارامتر متدهاست.", "correct": true, "explanation": "self نامی قراردادی است که به نمونه (instance) جاری کلاس اشاره می‌کند." },
+        { "text": "برای تعریف متغیرهای سراسری استفاده می‌شود.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-001-q2",
+      "tag": "کوییز",
+      "question": "در `class BookSerializer(serializers.ModelSerializer)` نقش پرانتز چیست؟",
+      "options": [
+        { "text": "فقط برای زیبایی است و معنای خاصی ندارد.", "correct": false },
+        { "text": "نشان‌دهنده وراثت است — BookSerializer از ModelSerializer ارث‌بری می‌کند.", "correct": true, "explanation": "این syntax وراثت در Python است: کلاس داخل پرانتز، کلاس والد (Base) است." },
+        { "text": "برای پاس دادن آرگومان به کلاس والد در زمان تعریف.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-001-ex1",
+      "title": "تمرین ۱ — کلاس و وراثت",
+      "problem": "یک کلاس `Vehicle` بسازید با متد `describe()` که پیام `\"A vehicle\"` را برمی‌گرداند. سپس کلاس `Car` را از `Vehicle` ارث‌بری کنید و `describe()` را بازنویسی کنید تا پیام `\"A car\"` را برگرداند.",
+      "hints": [
+        "برای وراثت از `class Car(Vehicle):` استفاده کنید.",
+        "برای بازنویسی متد، همان نام `describe` را در کلاس فرزند دوباره تعریف کنید.",
+        "برای فراخوانی نسخه والد می‌توانید از `super().describe()` استفاده کنید."
+      ],
+      "solution": "```python\nclass Vehicle:\n    def describe(self):\n        return \"A vehicle\"\n\n\nclass Car(Vehicle):\n    def describe(self):\n        return \"A car\"\n\n\nprint(Vehicle().describe())   # A vehicle\nprint(Car().describe())       # A car\n```",
+      "explanation": "مفهوم پایه وراثت در Python: کلاس فرزند می‌تواند متدهای والد را بازنویسی کند. این الگو در DRF همه‌جا هست."
+    },
+    {
+      "id": "ch-001-ex2",
+      "title": "تمرین ۲ — دکوراتور ساده",
+      "problem": "یک دکوراتور به نام `shout` بنویسید که خروجی یک تابع را به حروف بزرگ تبدیل کند.",
+      "hints": [
+        "دکوراتور یک تابع است که یک تابع دیگر می‌گیرد و یک تابع جدید برمی‌گرداند.",
+        "از `*args` و `**kwargs` استفاده کنید تا هر تابعی را بپذیرد."
+      ],
+      "solution": "```python\ndef shout(func):\n    def wrapper(*args, **kwargs):\n        return func(*args, **kwargs).upper()\n    return wrapper\n\n\n@shout\ndef greet(name):\n    return f\"hello, {name}\"\n\n\nprint(greet(\"sara\"))   # HELLO, SARA\n```",
+      "explanation": "دکوراتورها در DRF برای تغییر رفتار ویوها استفاده می‌شوند — مثلاً `@api_view` و `@permission_classes`."
+    }
+  ],
+  "summary": [
+    "**متغیرها و انواع:** str، int، float، bool، None، list، dict، tuple، set.",
+    "**شرط و حلقه:** `if/elif/else`، `for`، `enumerate`، `.items()`.",
+    "**توابع:** `def`، پارامتر پیش‌فرض، `return`، docstring.",
+    "**کلاس:** `__init__`، `self`، متدها، `__str__`.",
+    "**وراثت:** `class Child(Parent)` و `super()`.",
+    "**دکوراتور:** `@` برای تغییر رفتار تابع یا متد.",
+    "**استثنا:** `try/except` و `raise` برای مدیریت خطا.",
+    "**ماژول و import:** `import x` و `from x import y`.",
+    "**محیط مجازی:** `python -m venv .venv` و `pip install`."
+  ],
+  "resources": [
+    {
+      "title": "Python — مستندات رسمی",
+      "url": "https://docs.python.org/3/",
+      "official": true
+    },
+    {
+      "title": "Python Tutorial — مستندات رسمی",
+      "url": "https://docs.python.org/3/tutorial/",
+      "official": true
+    }
+  ]
+}

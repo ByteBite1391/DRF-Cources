@@ -1,0 +1,312 @@
+{
+  "id": "ch-021",
+  "slug": "response",
+  "title": "پاسخ (Response)",
+  "kicker": "فصل ۲۱",
+  "level": "intermediate",
+  "estimatedMinutes": 25,
+  "lead": "Response در DRF فقط یک HttpResponse با JSON نیست — یک شیء هوشمند است که بر اساس درخواست، فرمت مناسب را انتخاب می‌کند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "Response چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "**`Response`** کلاس پاسخ DRF است. داده پایتون (دیکشنری، لیست، ...) می‌گیرد و بر اساس هدر `Accept` و تنظیمات رندررها، به فرمت مناسب تبدیل می‌کند."
+        },
+        {
+          "type": "flow",
+          "steps": ["Python data", "Response", "Renderer", "bytes"]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.response import Response\n\n\nreturn Response({\"message\": \"OK\"})\nreturn Response({\"items\": [...]})\nreturn Response(serializer.data)\nreturn Response(serializer.errors, status=400)"
+        }
+      ]
+    },
+    {
+      "id": "signature",
+      "title": "امضا و پارامترها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "Response(\n    data=None,\n    status=None,\n    template_name=None,\n    headers=None,\n    exception=False,\n    content_type=None,\n)"
+        },
+        {
+          "type": "table",
+          "headers": ["پارامتر", "معنی", "پیش‌فرض"],
+          "rows": [
+            ["`data`", "داده پایتون", "`None`"],
+            ["`status`", "کد وضعیت HTTP", "`200`"],
+            ["`template_name`", "قالب (برای HTMLRenderer)", "`None`"],
+            ["`headers`", "هدرهای اضافه", "`None`"],
+            ["`exception`", "آیا از یک exception آمده؟", "`False`"],
+            ["`content_type`", "اجبار نوع محتوا", "`None`"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "استفاده معمول",
+          "text": "در ۹۹٪ مواقع فقط `data` و `status` را استفاده می‌کنید. بقیه برای موارد خاص."
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "title": "کد وضعیت",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import status\nfrom rest_framework.response import Response\n\n\n# بدون status — پیش‌فرض 200\nreturn Response({\"message\": \"OK\"})\n\n# با status — ثابت‌های DRF\nreturn Response(serializer.data, status=status.HTTP_201_CREATED)\nreturn Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\nreturn Response(status=status.HTTP_204_NO_CONTENT)\nreturn Response({\"detail\": \"پیدا نشد\"}, status=status.HTTP_404_NOT_FOUND)\n\n# معادل عددی (توصیه نمی‌شود)\nreturn Response(data, status=201)"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "همیشه از ثابت‌ها استفاده کنید",
+          "text": "`status.HTTP_201_CREATED` واضح‌تر از `201` است. جستجو در کد آسان‌تر، خطای تایپی کمتر."
+        }
+      ]
+    },
+    {
+      "id": "data-types",
+      "title": "چه داده‌ای می‌توان فرستاد؟",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# دیکشنری\nreturn Response({\"id\": 1, \"title\": \"Clean Code\"})\n\n# لیست\nreturn Response([{\"id\": 1}, {\"id\": 2}])\n\n# داده سریالایزر\nreturn Response(serializer.data)\n\n# خطاها\nreturn Response(serializer.errors, status=400)\n\n# فقط status\nreturn Response(status=204)\n\n# داده تودرتو\nreturn Response({\n    \"count\": 100,\n    \"next\": \"...\",\n    \"results\": [...],\n})\n\n# متن ساده (نادر)\nreturn Response(\"hello\")\n\n# مقدار ساده\nreturn Response(42)\nreturn Response(True)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "هر داده قابل JSON",
+          "text": "هر چیزی که `json.dumps` قبول کند (dict, list, str, int, float, bool, None). اشیاء پایتون قابل serialize نیستند — باید قبلشان را به dict تبدیل کنید (که سریالایزر انجام می‌دهد)."
+        }
+      ]
+    },
+    {
+      "id": "headers",
+      "title": "هدرهای سفارشی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookCreateView(generics.CreateAPIView):\n    serializer_class = BookSerializer\n\n    def create(self, request, *args, **kwargs):\n        serializer = self.get_serializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        book = serializer.save()\n\n        headers = {\n            \"Location\": f\"/api/books/{book.id}/\",\n            \"X-Book-ID\": str(book.id),\n            \"X-Created-At\": book.created_at.isoformat(),\n        }\n        return Response(serializer.data, status=201, headers=headers)"
+        },
+        {
+          "type": "table",
+          "headers": ["هدر", "کاربرد"],
+          "rows": [
+            ["`Location`", "آدرس منبع ساخته‌شده (بعد از 201)"],
+            ["`X-Request-ID`", "شناسه درخواست برای ردیابی"],
+            ["`Retry-After`", "زمان انتظار (با 429 یا 503)"],
+            ["`Cache-Control`", "کنترل کش"],
+            ["`Link`", "لینک به صفحات (در صفحه‌بندی)"],
+            ["`ETag`", "شناسه نسخه منبع"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "renderers",
+      "title": "Rendererها — انتخاب خودکار",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Response تصمیم نمی‌گیرد چه فرمتی بفرستد. این کار بر عهده **Rendererها** است که بر اساس هدر `Accept` انتخاب می‌شوند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_RENDERER_CLASSES\": [\n        \"rest_framework.renderers.JSONRenderer\",\n        \"rest_framework.renderers.BrowsableAPIRenderer\",\n    ],\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["Accept", "Renderer", "خروجی"],
+          "rows": [
+            ["`application/json`", "`JSONRenderer`", "JSON"],
+            ["`text/html` (مرورگر)", "`BrowsableAPIRenderer`", "HTML تعاملی"],
+            ["`text/html`", "`StaticHTMLRenderer`", "HTML خام"],
+            ["`*/*`", "اولین رندرر در لیست", "بستگی دارد"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "Content Negotiation",
+          "text": "این فرآیند «مذاکره محتوا» نام دارد — در فصل ۴۵ کامل توضیح می‌دهیم."
+        }
+      ]
+    },
+    {
+      "id": "browsable",
+      "title": "Browsable API در Response",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر درخواست از مرورگر بیاید (`Accept: text/html`)، DRF به‌جای JSON، صفحه HTML تعاملی برمی‌گرداند. این صفحه خودکار از data ساخته می‌شود."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n# در مرورگر: صفحه HTML با فرم‌ها\n# با curl: JSON خام\n# با Accept: application/json: JSON"
+        }
+      ]
+    },
+    {
+      "id": "no-content",
+      "title": "204 No Content",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای حذف موفق یا عملیاتی که بدنه‌ای برای برگرداندن ندارد:"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookDeleteView(generics.DestroyAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def destroy(self, request, *args, **kwargs):\n        instance = self.get_object()\n        instance.delete()\n        return Response(status=204)   # بدون data"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "204 نباید بدنه داشته باشد",
+          "text": "طبق استاندارد HTTP، پاسخ `204 No Content` نباید بدنه داشته باشد. اگر `data` بفرستید، برخی کلاینت‌ها خطا می‌دهند."
+        }
+      ]
+    },
+    {
+      "id": "errors-response",
+      "title": "پاسخ‌های خطا",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF خطاها را در ساختار استاندارد برمی‌گرداند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# خطای اعتبارسنجی\nreturn Response(serializer.errors, status=400)\n# {\n#   \"title\": [\"This field is required.\"],\n#   \"price\": [\"Ensure this value is greater than or equal to 0.\"]\n# }\n\n# خطای عمومی\nreturn Response({\"detail\": \"پیدا نشد\"}, status=404)\n\n# خطای دستی\nfrom rest_framework.exceptions import ValidationError\nraise ValidationError({\"field\": \"پیام خطا\"})"
+        },
+        {
+          "type": "callout-level",
+          "basic": "`Response({\"error\": \"...\"}, status=400)`",
+          "better": "`Response(serializer.errors, status=400)` — ساختار استاندارد DRF.",
+          "production": "Exception handler سراسری + کد خطای داخلی + شناسه رخداد + لاگ ساختاریافته."
+        }
+      ]
+    },
+    {
+      "id": "template",
+      "title": "Template Rendering (نادر)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر بخواهید پاسخ HTML رندرشده بفرستید، از `template_name` و `StaticHTMLRenderer` استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.renderers import StaticHTMLRenderer\nfrom rest_framework.decorators import api_view, renderer_classes\n\n\n@api_view([\"GET\"])\n@renderer_classes([StaticHTMLRenderer])\ndef welcome(request):\n    data = \"<h1>خوش آمدید</h1>\"\n    return Response(data)\n\n\n# یا با template\n@api_view([\"GET\"])\n@renderer_classes([TemplateHTMLRenderer])\ndef profile(request):\n    return Response(\n        {\"user\": request.user},\n        template_name=\"profile.html\",\n    )"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چه زمانی؟",
+          "text": "اگر پروژه شما عمدتاً API است، این حالت نادر است. اما برای گزارش‌های HTML یا صفحات خاص می‌تواند مفید باشد."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `JsonResponse` Django در DRF",
+          "why": "Content negotiation و Browsable API کار نمی‌کند.",
+          "when": "وقتی از Django آمده‌اید.",
+          "fix": "از `Response` DRF استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `status` در خطا",
+          "why": "خطا با کد 200 فرستاده می‌شود. کلاینت فکر می‌کند موفق بوده.",
+          "when": "وقتی از `return Response({\"error\": \"...\"})` استفاده می‌کنید.",
+          "fix": "`status=400` (یا کد مناسب) را فراموش نکنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فرستادن `data` با `204`",
+          "why": "طبق استاندارد HTTP، 204 نباید بدنه داشته باشد.",
+          "when": "وقتی بعد از DELETE می‌خواهید پیامی بدهید.",
+          "fix": "فقط `Response(status=204)`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فرستادن اشیاء پایتون غیرقابل serialize",
+          "why": "`TypeError: Object of type X is not JSON serializable`.",
+          "when": "وقتی مدل یا QuerySet می‌فرستید.",
+          "fix": "اول با سریالایزر به dict تبدیل کنید یا از `list()` و `str()` استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "هدرهای حساس در Response",
+          "why": "اطلاعات داخلی لو می‌رود.",
+          "when": "وقتی `X-Debug-SQL` یا `X-Query-Count` می‌فرستید.",
+          "fix": "این هدرها را فقط در DEBUG قرار دهید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-021-q1",
+      "tag": "کوییز",
+      "question": "کدام کد وضعیت پس از حذف موفق استفاده می‌شود؟",
+      "options": [
+        { "text": "200", "correct": false },
+        { "text": "204", "correct": true, "explanation": "204 No Content یعنی موفق و بدون بدنه." },
+        { "text": "404", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-021-q2",
+      "tag": "کوییز",
+      "question": "چرا از `Response` DRF استفاده می‌کنیم نه `JsonResponse` Django؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون از Content Negotiation پشتیبانی می‌کند و Browsable API کار می‌کند.", "correct": true, "explanation": "Response با رندررها کار می‌کند و بر اساس Accept فرمت مناسب را انتخاب می‌کند." },
+        { "text": "چون اجباری است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-021-ex1",
+      "title": "تمرین — Endpoint با Response",
+      "problem": "یک Endpoint `POST /api/books/` بسازید که کتاب جدید بسازد و:\n- در موفقیت: کد 201، داده کتاب، هدر `Location`.\n- در خطا: کد 400، پیام‌های خطای سریالایزر.",
+      "hints": ["از `Response` استفاده کنید.", "هدرها را با `headers=` بفرستید."],
+      "solution": "```python\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom .serializers import BookSerializer\n\n\nclass BookCreateView(APIView):\n    def post(self, request):\n        serializer = BookSerializer(data=request.data)\n        if not serializer.is_valid():\n            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\n\n        book = serializer.save()\n        headers = {\"Location\": f\"/api/books/{book.id}/\"}\n        return Response(\n            serializer.data,\n            status=status.HTTP_201_CREATED,\n            headers=headers,\n        )\n```",
+      "explanation": "این الگو، استاندارد ساخت منبع در REST است. سریالایزر خطاها را به‌شکل یکدست برمی‌گرداند."
+    }
+  ],
+  "summary": [
+    "`Response` داده پایتون می‌گیرد و بر اساس Accept فرمت می‌دهد.",
+    "پارامترها: `data`, `status`, `headers`, `template_name`.",
+    "کد وضعیت با `rest_framework.status` — نه اعداد جادویی.",
+    "هدرهای سفارشی با `headers=`.",
+    "رندررها بر اساس `Accept` انتخاب می‌شوند.",
+    "`204 No Content` بدون بدنه.",
+    "خطاها با `serializer.errors` و کد 400.",
+    "Browsable API در مرورگر نمایش داده می‌شود."
+  ],
+  "resources": [
+    { "title": "DRF — Responses", "url": "https://www.django-rest-framework.org/api-guide/responses/", "official": true }
+  ]
+}

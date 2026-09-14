@@ -1,0 +1,298 @@
+{
+  "id": "ch-047",
+  "slug": "advanced-errors",
+  "title": "مدیریت خطای پیشرفته",
+  "kicker": "فصل ۴۷",
+  "level": "advanced",
+  "estimatedMinutes": 45,
+  "lead": "خطاهای یک API خوب، یکدست، قابل برنامه‌نویسی و لاگ‌شده هستند. این فصل به این هدف می‌رسد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا مدیریت پیشرفته؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**ساختار یکدست:** همه خطاها شکل مشابه دارند.",
+            "**کد قابل برنامه‌نویسی:** کلاینت می‌تواند بر اساس کد خطا تصمیم بگیرد.",
+            "**لاگ ساختاریافته:** اشکال‌زدایی سریع.",
+            "**امنیت:** جزئیات داخلی لو نمی‌رود.",
+            "**تجربه کاربری:** پیام‌های واضح و به زبان کاربر."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "پاسخ پیش‌فرض DRF.",
+          "better": "پیام‌های فارسی + کد خطا.",
+          "production": "exception handler سراسری + لاگ ساختاریافته + incident ID + تفکیک خطاهای دامنه/فنی."
+        }
+      ]
+    },
+    {
+      "id": "default",
+      "title": "exception_handler پیش‌فرض",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF یک `exception_handler` دارد که استثناهای DRF را به `Response` تبدیل می‌کند. برای استثناهای غیر DRF، `None` برمی‌گرداند و Django آنها را به 500 تبدیل می‌کند."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.views import exception_handler\n\n\ndef custom_exception_handler(exc, context):\n    # اول بگذارید DRF کار خودش را بکند\n    response = exception_handler(exc, context)\n\n    if response is not None:\n        # استثنای DRF — می‌توانیم تغییر دهیم\n        response.data = transform(response.data)\n\n    return response\n    # اگر None باشد، Django با 500 پاسخ می‌دهد"
+        }
+      ]
+    },
+    {
+      "id": "unified",
+      "title": "ساختار یکدست پاسخ خطا",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "هدف: همه خطاها یک ساختار داشته باشند."
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"داده‌های ورودی نامعتبرند.\",\n    \"details\": {\n      \"email\": [\"این ایمیل قبلاً ثبت شده است.\"],\n      \"age\": [\"سن باید مثبت باشد.\"]\n    }\n  },\n  \"request_id\": \"req_abc123\",\n  \"path\": \"/api/users/\",\n  \"timestamp\": \"2024-01-15T10:30:00Z\"\n}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "myproject/exceptions.py",
+          "code": "import logging\nimport uuid\nfrom django.core.exceptions import ValidationError as DjangoValidationError\nfrom django.http import Http404\nfrom rest_framework import status\nfrom rest_framework.exceptions import APIException, ValidationError\nfrom rest_framework.views import exception_handler\n\nlogger = logging.getLogger(\"api.errors\")\n\n\ndef custom_exception_handler(exc, context):\n    # تبدیل استثناهای Django به DRF\n    if isinstance(exc, DjangoValidationError):\n        exc = ValidationError(detail=exc.messages)\n    if isinstance(exc, Http404):\n        from rest_framework.exceptions import NotFound\n        exc = NotFound()\n\n    # فراخوانی handler پیش‌فرض DRF\n    response = exception_handler(exc, context)\n    request = context.get(\"request\")\n    view = context.get(\"view\")\n    request_id = getattr(request, \"request_id\", None) if request else None\n\n    if response is None:\n        # خطای مدیریت‌نشده\n        incident_id = str(uuid.uuid4())\n        logger.exception(\n            \"Unhandled API error\",\n            extra={\n                \"incident_id\": incident_id,\n                \"path\": getattr(request, \"path\", None),\n                \"method\": getattr(request, \"method\", None),\n                \"view\": view.__class__.__name__ if view else None,\n                \"request_id\": request_id,\n            },\n        )\n        return None   # Django با 500 پاسخ می‌دهد\n\n    # تبدیل به ساختار یکدست\n    response.data = build_error_payload(exc, response, request, request_id)\n    return response\n\n\ndef build_error_payload(exc, response, request, request_id):\n    code = getattr(exc, \"default_code\", \"error\")\n\n    # ValidationError ساختار خاصی دارد\n    if isinstance(response.data, dict) and \"detail\" in response.data:\n        message = str(response.data[\"detail\"])\n        details = None\n    else:\n        message = \"داده‌های ورودی نامعتبرند.\"\n        details = response.data\n\n    return {\n        \"success\": False,\n        \"error\": {\n            \"code\": code.upper(),\n            \"message\": message,\n            \"details\": details,\n        },\n        \"request_id\": request_id,\n        \"path\": getattr(request, \"path\", None),\n        \"status\": response.status_code,\n    }"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"EXCEPTION_HANDLER\": \"myproject.exceptions.custom_exception_handler\",\n}"
+        }
+      ]
+    },
+    {
+      "id": "logging",
+      "title": "لاگ‌گیری ساختاریافته",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "LOGGING = {\n    \"version\": 1,\n    \"disable_existing_loggers\": False,\n    \"formatters\": {\n        \"json\": {\n            \"()\": \"pythonjsonlogger.jsonlogger.JsonFormatter\",\n            \"format\": \"%(asctime)s %(levelname)s %(name)s %(message)s\",\n        },\n        \"simple\": {\n            \"format\": \"{levelname} {asctime} {name} {message}\",\n            \"style\": \"{\",\n        },\n    },\n    \"handlers\": {\n        \"console\": {\n            \"class\": \"logging.StreamHandler\",\n            \"formatter\": \"simple\",\n        },\n        \"file\": {\n            \"class\": \"logging.handlers.RotatingFileHandler\",\n            \"filename\": \"logs/api.log\",\n            \"maxBytes\": 10 * 1024 * 1024,\n            \"backupCount\": 5,\n            \"formatter\": \"json\",\n        },\n    },\n    \"loggers\": {\n        \"api\": {\n            \"handlers\": [\"console\", \"file\"],\n            \"level\": \"INFO\",\n            \"propagate\": False,\n        },\n        \"api.errors\": {\n            \"handlers\": [\"console\", \"file\"],\n            \"level\": \"WARNING\",\n            \"propagate\": False,\n        },\n    },\n}"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install python-json-logger"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "import logging\nlogger = logging.getLogger(\"api.errors\")\n\n\ndef process_payment(order):\n    try:\n        result = gateway.charge(order.total, order.card_token)\n    except TimeoutError as exc:\n        logger.warning(\n            \"Payment gateway timeout\",\n            extra={\n                \"order_id\": order.id,\n                \"amount\": str(order.total),\n                \"provider\": \"gateway-x\",\n                \"request_id\": getattr(order, \"request_id\", None),\n            },\n            exc_info=exc,\n        )\n        raise PaymentGatewayError()"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چرا JSON؟",
+          "text": "لاگ‌های JSON را می‌توان در ELK، Loki، CloudWatch به‌راحتی جستجو و فیلتر کرد."
+        }
+      ]
+    },
+    {
+      "id": "request-id",
+      "title": "Request ID و Correlation ID",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "هر درخواست یک ID یکتا بگیرد تا بتوان در لاگ‌ها دنبالش گشت."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "myproject/middleware.py",
+          "code": "import uuid\nimport logging\n\nlogger = logging.getLogger(\"api\")\n\n\nclass RequestIDMiddleware:\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        # از هدر یا تولید جدید\n        request_id = request.headers.get(\"X-Request-ID\") or str(uuid.uuid4())\n        request.request_id = request_id\n\n        response = self.get_response(request)\n        response[\"X-Request-ID\"] = request_id\n        return response"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "MIDDLEWARE = [\n    \"myproject.middleware.RequestIDMiddleware\",   # بالا باشد\n    # ...\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# در exception handler\nrequest_id = getattr(request, \"request_id\", None)\n\n# در پاسخ خطا\nreturn {\n    \"error\": {...},\n    \"request_id\": request_id,\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "Correlation ID",
+          "text": "اگر سرویس شما با سرویس‌های دیگر حرف می‌زند، همان request_id را در هدرهای خروجی هم بفرستید تا در سراسر سیستم قابل ردیابی باشد."
+        }
+      ]
+    },
+    {
+      "id": "domain-vs-infra",
+      "title": "تفکیک خطاهای دامنه از زیرساخت",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["نوع خطا", "مثال", "پاسخ", "لاگ"],
+          "rows": [
+            ["Domain", "موجودی ناکافی، رزرو تکراری", "کد 4xx با پیام واضح", "INFO/WARNING"],
+            ["Validation", "فرمت ایمیل نامعتبر", "400 با جزئیات فیلدها", "INFO"],
+            ["Authentication", "توکن نامعتبر", "401", "WARNING"],
+            ["Authorization", "عدم مجوز", "403", "WARNING"],
+            ["Infrastructure", "دیتابیس قطع، سرویس خارجی خطا", "500/502/503 با پیام عمومی", "ERROR"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# خطای دامنه — قابل انتظار، پیام واضح\nclass InsufficientStock(APIException):\n    status_code = 409\n    default_detail = \"موجودی انبار کافی نیست.\"\n\n\n# خطای زیرساخت — غیرمنتظره، پیام عمومی\nclass PaymentGatewayError(APIException):\n    status_code = 502\n    default_detail = \"در حال حاضر امکان پرداخت وجود ندارد. لطفاً بعداً تلاش کنید.\""
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "پیام‌های عمومی برای زیرساخت",
+          "text": "هرگز جزئیات داخلی (نام سرویس، پورت، خطای SQL) را در پاسخ 5xx به کاربر نفرستید. آن‌ها را در لاگ ثبت کنید و به کاربر پیام عمومی بدهید."
+        }
+      ]
+    },
+    {
+      "id": "incident-id",
+      "title": "Incident ID",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای خطاهای غیرمنتظره، یک شناسه تولید کنید و هم در پاسخ و هم در لاگ بگذارید. کاربر می‌تواند این ID را به پشتیبانی بدهد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "import uuid\nimport logging\n\nlogger = logging.getLogger(\"api.errors\")\n\n\ndef custom_exception_handler(exc, context):\n    response = exception_handler(exc, context)\n\n    if response is None:\n        incident_id = str(uuid.uuid4())\n        logger.exception(\n            f\"Unhandled error [{incident_id}]\",\n            extra={\"incident_id\": incident_id},\n        )\n        return Response(\n            {\n                \"error\": {\n                    \"code\": \"INTERNAL_ERROR\",\n                    \"message\": \"خطای غیرمنتظره رخ داد. لطفاً بعداً تلاش کنید.\",\n                },\n                \"incident_id\": incident_id,\n            },\n            status=500,\n        )\n\n    return response"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "filename": "پاسخ 500",
+          "code": "{\n  \"error\": {\n    \"code\": \"INTERNAL_ERROR\",\n    \"message\": \"خطای غیرمنتظره رخ داد. لطفاً بعداً تلاش کنید.\"\n  },\n  \"incident_id\": \"550e8400-e29b-41d4-a716-446655440000\"\n}"
+        }
+      ]
+    },
+    {
+      "id": "examples",
+      "title": "مثال‌های پاسخ",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "json",
+          "filename": "400 Validation",
+          "code": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"داده‌های ورودی نامعتبرند.\",\n    \"details\": {\n      \"email\": [\"این ایمیل قبلاً ثبت شده است.\"],\n      \"password\": [\"رمز باید حداقل ۸ کاراکتر باشد.\"]\n    }\n  },\n  \"request_id\": \"req_abc123\",\n  \"path\": \"/api/users/\",\n  \"status\": 400\n}"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "filename": "401 Unauthorized",
+          "code": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"NOT_AUTHENTICATED\",\n    \"message\": \"برای دسترسی به این بخش باید وارد شوید.\"\n  },\n  \"request_id\": \"req_abc123\",\n  \"path\": \"/api/orders/\",\n  \"status\": 401\n}"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "filename": "409 Domain Error",
+          "code": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"INSUFFICIENT_STOCK\",\n    \"message\": \"موجودی «کیبورد مکانیکی» کافی نیست.\"\n  },\n  \"request_id\": \"req_abc123\",\n  \"path\": \"/api/orders/\",\n  \"status\": 409\n}"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "ساختار متفاوت برای هر خطا",
+          "why": "کلاینت نمی‌داند چطور پارس کند.",
+          "when": "وقتی سریالایزر و ویو جداگانه خطا می‌دهند.",
+          "fix": "exception handler سراسری."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پیام داخلی در پاسخ 5xx",
+          "why": "افشای ساختار کد.",
+          "when": "وقتی DEBUG=False و خطای غیرمنتظره.",
+          "fix": "لاگ + incident_id + پیام عمومی."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود لاگ ساختاریافته",
+          "why": "اشکال‌زدایی سخت.",
+          "when": "وقتی `print` یا لاگ ساده استفاده می‌کنید.",
+          "fix": "JSON logs با `extra`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود Request ID",
+          "why": "نمی‌توان یک درخواست خاص را ردیابی کرد.",
+          "when": "وقتی multiple سرویس دارید.",
+          "fix": "Middleware + ارسال در هدر."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "کد خطای داخلی در متن پیام",
+          "why": "کلاینت نمی‌تواند به‌طور برنامه‌نویسی‌شده تصمیم بگیرد.",
+          "when": "وقتی فقط `detail` می‌دهید.",
+          "fix": "فیلد `code` جدا."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-047-q1",
+      "tag": "کوییز",
+      "question": "چرا در پاسخ‌های خطا، `code` جدا از `message` می‌دهیم؟",
+      "options": [
+        { "text": "چون تکراری است.", "correct": false },
+        { "text": "چون کلاینت می‌تواند بر اساس code تصمیم برنامه‌نویسی‌شده بگیرد.", "correct": true, "explanation": "پیام برای انسان، code برای ماشین." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-047-q2",
+      "tag": "کوییز",
+      "question": "چرا incident_id در پاسخ 500 مفید است؟",
+      "options": [
+        { "text": "چون ظاهر را بهبود می‌دهد.", "correct": false },
+        { "text": "چون کاربر می‌تواند آن را به پشتیبانی بدهد و در لاگ‌ها پیدا شود.", "correct": true, "explanation": "بدون incident_id، پیدا کردن خطای خاص در لاگ سخت است." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-047-ex1",
+      "title": "تمرین — ساختار خطای کامل",
+      "problem": "یک exception handler سراسری بنویسید که:\n- Django ValidationError و Http404 را به DRF تبدیل کند.\n- ساختار یکدست `{success, error, request_id, path, status}` بدهد.\n- برای خطاهای غیرمنتظره، incident_id تولید و لاگ کند.\n- Request ID را از request بخواند.",
+      "hints": ["از `exception_handler` پایه DRF استفاده کنید.", "Request ID از middleware می‌آید.", "برای incident_id از uuid4."],
+      "solution": "```python\n# myproject/exceptions.py\nimport uuid\nimport logging\nfrom django.core.exceptions import ValidationError as DjangoValidationError\nfrom django.http import Http404\nfrom rest_framework import status\nfrom rest_framework.exceptions import APIException, ValidationError\nfrom rest_framework.response import Response\nfrom rest_framework.views import exception_handler\n\nlogger = logging.getLogger(\"api.errors\")\n\n\ndef custom_exception_handler(exc, context):\n    if isinstance(exc, DjangoValidationError):\n        exc = ValidationError(detail=exc.messages)\n    if isinstance(exc, Http404):\n        from rest_framework.exceptions import NotFound\n        exc = NotFound()\n\n    response = exception_handler(exc, context)\n    request = context.get(\"request\")\n    request_id = getattr(request, \"request_id\", None)\n\n    if response is None:\n        incident_id = str(uuid.uuid4())\n        logger.exception(\n            f\"Unhandled error [{incident_id}]\",\n            extra={\"incident_id\": incident_id, \"request_id\": request_id},\n        )\n        return Response(\n            {\n                \"success\": False,\n                \"error\": {\n                    \"code\": \"INTERNAL_ERROR\",\n                    \"message\": \"خطای غیرمنتظره رخ داد.\",\n                    \"details\": None,\n                },\n                \"incident_id\": incident_id,\n                \"request_id\": request_id,\n                \"path\": getattr(request, \"path\", None),\n                \"status\": 500,\n            },\n            status=500,\n        )\n\n    response.data = _build_payload(exc, response, request, request_id)\n    return response\n\n\ndef _build_payload(exc, response, request, request_id):\n    code = getattr(exc, \"default_code\", \"error\")\n    if isinstance(response.data, dict) and \"detail\" in response.data:\n        message = str(response.data[\"detail\"])\n        details = None\n    else:\n        message = \"داده‌های ورودی نامعتبرند.\"\n        details = response.data\n\n    return {\n        \"success\": False,\n        \"error\": {\n            \"code\": code.upper(),\n            \"message\": message,\n            \"details\": details,\n        },\n        \"request_id\": request_id,\n        \"path\": getattr(request, \"path\", None),\n        \"status\": response.status_code,\n    }\n\n\n# myproject/middleware.py\nimport uuid\n\n\nclass RequestIDMiddleware:\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        request.request_id = request.headers.get(\"X-Request-ID\") or str(uuid.uuid4())\n        response = self.get_response(request)\n        response[\"X-Request-ID\"] = request.request_id\n        return response\n\n\n# settings.py\nMIDDLEWARE = [\n    \"myproject.middleware.RequestIDMiddleware\",\n    # ...\n]\n\nREST_FRAMEWORK = {\n    \"EXCEPTION_HANDLER\": \"myproject.exceptions.custom_exception_handler\",\n}\n```",
+      "explanation": "این ترکیب، ساختار یکدست + لاگ + ردیابی را فراهم می‌کند و استاندارد پروژه‌های حرفه‌ای است."
+    }
+  ],
+  "summary": [
+    "exception handler سراسری برای یکدست‌سازی خطاها.",
+    "ساختار: `{success, error: {code, message, details}, request_id, path, status}`.",
+    "تبدیل Django ValidationError و Http404 به DRF.",
+    "لاگ ساختاریافته با JSON.",
+    "Request ID با middleware.",
+    "Incident ID برای خطاهای غیرمنتظره.",
+    "تفکیک خطاهای دامنه از زیرساخت.",
+    "هرگز جزئیات داخلی در 5xx."
+  ],
+  "resources": [
+    { "title": "DRF — Exception handling", "url": "https://www.django-rest-framework.org/api-guide/exceptions/", "official": true },
+    { "title": "Django — Logging", "url": "https://docs.djangoproject.com/en/stable/topics/logging/", "official": true },
+    { "title": "OWASP — Error Handling", "url": "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html", "official": true }
+  ]
+}

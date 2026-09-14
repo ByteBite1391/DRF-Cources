@@ -1,0 +1,364 @@
+{
+  "id": "ch-041",
+  "slug": "pagination",
+  "title": "صفحه‌بندی (Pagination)",
+  "kicker": "فصل ۴۱",
+  "level": "intermediate",
+  "estimatedMinutes": 45,
+  "lead": "برگرداندن هزاران رکورد در یک پاسخ، سرور و کلاینت را خفه می‌کند. صفحه‌بندی پاسخ را به بخش‌های قابل مدیریت تقسیم می‌کند.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا صفحه‌بندی؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**کارایی سرور:** QuerySet فقط بخشی از رکوردها را می‌خواند.",
+            "**پهنای باند:** پاسخ کوچک‌تر، انتقال سریع‌تر.",
+            "**حافظه کلاینت:** پردازش رکوردهای کمتر.",
+            "**تجربه کاربری:** نمایش تدریجی داده.",
+            "**پایداری:** تعداد نتایج ثابت در هر درخواست."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون صفحه‌بندی — همه رکوردها.",
+          "better": "PageNumberPagination + `PAGE_SIZE` سراسری.",
+          "production": "Pagination مناسب بر اساس نیاز (Cursor برای فید، LimitOffset برای API عمومی) + تست کارایی + صفحه‌بندی ثابت."
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "تنظیمات سراسری",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_PAGINATION_CLASS\": \"rest_framework.pagination.PageNumberPagination\",\n    \"PAGE_SIZE\": 20,\n}"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "بدون PAGE_SIZE",
+          "text": "اگر `DEFAULT_PAGINATION_CLASS` را تنظیم کنید اما `PAGE_SIZE` را نه، صفحه‌بندی کار می‌کند اما اندازه صفحه پیش‌فرض ندارد. همیشه هر دو را تنظیم کنید."
+        }
+      ]
+    },
+    {
+      "id": "page-number",
+      "title": "PageNumberPagination",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "ساده‌ترین و رایج‌ترین روش. کلاینت شماره صفحه را می‌فرستد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/pagination.py",
+          "code": "from rest_framework.pagination import PageNumberPagination\n\n\nclass StandardPagination(PageNumberPagination):\n    page_size = 20\n    page_size_query_param = \"page_size\"    # کلاینت می‌تواند تغییر دهد\n    max_page_size = 100                    # اما نه بیشتر از ۱۰۰\n    page_query_param = \"page\"              # نام پارامتر"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    pagination_class = StandardPagination"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# صفحه پیش‌فرض (اندازه ۲۰)\nGET /api/books/?page=1\n\n# تغییر اندازه صفحه\nGET /api/books/?page=3&amp;page_size=50\n\n# اگر page_size بخواهد بیشتر از max_page_size باشد، به ۱۰۰ محدود می‌شود"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"count\": 137,\n  \"next\": \"http://127.0.0.1:8000/api/books/?page=4\",\n  \"previous\": \"http://127.0.0.1:8000/api/books/?page=2\",\n  \"results\": [\n    {\"id\": 41, \"title\": \"...\"},\n    {}\n  ]\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["فیلد", "معنی"],
+          "rows": [
+            ["`count`", "تعداد کل رکوردها"],
+            ["`next`", "URL صفحه بعد (یا null)"],
+            ["`previous`", "URL صفحه قبل (یا null)"],
+            ["`results`", "داده‌های این صفحه"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "limit-offset",
+      "title": "LimitOffsetPagination",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "«چند تا» و «از کجا شروع کن». مناسب APIهای عمومی که کلاینت می‌خواهد کنترل کامل داشته باشد."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.pagination import LimitOffsetPagination\n\n\nclass FlexiblePagination(LimitOffsetPagination):\n    default_limit = 20\n    max_limit = 200\n    limit_query_param = \"limit\"\n    offset_query_param = \"offset\""
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# ۱۰ آیتم از رکورد ۳۰\nGET /api/books/?limit=10&amp;offset=30\n\n# فقط offset\nGET /api/books/?offset=50\n\n# فقط limit\nGET /api/books/?limit=5"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"count\": 137,\n  \"next\": \"http://127.0.0.1:8000/api/books/?limit=10&amp;offset=40\",\n  \"previous\": \"http://127.0.0.1:8000/api/books/?limit=10&amp;offset=20\",\n  \"results\": []\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چه زمانی؟",
+          "text": "وقتی می‌خواهید کلاینت بتواند از هر نقطه‌ای شروع کند. مثل Google APIs."
+        }
+      ]
+    },
+    {
+      "id": "cursor",
+      "title": "CursorPagination",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای فیدهای زمانی (مثل توییتر) یا داده‌های بزرگ که «پرش به صفحه N» لازم نیست."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.pagination import CursorPagination\n\n\nclass TimelinePagination(CursorPagination):\n    page_size = 25\n    ordering = \"-created_at\"      # باید یکتا و پایدار\n    cursor_query_param = \"cursor\"\n\n\nclass PostViewSet(viewsets.ModelViewSet):\n    queryset = Post.objects.all()\n    serializer_class = PostSerializer\n    pagination_class = TimelinePagination"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# درخواست اول\nGET /api/posts/\n\n# پاسخ:\n# {\n#   \"next\": \".../?cursor=cD0yMDI0LTAxLTE1\",\n#   \"previous\": null,\n#   \"results\": [...]\n# }\n\n# درخواست بعدی\nGET /api/posts/?cursor=cD0yMDI0LTAxLTE1"
+        },
+        {
+          "type": "table",
+          "headers": ["مزیت", "عیب"],
+          "rows": [
+            ["پایدار در برابر تغییر داده", "بدون پرش به صفحه N"],
+            ["کارایی بالاتر روی جدول بزرگ", "نیاز به فیلد یکتا برای ترتیب"],
+            ["مناسب فید", "مناسب صفحه‌بندی سنتی نیست"],
+            ["بدون count (سریع‌تر)", "کلاینت نمی‌داند چند صفحه هست"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "الزام یکتایی",
+          "text": "`ordering` باید یکتا یا حداقل پایدار باشد. اگر `-created_at` تکراری دارد، `-created_at,-id` بهتر است."
+        }
+      ]
+    },
+    {
+      "id": "custom-pagination",
+      "title": "صفحه‌بندی سفارشی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید ساختار پاسخ را تغییر دهید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.pagination import PageNumberPagination\nfrom rest_framework.response import Response\n\n\nclass EnvelopePagination(PageNumberPagination):\n    page_size = 20\n    max_page_size = 100\n\n    def get_paginated_response(self, data):\n        return Response({\n            \"meta\": {\n                \"total\": self.page.paginator.count,\n                \"page\": self.page.number,\n                \"pages\": self.page.paginator.num_pages,\n                \"page_size\": self.get_page_size(self.request),\n            },\n            \"links\": {\n                \"next\": self.get_next_link(),\n                \"previous\": self.get_previous_link(),\n            },\n            \"data\": data,\n        })"
+        },
+        {
+          "type": "code",
+          "lang": "json",
+          "code": "{\n  \"meta\": {\"total\": 137, \"page\": 3, \"pages\": 7, \"page_size\": 20},\n  \"links\": {\"next\": \"...\", \"previous\": \"...\"},\n  \"data\": []\n}"
+        }
+      ]
+    },
+    {
+      "id": "pagination-in-view",
+      "title": "کنترل صفحه‌بندی در View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# غیرفعال کردن صفحه‌بندی برای یک View\nclass AllBooksView(generics.ListAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    pagination_class = None   # ← غیرفعال\n\n\n# صفحه‌بندی متفاوت برای اکشن خاص\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    pagination_class = StandardPagination\n\n    @action(detail=False, methods=[\"get\"], pagination_class=None)\n    def all(self, request):\n        # این اکشن بدون صفحه‌بندی\n        books = self.get_queryset()\n        return Response(self.get_serializer(books, many=True).data)\n\n\n# صفحه‌بندی پویا\nclass ProductViewSet(viewsets.ModelViewSet):\n    queryset = Product.objects.all()\n    serializer_class = ProductSerializer\n\n    def get_paginator(self):\n        if self.request.query_params.get(\"cursor\"):\n            return CursorPagination()\n        return StandardPagination()\n\n    @property\n    def paginator(self):\n        if not hasattr(self, \"_paginator\"):\n            self._paginator = self.get_paginator()\n        return self._paginator"
+        }
+      ]
+    },
+    {
+      "id": "non-paginated",
+      "title": "دستی با صفحه‌بندی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در APIView خام، خودتان صفحه‌بندی می‌کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(APIView):\n    pagination_class = StandardPagination\n\n    @property\n    def paginator(self):\n        if not hasattr(self, \"_paginator\"):\n            self._paginator = self.pagination_class()\n        return self._paginator\n\n    def get(self, request):\n        books = Book.objects.all()\n        page = self.paginator.paginate_queryset(books, request, view=self)\n        if page is not None:\n            serializer = BookSerializer(page, many=True)\n            return self.paginator.get_paginated_response(serializer.data)\n        serializer = BookSerializer(books, many=True)\n        return Response(serializer.data)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "خودکار در Generic Views",
+          "text": "در `ListAPIView` و `ViewSet`، اگر `pagination_class` تعریف کنید، خودکار اعمال می‌شود."
+        }
+      ]
+    },
+    {
+      "id": "performance",
+      "title": "نکات کارایی",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فقط ستون‌های لازم:** `.only(\"id\", \"title\")` یا `.values()`.",
+            "**`select_related`/`prefetch_related`:** برای جلوگیری از N+1.",
+            "**ایندکس روی `ordering`:** بدون آن sort کند است.",
+            "**`count` گران است:** روی جدول بزرگ، `COUNT(*)` گران است. اگر `count` نمی‌خواهید، `CursorPagination`.",
+            "**Cache برای صفحات پرطرفدار:** صفحه ۱ معمولاً پرترافیک است.",
+            "**`max_page_size`:** همیشه محدودیت بگذارید."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class OptimizedPagination(PageNumberPagination):\n    page_size = 20\n    max_page_size = 100\n\n    def get_paginated_response(self, data):\n        # برای count گران، می‌توانید حذف کنید\n        # اما کلاینت نیاز دارد معمولاً\n        return super().get_paginated_response(data)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "حذف count گران",
+          "text": "اگر `count` گران است و کلاینت نیازی ندارد، `CursorPagination` بهترین انتخاب است چون count را محاسبه نمی‌کند."
+        }
+      ]
+    },
+    {
+      "id": "choose",
+      "title": "کدام صفحه‌بندی؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["سناریو", "پیشنهاد"],
+          "rows": [
+            ["API عمومی معمولی", "`PageNumberPagination`"],
+            ["کلاینت می‌خواهد کنترل کامل", "`LimitOffsetPagination`"],
+            ["فید زمانی (توییتر)", "`CursorPagination`"],
+            ["جدول بزرگ با count گران", "`CursorPagination`"],
+            ["پرش به صفحه دلخواه لازم", "`PageNumberPagination`"],
+            ["داده در حال تغییر مداوم", "`CursorPagination`"],
+            ["جستجوی پیشرفته با نتایج کم", "`PageNumberPagination`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "بدون max_page_size",
+          "why": "کاربر می‌تواند `page_size=100000` بفرستد.",
+          "when": "وقتی فقط `page_size_query_param` را فعال می‌کنید.",
+          "fix": "همیشه `max_page_size` را تعیین کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود ترتیب پایدار",
+          "why": "با صفحه‌بندی، رکوردها بین صفحات تکرار یا حذف می‌شوند.",
+          "when": "وقتی `ordering` نمی‌گذارید.",
+          "fix": "`ordering = [\"-created_at\"]` یا ترکیب با id."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "count گران در هر درخواست",
+          "why": "روی جدول میلیونی، هر درخواست کند است.",
+          "when": "وقتی `PageNumberPagination` روی جدول بزرگ.",
+          "fix": "`CursorPagination` یا کش کردن count."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "صفحه‌بندی با page_size متغیر",
+          "why": "کش مرورگر بی‌فایده می‌شود؛ URL منحصربه‌فرد نیست.",
+          "when": "وقتی page_size را برای همه یکسان نمی‌کنید.",
+          "fix": "پیش‌فرض ثابت + امکان تغییر آگاهانه."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود ترتیب، جستجو و فیلتر",
+          "why": "کاربر نمی‌تواند داده را محدود کند؛ همه رکوردها برگردانده می‌شوند.",
+          "when": "وقتی فقط `pagination_class` می‌گذارید.",
+          "fix": "ترکیب با `filter_backends`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "صفحه‌بندی برای همه Endpointها",
+          "why": "برای داده‌های کوچک (مثل countries) بی‌معنی است.",
+          "when": "وقتی سراسری می‌گذارید.",
+          "fix": "`pagination_class = None` برای Endpointهای کوچک."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-041-q1",
+      "tag": "کوییز",
+      "question": "برای یک فید زمانی (مثل توییتر)، کدام صفحه‌بندی مناسب‌تر است؟",
+      "options": [
+        { "text": "`PageNumberPagination`", "correct": false },
+        { "text": "`CursorPagination`", "correct": true, "explanation": "Cursor پایدار است و روی جدول بزرگ کارآمد." },
+        { "text": "`LimitOffsetPagination`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-041-q2",
+      "tag": "کوییز",
+      "question": "چرا `max_page_size` لازم است؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون بدون آن، کاربر می‌تواند `page_size=100000` بفرستد و سرور را خفه کند.", "correct": true, "explanation": "حفاظت از سرور در برابر درخواست‌های مخرب." },
+        { "text": "چون برای کش مرورگر خوب است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-041-q3",
+      "tag": "کوییز",
+      "question": "چرا `PageNumberPagination` روی جدول بزرگ ممکن است کند باشد؟",
+      "options": [
+        { "text": "چون کد دارد.", "correct": false },
+        { "text": "چون برای هر درخواست `count` گران را محاسبه می‌کند.", "correct": true, "explanation": "CursorPagination این مشکل را ندارد." },
+        { "text": "چون از LIMIT استفاده نمی‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-041-ex1",
+      "title": "تمرین — صفحه‌بندی سفارشی",
+      "problem": "یک صفحه‌بندی سفارشی بسازید که:\n- پیش‌فرض ۱۵ آیتم.\n- حداکثر ۵۰ آیتم.\n- کلیدهای پاسخ: `total`, `page`, `pages`, `results`.\n- لینک‌های `next` و `previous` هم داشته باشد.",
+      "hints": ["از `PageNumberPagination` ارث‌بری کنید.", "از `self.page.paginator.count` و `num_pages` استفاده کنید.", "در `get_paginated_response` ساختار را تعریف کنید."],
+      "solution": "```python\nfrom rest_framework.pagination import PageNumberPagination\nfrom rest_framework.response import Response\n\n\nclass CompactPagination(PageNumberPagination):\n    page_size = 15\n    page_size_query_param = \"page_size\"\n    max_page_size = 50\n\n    def get_paginated_response(self, data):\n        return Response({\n            \"total\": self.page.paginator.count,\n            \"page\": self.page.number,\n            \"pages\": self.page.paginator.num_pages,\n            \"page_size\": self.get_page_size(self.request),\n            \"next\": self.get_next_link(),\n            \"previous\": self.get_previous_link(),\n            \"results\": data,\n        })\n```\n\n**پاسخ نمونه:**\n```json\n{\n  \"total\": 137,\n  \"page\": 3,\n  \"pages\": 10,\n  \"page_size\": 15,\n  \"next\": \"http://.../?page=4\",\n  \"previous\": \"http://.../?page=2\",\n  \"results\": [...]\n}\n```",
+      "explanation": "صفحه‌بندی سفارشی به شما اجازه می‌دهد ساختار پاسخ را با نیاز پروژه هماهنگ کنید."
+    }
+  ],
+  "summary": [
+    "`PageNumberPagination`: ساده و رایج.",
+    "`LimitOffsetPagination`: کنترل کامل با limit/offset.",
+    "`CursorPagination`: پایدار، مناسب فید و جدول بزرگ.",
+    "`page_size` و `max_page_size` را تنظیم کنید.",
+    "ترتیب پایدار الزامی است.",
+    "`pagination_class = None` برای غیرفعال کردن.",
+    "در APIView خام، خودتان صفحه‌بندی می‌کنید.",
+    "برای count گران، CursorPagination."
+  ],
+  "resources": [
+    { "title": "DRF — Pagination", "url": "https://www.django-rest-framework.org/api-guide/pagination/", "official": true },
+    { "title": "Django — QuerySet slicing", "url": "https://docs.djangoproject.com/en/stable/topics/db/queries/#limiting-querysets", "official": true }
+  ]
+}

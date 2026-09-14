@@ -1,0 +1,299 @@
+{
+  "id": "ch-048",
+  "slug": "throttling",
+  "title": "محدودیت نرخ (Throttling)",
+  "kicker": "فصل ۴۸",
+  "level": "intermediate",
+  "estimatedMinutes": 40,
+  "lead": "Throttling از API شما در برابر سوءاستفاده و بار اضافی محافظت می‌کند. این فصل از پایه تا سفارشی‌سازی را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا Throttling؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**محافظت از DoS:** جلوگیری از سیل درخواست‌ها.",
+            "**Brute-force:** محدود کردن تلاش‌های ورود.",
+            "**کاربران ناعادلانه:** توزیع عادلانه منابع.",
+            "**منابع گران:** محافظت از Endpointهای سنگین.",
+            "**داده‌های عمومی:** کنترل مصرف APIهای عمومی."
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "تفاوت با Rate Limiting زیرساختی",
+          "text": "Throttling در سطح برنامه است (بر اساس کاربر/توکن). Rate Limiting زیرساختی در Nginx یا CDN است (بر اساس IP). هر دو مکمل هم‌اند."
+        }
+      ]
+    },
+    {
+      "id": "builtin",
+      "title": "Throttleهای آماده",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["کلاس", "شناسه", "کاربرد"],
+          "rows": [
+            ["`AnonRateThrottle`", "IP", "کاربران ناشناس"],
+            ["`UserRateThrottle`", "شناسه کاربر", "کاربران وارد‌شده"],
+            ["`ScopedRateThrottle`", "کاربر + scope", "محدودیت متفاوت برای هر Endpoint"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"1000/day\",\n    },\n}"
+        },
+        {
+          "type": "table",
+          "headers": ["فرمت نرخ", "معنی"],
+          "rows": [
+            ["`\"5/sec\"`", "۵ درخواست در ثانیه"],
+            ["`\"30/min\"`", "۳۰ درخواست در دقیقه"],
+            ["`\"1000/hour\"`", "۱۰۰۰ درخواست در ساعت"],
+            ["`\"5000/day\"`", "۵۰۰۰ درخواست در روز"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anon-user",
+      "title": "AnonRateThrottle و UserRateThrottle",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"1000/day\",\n    },\n}"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**AnonRateThrottle:** برای کاربران ناشناس، بر اساس IP.",
+            "**UserRateThrottle:** برای کاربران وارد‌شده، بر اساس `user.pk`.",
+            "**اگر کاربر وارد شده باشد،** AnonRateThrottle اعمال نمی‌شود.",
+            "**نرخ‌ها** در `DEFAULT_THROTTLE_RATES` تعریف می‌شوند."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# پاسخ وقتی throttle فعال می‌شود\nHTTP/1.1 429 Too Many Requests\nRetry-After: 42\nContent-Type: application/json\n\n{\n  \"detail\": \"Request was throttled. Expected available in 42 seconds.\"\n}"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "Retry-After",
+          "text": "هدر `Retry-After` به کلاینت می‌گوید چند ثانیه صبر کند. کلاینت‌های خوب این را رعایت می‌کنند."
+        }
+      ]
+    },
+    {
+      "id": "scoped",
+      "title": "ScopedRateThrottle",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی می‌خواهید نرخ متفاوت برای هر Endpoint داشته باشید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"1000/day\",\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n        \"password_reset\": \"3/hour\",\n        \"search\": \"60/min\",\n        \"export\": \"2/hour\",\n    },\n}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework_simplejwt.views import TokenObtainPairView\n\n\nclass LoginView(TokenObtainPairView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"login\"\n\n\nclass SearchView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"search\"\n\n    def get(self, request):\n        ...\n\n\nclass ExportView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"export\"\n\n    def get(self, request):\n        ..."
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی حرفه‌ای",
+          "text": "برای Endpointهای حساس (login، register، password_reset، export) از ScopedRateThrottle با نرخ کم استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "title": "Throttle سفارشی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/throttling.py",
+          "code": "from rest_framework.throttling import SimpleRateThrottle\n\n\nclass BurstRateThrottle(SimpleRateThrottle):\n    \"\"\"محدودیت نرخ لحظه‌ای — برای Endpointهای پرهزینه.\"\"\"\n    scope = \"burst\"\n\n    def get_cache_key(self, request, view):\n        if request.user.is_authenticated:\n            ident = request.user.pk\n        else:\n            ident = self.get_ident(request)\n        return self.cache_format % {\n            \"scope\": self.scope,\n            \"ident\": ident,\n        }\n\n\nclass PlanBasedThrottle(SimpleRateThrottle):\n    \"\"\"نرخ بر اساس پلن کاربر.\"\"\"\n    scope = \"plan\"\n\n    def allow_request(self, request, view):\n        # نرخ را بر اساس پلن کاربر تعیین کن\n        user = request.user\n        if user.is_authenticated and hasattr(user, \"plan\"):\n            rate = user.plan.rate  # مثلاً \"1000/hour\"\n            self.rate = rate\n            self.num_requests, self.duration = self.parse_rate(rate)\n        return super().allow_request(request, view)\n\n    def get_cache_key(self, request, view):\n        if request.user.is_authenticated:\n            ident = request.user.pk\n        else:\n            ident = self.get_ident(request)\n        return self.cache_format % {\n            \"scope\": self.scope,\n            \"ident\": ident,\n        }"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "REST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"burst\": \"5/sec\",\n        \"plan\": \"100/hour\",   # پیش‌فرض، پلن override می‌کند\n    },\n}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class CriticalActionView(APIView):\n    throttle_classes = [BurstRateThrottle, UserRateThrottle]\n    throttle_scope = \"burst\"\n\n    def post(self, request):\n        ..."
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "Throttle بر اساس IP سفارشی",
+          "text": "می‌توانید `get_ident` را override کنید تا از `X-Forwarded-For` استفاده کند (پشت پروکسی)."
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "title": "Backend کش",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Throttling از cache استفاده می‌کند. برای پروژه‌های چندسرور، حتماً Redis."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "# توسعه — حافظه محلی\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.locmem.LocMemCache\",\n    },\n}\n\n# تولید — Redis\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.redis.RedisCache\",\n        \"LOCATION\": \"redis://127.0.0.1:6379/1\",\n        \"OPTIONS\": {\n            \"CLIENT_CLASS\": \"django_redis.client.DefaultClient\",\n        },\n    },\n}"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "LocMem در تولید",
+          "text": "با `LocMemCache` در چند سرور، هر سرور شمارش مستقل دارد و محدودیت‌ها دور می‌خورد. حتماً Redis یا Memcached."
+        }
+      ]
+    },
+    {
+      "id": "practices",
+      "title": "بهترین شیوه‌ها",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نرخ پیش‌فرض منطقی:** برای API عمومی، ۱۰۰۰ در روز برای کاربر عادی.",
+            "**نرخ کمتر برای Endpointهای حساس:** login (5/min)، register (3/hour).",
+            "**نرخ متفاوت بر اساس نقش:** ادمین نرخ بیشتر.",
+            "**لاگ throttled:** ثبت تلاش‌های زیاده‌روی.",
+            "**Retry-After در پاسخ:** به کلاینت بگوید چقدر صبر کند.",
+            "**تست:** مطمئن شوید throttle درست کار می‌کند.",
+            "**Backend مناسب:** Redis در تولید.",
+            "**نرخ‌ها از env:** در محیط‌های مختلف متفاوت."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "import os\n\nREST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": os.environ.get(\"THROTTLE_ANON\", \"30/min\"),\n        \"user\": os.environ.get(\"THROTTLE_USER\", \"1000/day\"),\n        \"login\": os.environ.get(\"THROTTLE_LOGIN\", \"5/min\"),\n    },\n}"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "LocMemCache در تولید",
+          "why": "هر سرور شمارش مستقل، محدودیت دور می‌خورد.",
+          "when": "وقتی تنظیمات Redis را فراموش می‌کنید.",
+          "fix": "Redis یا Memcached."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود Throttle روی login",
+          "why": "Brute-force ممکن است.",
+          "when": "وقتی فقط throttle سراسری دارید.",
+          "fix": "ScopedRateThrottle با scope=\"login\"، نرخ 5/min."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نرخ یکسان برای همه کاربران",
+          "why": "کاربران پرمصرف با کاربران عادی یکسان.",
+          "when": "وقتی پلن‌ها متفاوتند.",
+          "fix": "Throttle سفارشی بر اساس پلن."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Throttle بدون Retry-After",
+          "why": "کلاینت نمی‌داند چقدر صبر کند.",
+          "when": "وقتی throttle سفارشی می‌نویسید.",
+          "fix": "DRF خودکار می‌فرستد، اما در throttle سفارشی چک کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود لاگ throttle",
+          "why": "نمی‌فهمید کدام کاربران مشکل دارند.",
+          "when": "وقتی throttle را فعال می‌کنید.",
+          "fix": "در throttle سفارشی، رخداد را لاگ کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-048-q1",
+      "tag": "کوییز",
+      "question": "کدام Throttle برای کاربران ناشناس مناسب است؟",
+      "options": [
+        { "text": "`UserRateThrottle`", "correct": false },
+        { "text": "`AnonRateThrottle`", "correct": true, "explanation": "بر اساس IP برای کاربران ناشناس." },
+        { "text": "`ScopedRateThrottle`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-048-q2",
+      "tag": "کوییز",
+      "question": "چرا LocMemCache در تولید برای Throttle مناسب نیست؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون در چند سرور، هر سرور شمارش مستقل دارد و محدودیت دور می‌خورد.", "correct": true, "explanation": "Redis یا Memcached مشترک لازم است." },
+        { "text": "چون DRF پشتیبانی نمی‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-048-q3",
+      "tag": "کوییز",
+      "question": "برای Endpoint ورود، چه نرخی مناسب است؟",
+      "options": [
+        { "text": "1000/min", "correct": false },
+        { "text": "5/min", "correct": true, "explanation": "نرخ کم برای محافظت از brute-force." },
+        { "text": "10000/day", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-048-ex1",
+      "title": "تمرین — Throttling در پروژه",
+      "problem": "برای یک API:\n- AnonRateThrottle: 30/min.\n- UserRateThrottle: 1000/day.\n- Login: 5/min.\n- Register: 3/hour.\n- Password reset: 3/hour.\n- Search: 60/min.\n- Export: 2/hour.\n\nهمه را تنظیم و در Endpointهای مربوطه اعمال کنید.",
+      "hints": ["از `ScopedRateThrottle` برای Endpointهای حساس.", "نرخ‌ها را در `DEFAULT_THROTTLE_RATES` تعریف کنید.", "برای logout و register، ویو جدا بسازید."],
+      "solution": "```python\n# settings.py\nREST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"1000/day\",\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n        \"password_reset\": \"3/hour\",\n        \"search\": \"60/min\",\n        \"export\": \"2/hour\",\n    },\n}\n\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.redis.RedisCache\",\n        \"LOCATION\": \"redis://127.0.0.1:6379/1\",\n    },\n}\n\n\n# views.py\nfrom rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework.views import APIView\nfrom rest_framework_simplejwt.views import TokenObtainPairView\n\n\nclass LoginView(TokenObtainPairView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"login\"\n\n\nclass RegisterView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"register\"\n\n    def post(self, request):\n        ...\n\n\nclass PasswordResetView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"password_reset\"\n\n    def post(self, request):\n        ...\n\n\nclass SearchView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"search\"\n\n    def get(self, request):\n        ...\n\n\nclass ExportView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"export\"\n\n    def get(self, request):\n        ...\n```",
+      "explanation": "این تنظیمات، استاندارد پروژه‌های DRF است. برای Endpointهای حساس نرخ کم، برای عمومی نرخ بالاتر."
+    }
+  ],
+  "summary": [
+    "Throttle از API در برابر سوءاستفاده محافظت می‌کند.",
+    "`AnonRateThrottle` (IP) و `UserRateThrottle` (کاربر).",
+    "`ScopedRateThrottle` برای Endpointهای خاص.",
+    "نرخ‌ها در `DEFAULT_THROTTLE_RATES`.",
+    "فرمت نرخ: \"5/min\", \"1000/day\".",
+    "پاسخ 429 با هدر `Retry-After`.",
+    "در تولید: Redis (نه LocMem).",
+    "نرخ کم برای login، register، password_reset.",
+    "Throttle سفارشی برای منطق خاص (پلن، نقش)."
+  ],
+  "resources": [
+    { "title": "DRF — Throttling", "url": "https://www.django-rest-framework.org/api-guide/throttling/", "official": true },
+    { "title": "Django — Cache", "url": "https://docs.djangoproject.com/en/stable/topics/cache/", "official": true }
+  ]
+}

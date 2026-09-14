@@ -1,0 +1,303 @@
+{
+  "id": "ch-037",
+  "slug": "query-parameters",
+  "title": "پارامترهای Query",
+  "kicker": "فصل ۳۷",
+  "level": "intermediate",
+  "estimatedMinutes": 30,
+  "lead": "پارامترهای Query ساده‌ترین راه کنترل داده‌ای هستند که سرور برمی‌گرداند. این فصل الگوهای رایج و اشتباهات آن‌ها را نشان می‌دهد.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "پارامتر Query چیست؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پارامتر Query همان بخش بعد از `?` در URL است که به‌شکل `key=value` نوشته می‌شود و با `&` از هم جدا می‌شوند."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET /api/books/?category=fiction&amp;price_max=50&amp;page=2&amp;sort=-created_at\n                 │         │              │       │\n                 └── پارامترها ────────────┘       └── همه با &amp; جدا می‌شوند"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**ساده:** بدون پارامتر URL.",
+            "**کش‌پذیر:** پاسخ بر اساس URL کامل کش می‌شود.",
+            "**اشتراک‌پذیر:** کاربر می‌تواند URL را کپی و ارسال کند.",
+            "**مرئی:** در لاگ‌های سرور و مرورگر ثبت می‌شود.",
+            "**محدود:** طول URL محدود است (معمولاً چند هزار کاراکتر)."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "read",
+      "title": "خواندن پارامترها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(APIView):\n    def get(self, request):\n        # خواندن یک پارامتر\n        category = request.query_params.get(\"category\")\n        page = request.query_params.get(\"page\")\n\n        # با پیش‌فرض\n        sort = request.query_params.get(\"sort\", \"-created_at\")\n\n        # چند مقدار با یک نام\n        tags = request.query_params.getlist(\"tag\")\n        # ?tag=django&amp;tag=drf&amp;tag=api\n\n        # بررسی وجود\n        if \"search\" in request.query_params:\n            ...\n\n        # همه پارامترها\n        all_params = dict(request.query_params)\n\n        return Response({\n            \"category\": category,\n            \"page\": page,\n            \"sort\": sort,\n            \"tags\": tags,\n        })"
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "کاربرد"],
+          "rows": [
+            ["`.get(key, default)`", "مقدار یک پارامتر یا پیش‌فرض"],
+            ["`[key]`", "مقدار با خطا اگر نبود"],
+            ["`.getlist(key)`", "لیست همه مقادیر یک پارامتر"],
+            ["`in`", "بررسی وجود"],
+            ["`.keys()`, `.values()`, `.items()`", "تکرار"],
+            ["`.dict()`", "تبدیل به dict"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "همیشه رشته است",
+          "text": "همه مقادیر `query_params` رشته هستند. برای عدد، خودتان تبدیل کنید: `int(request.query_params.get(\"page\", 1))`. مراقب ValueError باشید."
+        }
+      ]
+    },
+    {
+      "id": "manual-filter",
+      "title": "فیلتر دستی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای چند پارامتر محدود، فیلتر دستی در `get_queryset` کافی است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(generics.ListAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        qs = Book.objects.all()\n        params = self.request.query_params\n\n        category = params.get(\"category\")\n        if category:\n            qs = qs.filter(category__slug=category)\n\n        min_price = params.get(\"min_price\")\n        if min_price:\n            try:\n                qs = qs.filter(price__gte=Decimal(min_price))\n            except (ValueError, InvalidOperation):\n                raise ValidationError({\"min_price\": \"عدد نامعتبر.\"})\n\n        max_price = params.get(\"max_price\")\n        if max_price:\n            try:\n                qs = qs.filter(price__lte=Decimal(max_price))\n            except (ValueError, InvalidOperation):\n                raise ValidationError({\"max_price\": \"عدد نامعتبر.\"})\n\n        in_stock = params.get(\"in_stock\")\n        if in_stock is not None:\n            qs = qs.filter(stock__gt=0) if in_stock == \"true\" else qs.filter(stock=0)\n\n        return qs.select_related(\"author\", \"category\")"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "GET /api/books/?category=fiction&amp;min_price=10&amp;max_price=50&amp;in_stock=true"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "کی این روش خوب است؟",
+          "text": "تا حدود ۵ پارامتر ساده. بیشتر از این، از `django-filter` (فصل ۳۸) استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "naming",
+      "title": "قواعد نام‌گذاری",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["قاعده", "مثال درست", "مثال غلط"],
+          "rows": [
+            ["حروف کوچک", "`category`", "`Category`, `CATEGORY`"],
+            ["کلمات با `_`", "`min_price`", "`min-price`, `minPrice`"],
+            ["معنادار", "`created_after`", "`c1`, `x`"],
+            ["بدون پیشوند تکراری", "`category`", "`filter_category`"],
+            ["بازه‌ها با `_min`/`_max`", "`price_min`", "`priceFrom`"],
+            ["تاریخ‌ها با `_after`/`_before`", "`created_after`", "`createdGt`"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "# ✅ خوب\n?category=books&amp;price_min=10&amp;price_max=50&amp;created_after=2024-01-01\n\n# ❌ بد\n?Category=books&amp;PriceFrom=10&amp;PriceTo=50&amp;createdGT=2024-01-01"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا مهم است؟",
+          "text": "نام‌های درست، API را قابل حدس می‌کنند. کاربر می‌تواند بدون مستندات، پارامترهای بعدی را حدس بزند."
+        }
+      ]
+    },
+    {
+      "id": "boolean-handling",
+      "title": "مدیریت Boolean",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پارامترهای Boolean دام دارند چون Query Params فقط رشته است. تصمیم بگیرید چه چیزی true و چه چیزی false است."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "def parse_bool(value, default=False):\n    \"\"\"رشته را به Boolean تبدیل می‌کند.\"\"\"\n    if value is None:\n        return default\n    return value.lower() in (\"true\", \"1\", \"yes\", \"on\")\n\n\nclass BookListView(generics.ListAPIView):\n    def get_queryset(self):\n        qs = Book.objects.all()\n        in_stock = parse_bool(self.request.query_params.get(\"in_stock\"))\n        if in_stock:\n            qs = qs.filter(stock__gt=0)\n        return qs"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "# همه این‌ها true هستند\n?active=true\n?active=1\n?active=yes\n?active=on\n\n# همه این‌ها false هستند\n?active=false\n?active=0\n?active=no\n?active=off\n# وجود نداشتن پارامتر → پیش‌فرض"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "پارادوکس Boolean",
+          "text": "پارامتر Boolean تنها، معنای متفاوتی دارد: `?active` یعنی true؛ `?active=false` یعنی false. تصمیم بگیرید و در مستندات بنویسید."
+        }
+      ]
+    },
+    {
+      "id": "multiple-values",
+      "title": "پارامترهای چندمقداری",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای فیلترهایی که چند مقدار دارند (مثل تگ‌ها)، از تکرار پارامتر استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET /api/books/?tag=django&amp;tag=drf&amp;tag=api\n\n# در view:\ntags = request.query_params.getlist(\"tag\")\n# ['django', 'drf', 'api']"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookListView(generics.ListAPIView):\n    def get_queryset(self):\n        qs = Book.objects.all()\n        tags = self.request.query_params.getlist(\"tag\")\n        if tags:\n            qs = qs.filter(tags__slug__in=tags).distinct()\n        return qs"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "distinct()",
+          "text": "وقتی روی ManyToMany فیلتر می‌کنید، ممکن است نتایج تکراری بگیرید. `.distinct()` اضافه کنید."
+        }
+      ]
+    },
+    {
+      "id": "date-filters",
+      "title": "فیلترهای تاریخ",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "?created_after=2024-01-01&amp;created_before=2024-12-31\n?published_at=2024-05-15"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from datetime import date, datetime\n\n\nclass BookListView(generics.ListAPIView):\n    def get_queryset(self):\n        qs = Book.objects.all()\n        params = self.request.query_params\n\n        after = params.get(\"created_after\")\n        if after:\n            try:\n                qs = qs.filter(created_at__date__gte=date.fromisoformat(after))\n            except ValueError:\n                raise ValidationError({\"created_after\": \"فرمت تاریخ نامعتبر (YYYY-MM-DD).\"})\n\n        before = params.get(\"created_before\")\n        if before:\n            try:\n                qs = qs.filter(created_at__date__lte=date.fromisoformat(before))\n            except ValueError:\n                raise ValidationError({\"created_before\": \"فرمت تاریخ نامعتبر.\"})\n\n        return qs"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "فرمت ISO 8601",
+          "text": "همیشه از فرمت ISO استفاده کنید: `2024-01-15` برای تاریخ و `2024-01-15T10:30:00Z` برای datetime. استاندارد، بدون ابهام، قابل sort."
+        }
+      ]
+    },
+    {
+      "id": "validation",
+      "title": "اعتبارسنجی پارامترها",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پارامترهای Query را هم باید اعتبارسنجی کنید. یک Serializer کوچک برای Query Params بنویسید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import serializers\n\n\nclass BookListQuerySerializer(serializers.Serializer):\n    category = serializers.SlugField(required=False)\n    min_price = serializers.DecimalField(\n        max_digits=8, decimal_places=2, required=False, min_value=0,\n    )\n    max_price = serializers.DecimalField(\n        max_digits=8, decimal_places=2, required=False, min_value=0,\n    )\n    in_stock = serializers.BooleanField(required=False)\n    created_after = serializers.DateField(required=False)\n    ordering = serializers.ChoiceField(\n        choices=[\"price\", \"-price\", \"title\", \"-created_at\"],\n        required=False,\n        default=\"-created_at\",\n    )\n\n\nclass BookListView(generics.ListAPIView):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        # اعتبارسنجی پارامترها\n        query = BookListQuerySerializer(data=self.request.query_params)\n        query.is_valid(raise_exception=True)\n        params = query.validated_data\n\n        qs = Book.objects.all()\n        if \"category\" in params:\n            qs = qs.filter(category__slug=params[\"category\"])\n        if \"min_price\" in params:\n            qs = qs.filter(price__gte=params[\"min_price\"])\n        if \"max_price\" in params:\n            qs = qs.filter(price__lte=params[\"max_price\"])\n        if params.get(\"in_stock\"):\n            qs = qs.filter(stock__gt=0)\n        if \"created_after\" in params:\n            qs = qs.filter(created_at__date__gte=params[\"created_after\"])\n\n        return qs.order_by(params[\"ordering\"])"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "مزیت",
+          "text": "اعتبارسنجی خودکار، پیام خطای استاندارد، و مستندسازی بهتر. این الگو در پروژه‌های واقعی رایج است."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "int() بدون try/except",
+          "why": "اگر کاربر `?page=abc` بفرستد، خطای 500 می‌گیرید.",
+          "when": "وقتی پارامتر عددی می‌خوانید.",
+          "fix": "`try/except ValueError` یا `serializers.IntegerField`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "پارامتر بدون محدودیت",
+          "why": "کاربر می‌تواند `?limit=1000000` بفرستد و سرور را خفه کند.",
+          "when": "وقتی limit/page_size می‌پذیرید.",
+          "fix": "حداکثر بگذارید (مثلاً `max_page_size=100`)."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نام‌های ناهمگون",
+          "why": "`?minPrice` و `?max_price` در یک API، کاربر را گیج می‌کند.",
+          "when": "وقتی تیم قواعد ندارد.",
+          "fix": "snake_case، حروف کوچک، همه‌جا یکسان."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از Query برای داده حساس",
+          "why": "URL در لاگ‌ها و تاریخ مرورگر ثبت می‌شود.",
+          "when": "وقتی رمز یا توکن را در Query می‌فرستید.",
+          "fix": "داده حساس در بدنه POST یا هدر."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "فیلتر روی فیلد بدون index",
+          "why": "کوئری کند در دیتابیس بزرگ.",
+          "when": "وقتی روی فیلدهای متنی فیلتر می‌کنید.",
+          "fix": "`db_index=True` در مدل یا از `django-filter` با `icontains` آگاهانه استفاده کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-037-q1",
+      "tag": "کوییز",
+      "question": "برای خواندن چند مقدار با یک نام (مثل `?tag=a&amp;tag=b`)، از چه متدی استفاده می‌کنیم؟",
+      "options": [
+        { "text": "`request.query_params.get(\"tag\")`", "correct": false },
+        { "text": "`request.query_params.getlist(\"tag\")`", "correct": true, "explanation": "فقط getlist همه مقادیر را برمی‌گرداند." },
+        { "text": "`request.query_params[\"tag\"]`", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-037-q2",
+      "tag": "کوییز",
+      "question": "همه مقادیر Query Params از چه نوعی هستند؟",
+      "options": [
+        { "text": "همان نوعی که در URL نوشته شده", "correct": false },
+        { "text": "همیشه رشته (str)", "correct": true, "explanation": "برای عدد یا تاریخ، خودتان تبدیل کنید." },
+        { "text": "همیشه dict", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-037-ex1",
+      "title": "تمرین — فیلتر دستی",
+      "problem": "برای یک `ProductListView` فیلترهای زیر را پیاده کنید:\n- `category` (اسلاگ)\n- `min_price` و `max_price` (Decimal)\n- `in_stock` (Boolean)\n- `brand` (اسلاگ)\n- `created_after` (تاریخ)\n\nهمه را با اعتبارسنجی مناسب و پیام خطای فارسی.",
+      "hints": ["برای Decimal از `Decimal()` استفاده کنید.", "برای تاریخ از `date.fromisoformat()`.", "برای Boolean، یک تابع کمکی بسازید."],
+      "solution": "```python\nfrom datetime import date\nfrom decimal import Decimal, InvalidOperation\nfrom rest_framework import generics\nfrom rest_framework.exceptions import ValidationError\n\n\nclass ProductListView(generics.ListAPIView):\n    serializer_class = ProductSerializer\n\n    def get_queryset(self):\n        qs = Product.objects.select_related(\"category\", \"brand\")\n        params = self.request.query_params\n\n        category = params.get(\"category\")\n        if category:\n            qs = qs.filter(category__slug=category)\n\n        brand = params.get(\"brand\")\n        if brand:\n            qs = qs.filter(brand__slug=brand)\n\n        min_price = params.get(\"min_price\")\n        if min_price:\n            try:\n                qs = qs.filter(price__gte=Decimal(min_price))\n            except (InvalidOperation, ValueError):\n                raise ValidationError({\"min_price\": \"عدد نامعتبر.\"})\n\n        max_price = params.get(\"max_price\")\n        if max_price:\n            try:\n                qs = qs.filter(price__lte=Decimal(max_price))\n            except (InvalidOperation, ValueError):\n                raise ValidationError({\"max_price\": \"عدد نامعتبر.\"})\n\n        in_stock = params.get(\"in_stock\")\n        if in_stock is not None:\n            if in_stock.lower() in (\"true\", \"1\", \"yes\"):\n                qs = qs.filter(stock__gt=0)\n            elif in_stock.lower() in (\"false\", \"0\", \"no\"):\n                qs = qs.filter(stock=0)\n            else:\n                raise ValidationError({\"in_stock\": \"مقدار Boolean نامعتبر.\"})\n\n        created_after = params.get(\"created_after\")\n        if created_after:\n            try:\n                qs = qs.filter(created_at__date__gte=date.fromisoformat(created_after))\n            except ValueError:\n                raise ValidationError({\"created_after\": \"فرمت تاریخ نامعتبر (YYYY-MM-DD).\"})\n\n        return qs\n```",
+      "explanation": "این الگو برای تعداد محدودی پارامتر کار می‌کند. برای پروژه‌های بزرگ‌تر، `django-filter` (فصل بعد)."
+    }
+  ],
+  "summary": [
+    "پارامترهای Query در `request.query_params` هستند.",
+    "همه مقادیر رشته هستند — تبدیل لازم است.",
+    "برای چند مقدار، `getlist`.",
+    "نام‌گذاری: snake_case، حروف کوچک، معنادار.",
+    "Boolean را با تابع کمکی تبدیل کنید.",
+    "برای تاریخ از ISO 8601.",
+    "فیلتر دستی برای ۵ پارامتر یا کمتر؛ برای بیشتر، django-filter.",
+    "اعتبارسنجی با Serializer کوچک یا try/except."
+  ],
+  "resources": [
+    { "title": "DRF — Filtering", "url": "https://www.django-rest-framework.org/api-guide/filtering/", "official": true },
+    { "title": "MDN — Query String", "url": "https://developer.mozilla.org/en-US/docs/Web/API/URL/searchParams", "official": false }
+  ]
+}

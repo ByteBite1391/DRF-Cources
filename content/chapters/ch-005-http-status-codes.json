@@ -1,0 +1,229 @@
+{
+  "id": "ch-005",
+  "slug": "http-status-codes",
+  "title": "کدهای وضعیت HTTP",
+  "kicker": "فصل ۵",
+  "level": "beginner",
+  "estimatedMinutes": 30,
+  "lead": "کد وضعیت، زبان مشترک کلاینت و سرور است. انتخاب درست کد وضعیت، بخش مهمی از حرفه‌ای بودن یک API است.",
+  "sections": [
+    {
+      "id": "intro",
+      "title": "چرا کدهای وضعیت مهم‌اند؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "کد وضعیت یک عدد سه‌رقمی است که نتیجه درخواست را می‌گوید. کلاینت بدون خواندن بدنه، از روی کد می‌فهمد چه اتفاقی افتاده و چه واکنشی نشان دهد."
+        },
+        {
+          "type": "table",
+          "headers": ["بازه", "معنی", "نمونه"],
+          "rows": [
+            ["1xx", "اطلاعاتی", "`100 Continue`"],
+            ["2xx", "موفقیت", "`200 OK`"],
+            ["3xx", "ریدایرکت", "`301 Moved Permanently`"],
+            ["4xx", "خطای کلاینت", "`404 Not Found`"],
+            ["5xx", "خطای سرور", "`500 Internal Server Error`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "success",
+      "title": "کدهای موفق (2xx)",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["کد", "نام", "معنی", "کاربرد"],
+          "rows": [
+            ["200", "OK", "موفق", "GET موفق، پاسخ عادی"],
+            ["201", "Created", "منبع ساخته شد", "پس از POST موفق"],
+            ["202", "Accepted", "پذیرفته شد", "کار پس‌زمینه شروع شد"],
+            ["204", "No Content", "موفق، بدون بدنه", "پس از DELETE موفق یا PATCH بدون بدنه"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "GET /books/42/ HTTP/1.1\n→ 200 OK\n\nPOST /books/ HTTP/1.1\n→ 201 Created\nLocation: /books/42/\n\nDELETE /books/42/ HTTP/1.1\n→ 204 No Content"
+        }
+      ]
+    },
+    {
+      "id": "redirects",
+      "title": "کدهای ریدایرکت (3xx)",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["کد", "نام", "کاربرد"],
+          "rows": [
+            ["301", "Moved Permanently", "منبع دائماً جابه‌جا شده"],
+            ["302", "Found", "جابه‌جایی موقت"],
+            ["304", "Not Modified", "منبع تغییر نکرده — کش معتبر است"],
+            ["307", "Temporary Redirect", "مثل ۳۰۲ ولی متد حفظ می‌شود"],
+            ["308", "Permanent Redirect", "مثل ۳۰۱ ولی متد حفظ می‌شود"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "304 و کش",
+          "text": "وقتی کلاینت `If-None-Match` یا `If-Modified-Since` می‌فرستد و محتوا تغییر نکرده، سرور `304 Not Modified` با بدنه خالی برمی‌گرداند. کلاینت از کش خودش استفاده می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "client-errors",
+      "title": "خطاهای کلاینت (4xx)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "خطاهای ۴xx یعنی درخواست مشکل دارد. مهم‌ترین‌ها:"
+        },
+        {
+          "type": "table",
+          "headers": ["کد", "نام", "معنی", "کاربرد"],
+          "rows": [
+            ["400", "Bad Request", "درخواست نامعتبر", "اعتبارسنجی ناموفق"],
+            ["401", "Unauthorized", "احراز هویت لازم است", "بدون توکن یا توکن نامعتبر"],
+            ["403", "Forbidden", "دسترسی ممنوع", "احراز هویت شده اما مجوز ندارد"],
+            ["404", "Not Found", "منبع پیدا نشد", "شناسه اشتباه یا حذف‌شده"],
+            ["405", "Method Not Allowed", "متد مجاز نیست", "POST روی Endpoint فقط‌خواندنی"],
+            ["409", "Conflict", "تناقض", "یونیک بودن نقض شد"],
+            ["410", "Gone", "دائماً حذف شده", "منبع دیگر وجود ندارد"],
+            ["415", "Unsupported Media Type", "نوع محتوا پشتیبانی نمی‌شود", "Content-Type نامعتبر"],
+            ["422", "Unprocessable Entity", "قابل پردازش نیست", "خطای معنایی در داده"],
+            ["429", "Too Many Requests", "درخواست زیاد", "Throttle فعال شد"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "همه خطاها را با `400` برگردان.",
+          "better": "بین `400`، `401`، `403`، `404` و `405` تفکیک قائل شو.",
+          "production": "همه کدها را دقیق انتخاب کن + کد داخلی خطا + شناسه رخداد + لاگ ساختاریافته."
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "401 در برابر 403",
+          "text": "`401` یعنی «چه کسی هستی؟ نگفتی.» — احراز هویت مشکل دارد. `403` یعنی «می‌دانم کی هستی، اما اجازه نداری.» — مجوز مشکل دارد."
+        }
+      ]
+    },
+    {
+      "id": "server-errors",
+      "title": "خطاهای سرور (5xx)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "خطاهای 5xx یعنی سرور مشکل دارد. کلاینت نمی‌تواند این‌ها را با تغییر درخواست حل کند."
+        },
+        {
+          "type": "table",
+          "headers": ["کد", "نام", "معنی"],
+          "rows": [
+            ["500", "Internal Server Error", "خطای مدیریت‌نشده در سرور"],
+            ["502", "Bad Gateway", "پروکسی پاسخ نامعتبر از سرویس بالادستی گرفت"],
+            ["503", "Service Unavailable", "سرور موقتاً در دسترس نیست"],
+            ["504", "Gateway Timeout", "پروکسی از سرویس بالادستی جواب نگرفت"]
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "جزئیات خطای ۵۰۰",
+          "text": "هرگز جزئیات داخلی (stack trace، مسیر فایل، SQL) را در پاسخ `500` به کلاینت نفرستید. آن‌ها را در لاگ ثبت کنید و به کاربر یک شناسه رخداد بدهید."
+        }
+      ]
+    },
+    {
+      "id": "choosing",
+      "title": "کدام کد را انتخاب کنیم؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["سناریو", "کد پیشنهادی"],
+          "rows": [
+            ["GET موفق لیست", "`200`"],
+            ["GET منبع ناموجود", "`404`"],
+            ["POST موفق ساخت", "`201`"],
+            ["POST داده نامعتبر", "`400`"],
+            ["POST یونیک بودن نقض شد", "`409`"],
+            ["POST بدون توکن", "`401`"],
+            ["POST با توکن، بدون مجوز", "`403`"],
+            ["DELETE موفق", "`204`"],
+            ["DELETE منبع ناموجود", "`404`"],
+            ["درخواست بیش از حد", "`429`"],
+            ["خطای غیرمنتظره سرور", "`500`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drf-status",
+      "title": "کدهای وضعیت در DRF",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "DRF ثابت‌های آماده در `rest_framework.status` دارد. همیشه از این‌ها استفاده کنید، نه اعداد جادویی."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework import status\nfrom rest_framework.response import Response\n\n\nreturn Response({\"detail\": \"ساخته شد\"}, status=status.HTTP_201_CREATED)\nreturn Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\nreturn Response(status=status.HTTP_204_NO_CONTENT)\nreturn Response({\"detail\": \"پیدا نشد\"}, status=status.HTTP_404_NOT_FOUND)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چرا ثابت‌ها؟",
+          "text": "خوانایی بیشتر، امکان جستجو، و کاهش خطای تایپی. `status.HTTP_201_CREATED` واضح‌تر از `201` است."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-005-q1",
+      "tag": "کوییز",
+      "question": "تفاوت 401 و 403 چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "401 یعنی احراز هویت مشکل دارد؛ 403 یعنی احراز هویت شده اما مجوز ندارد.", "correct": true, "explanation": "این تفکیک برای دیباگ و طراحی API حیاتی است." },
+        { "text": "401 برای سرور و 403 برای کلاینت است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-005-q2",
+      "tag": "کوییز",
+      "question": "پس از حذف موفق منبع، کدام کد مناسب‌تر است؟",
+      "options": [
+        { "text": "200", "correct": false },
+        { "text": "204", "correct": true, "explanation": "204 No Content یعنی موفق و بدون بدنه — استاندارد برای DELETE." },
+        { "text": "404", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-005-ex1",
+      "title": "تمرین — انتخاب کد",
+      "problem": "برای هر سناریو کد مناسب را انتخاب کنید:\n۱) کاربری می‌خواهد کتابی را حذف کند اما مالک آن نیست.\n۲) کاربری داده نامعتبر می‌فرستد (قیمت منفی).\n۳) منبع مورد نظر وجود ندارد.\n۴) سرور دیتابیس در دسترس نیست.",
+      "hints": ["به این فکر کنید: مشکل در احراز هویت است یا مجوز؟", "خطا در داده است یا در سرور؟"],
+      "solution": "۱) `403 Forbidden` — احراز هویت انجام شده، اما مجوز ندارد.\n۲) `400 Bad Request` — داده نامعتبر.\n۳) `404 Not Found` — منبع وجود ندارد.\n۴) `503 Service Unavailable` — سرویس موقتاً در دسترس نیست.",
+      "explanation": "انتخاب دقیق کد وضعیت، تفاوت بین یک API آماتور و حرفه‌ای است."
+    }
+  ],
+  "summary": [
+    "2xx موفقیت — 200, 201, 202, 204.",
+    "3xx ریدایرکت — 301, 302, 304.",
+    "4xx خطای کلاینت — 400, 401, 403, 404, 405, 409, 422, 429.",
+    "5xx خطای سرور — 500, 502, 503, 504.",
+    "401 = احراز هویت، 403 = مجوز.",
+    "از ثابت‌های `rest_framework.status` استفاده کنید.",
+    "جزئیات 500 را به کلاینت نفرستید."
+  ],
+  "resources": [
+    { "title": "MDN — HTTP Status", "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status", "official": false },
+    { "title": "RFC 9110 — Status Codes", "url": "https://www.rfc-editor.org/rfc/rfc9110.html#name-status-codes", "official": true }
+  ]
+}

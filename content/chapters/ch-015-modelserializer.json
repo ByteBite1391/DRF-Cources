@@ -1,0 +1,265 @@
+{
+  "id": "ch-015",
+  "slug": "modelserializer",
+  "title": "ModelSerializer",
+  "kicker": "فصل ۱۵",
+  "level": "beginner",
+  "estimatedMinutes": 35,
+  "lead": "ModelSerializer میان‌بری است که فیلدها را از روی مدل می‌سازد و create/update را خودکار پیاده می‌کند.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا ModelSerializer؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "در فصل قبل، برای هر فیلد یک خط نوشتیم و `create` و `update` را دستی پیاده کردیم. `ModelSerializer` این‌ها را خودکار می‌کند — فقط می‌گویید کدام مدل و کدام فیلدها."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "from rest_framework import serializers\nfrom .models import Book\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\", \"published_at\", \"is_active\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "کارهایی که خودکار انجام می‌شود",
+          "text": "۱) ساخت فیلدها بر اساس نوع فیلد مدل. ۲) اعتبارسنجی پایه (max_length، unique، min_value). ۳) پیاده‌سازی `create()` و `update()`. ۴) مدیریت روابط (ForeignKey → PrimaryKeyRelatedField)."
+        }
+      ]
+    },
+    {
+      "id": "meta",
+      "title": "کلاس Meta",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "همه تنظیمات داخل کلاس `Meta` تعریف می‌شوند."
+        },
+        {
+          "type": "table",
+          "headers": ["گزینه", "معنی", "مثال"],
+          "rows": [
+            ["`model`", "مدل پایه", "`Book`"],
+            ["`fields`", "لیست فیلدهای خروجی/ورودی", "`[\"id\", \"title\", ...]`"],
+            ["`exclude`", "حذف فیلدهای مشخص (به‌جای fields)", "`[\"internal_notes\"]`"],
+            ["`read_only_fields`", "فیلدهای فقط خواندنی", "`[\"id\", \"created_at\"]`"],
+            ["`extra_kwargs`", "تنظیمات اضافه برای هر فیلد", "`{\"price\": {\"min_value\": 0}}`"],
+            ["`depth`", "عمق سریال‌سازی روابط (با احتیاط)", "`1`"],
+            ["`validators`", "لیست اعتبارسنج‌های سطح شیء", "`[UniqueTogetherValidator(...)]`"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fields",
+      "title": "fields — انتخاب فیلدها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# فقط فیلدهای مشخص\nclass Meta:\n    model = Book\n    fields = [\"id\", \"title\", \"price\"]\n\n# همه فیلدها (توصیه نمی‌شود — فیلدهای حساس را لو می‌دهد)\nclass Meta:\n    model = Book\n    fields = \"__all__\"\n\n# استفاده از exclude به‌جای fields\nclass Meta:\n    model = User\n    exclude = [\"password\", \"last_login\"]"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "هشدار امنیتی",
+          "text": "از `fields = \"__all__\"` اجتناب کنید. اگر بعداً فیلدی به مدل اضافه کنید، خودکار در API ظاهر می‌شود — ممکن است ناخواسته فیلد حساس را لو بدهد. همیشه فیلدها را صریح لیست کنید."
+        }
+      ]
+    },
+    {
+      "id": "read-only",
+      "title": "read_only_fields",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"price\", \"created_at\", \"updated_at\"]\n        read_only_fields = [\"id\", \"created_at\", \"updated_at\"]"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`id` معمولاً read_only است.",
+            "`created_at` و `updated_at` (auto_now_add, auto_now) باید read_only باشند.",
+            "هر فیلدی که خودتان محاسبه می‌کنید، read_only."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "extra-kwargs",
+      "title": "extra_kwargs",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "برای تنظیم پارامترهای اضافه روی فیلدهای خودکار، از `extra_kwargs` استفاده کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"isbn\", \"price\", \"internal_notes\"]\n        read_only_fields = [\"id\"]\n        extra_kwargs = {\n            \"title\": {\n                \"required\": True,\n                \"error_messages\": {\"blank\": \"عنوان نمی‌تواند خالی باشد.\"},\n            },\n            \"isbn\": {\n                \"write_only\": False,\n                \"label\": \"شابک\",\n            },\n            \"price\": {\n                \"min_value\": 0,\n                \"error_messages\": {\"min_value\": \"قیمت نمی‌تواند منفی باشد.\"},\n            },\n            \"internal_notes\": {\"write_only\": True},\n        }"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "کجا استفاده کنیم؟",
+          "text": "`extra_kwargs` برای تنظیمات کوچک. اگر می‌خواهید فیلد را جدی تغییر دهید (نوع، محاسبه)، آن را صریح تعریف کنید."
+        }
+      ]
+    },
+    {
+      "id": "override-fields",
+      "title": "بازنویسی صریح فیلد",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "اگر می‌خواهید یک فیلد را کامل بازنویسی کنید (مثلاً تغییر نوع یا محاسبه)، آن را صریح تعریف کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    # صریح — سریالایزر خودکار را بازنویسی می‌کند\n    price = serializers.DecimalField(\n        max_digits=9, decimal_places=2,\n        min_value=0,\n    )\n    author_name = serializers.CharField(source=\"author.full_name\", read_only=True)\n    full_title = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"full_title\", \"author\", \"author_name\", \"price\", \"isbn\"]\n        read_only_fields = [\"id\"]\n\n    def get_full_title(self, obj):\n        return f\"{obj.title} — {obj.author.full_name}\""
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فیلد صریح:** سریالایزر خودکار را بازنویسی می‌کند.",
+            "**`source`:** اگر فیلد از منبع متفاوتی می‌آید.",
+            "**`SerializerMethodField`:** فیلد محاسبه‌شده."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "depth",
+      "title": "depth — با احتیاط",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"category\"]\n        depth = 1   # author و category به‌صورت تودرتو نمایش داده می‌شوند"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "چرا با احتیاط؟",
+          "text": "`depth` باعث می‌شود همه روابط تا عمق مشخصی تودرتو شوند. اما کنترل شما را از دست می‌دهید — نمی‌توانید بگویید کدام فیلد از رابطه نمایش داده شود. برای بیشتر موارد، سریالایزر تودرتو صریح بهتر است."
+        }
+      ]
+    },
+    {
+      "id": "when-serializer",
+      "title": "ModelSerializer یا Serializer؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["معیار", "`Serializer`", "`ModelSerializer`"],
+          "rows": [
+            ["مدل دارد؟", "نه", "بله"],
+            ["CRUD روی مدل", "دستی `create`/`update`", "خودکار"],
+            ["فیلدهای محاسبه‌شده", "طبیعی", "با `SerializerMethodField`"],
+            ["داده بدون مدل", "مناسب", "نامناسب"],
+            ["کنترل کامل", "بیشتر", "کمتر"],
+            ["سرعت توسعه", "کندتر", "سریع‌تر"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "`Serializer` دستی برای هر چیز.",
+          "better": "`ModelSerializer` برای CRUD روی مدل.",
+          "production": "`ModelSerializer` + `Serializer` جدا برای خواندن/نوشتن پیچیده + فیلدهای محاسبه‌شده با `SerializerMethodField`."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "`fields = \"__all__\"`",
+          "why": "فیلدهای حساس را لو می‌دهد و در آینده فیلدهای جدید خودکار ظاهر می‌شوند.",
+          "when": "وقتی می‌خواهید سریع کار کنید.",
+          "fix": "فیلدها را صریح لیست کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود `read_only` روی فیلدهای خودکار مدل",
+          "why": "کلاینت می‌تواند `created_at` بفرستد و آن را دستکاری کند.",
+          "when": "وقتی فیلدی مثل `id`، `created_at`، `owner` دارید.",
+          "fix": "`read_only_fields = [\"id\", \"created_at\", \"owner\"]`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "استفاده از `depth` برای همه روابط",
+          "why": "پاسخ‌ها سنگین می‌شوند، N+1 Query زیاد می‌شود، و کنترل ندارید.",
+          "when": "وقتی سریالایزر تودرتو صریح می‌ترساند.",
+          "fix": "سریالایزرهای تودرتو صریح با `select_related` در ویو."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "بازنویسی بدون فراخوانی parent",
+          "why": "اگر `create` را بازنویسی می‌کنید و `super().create()` را صدا نمی‌زنید، منطق والد از دست می‌رود.",
+          "when": "وقتی می‌خواهید چیزی به `create` اضافه کنید.",
+          "fix": "منطق اضافه را قبل یا بعد از `super().create()` بنویسید یا کلاً منطق را بازنویسی کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-015-q1",
+      "tag": "کوییز",
+      "question": "`ModelSerializer` چه چیزی را خودکار انجام می‌دهد؟",
+      "options": [
+        { "text": "فقط فیلدها را می‌سازد.", "correct": false },
+        { "text": "فیلدها را از مدل می‌سازد و `create` و `update` را پیاده می‌کند.", "correct": true, "explanation": "این دو، بزرگ‌ترین مزیت ModelSerializer هستند." },
+        { "text": "فقط اعتبارسنجی می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-015-q2",
+      "tag": "کوییز",
+      "question": "چرا `fields = \"__all__\"` توصیه نمی‌شود؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون فیلدهای حساس را لو می‌دهد و فیلدهای جدید مدل خودکار ظاهر می‌شوند.", "correct": true, "explanation": "کنترل روی اینکه چه چیزی در API نمایش داده می‌شود، از بین می‌رود." },
+        { "text": "چون در DRF پشتیبانی نمی‌شود.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-015-ex1",
+      "title": "تمرین — ModelSerializer برای Book",
+      "problem": "یک `BookSerializer` بسازید که از `ModelSerializer` استفاده کند و:\n- همه فیلدهای لازم مدل Book را داشته باشد.\n- `id` و `created_at` فقط خواندنی باشند.\n- برای `price`، پیام خطای فارسی تنظیم کنید.",
+      "hints": ["از `read_only_fields` استفاده کنید.", "از `extra_kwargs` برای پیام خطا استفاده کنید."],
+      "solution": "```python\nfrom rest_framework import serializers\nfrom .models import Book\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\n            \"id\", \"title\", \"author\", \"isbn\",\n            \"price\", \"published_at\", \"is_active\", \"created_at\",\n        ]\n        read_only_fields = [\"id\", \"created_at\"]\n        extra_kwargs = {\n            \"price\": {\n                \"min_value\": 0,\n                \"error_messages\": {\n                    \"min_value\": \"قیمت نمی‌تواند منفی باشد.\",\n                    \"invalid\": \"قیمت باید یک عدد معتبر باشد.\",\n                },\n            },\n            \"title\": {\n                \"error_messages\": {\n                    \"blank\": \"عنوان نمی‌تواند خالی باشد.\",\n                    \"required\": \"عنوان الزامی است.\",\n                },\n            },\n        }\n```",
+      "explanation": "این الگو در ۹۰٪ پروژه‌های DRF استفاده می‌شود. پس از تسلط، سراغ فیلدهای پیشرفته و روابط می‌رویم."
+    },
+    {
+      "id": "ch-015-ex2",
+      "title": "تمرین — فیلد محاسبه‌شده",
+      "problem": "به `BookSerializer` یک فیلد `price_with_tax` اضافه کنید که قیمت را با ۱۰٪ مالیات برگرداند.",
+      "hints": ["از `SerializerMethodField` استفاده کنید.", "متد `get_price_with_tax(self, obj)` را پیاده کنید."],
+      "solution": "```python\nclass BookSerializer(serializers.ModelSerializer):\n    price_with_tax = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"price\", \"price_with_tax\"]\n\n    def get_price_with_tax(self, obj):\n        return round(float(obj.price) * 1.10, 2)\n```",
+      "explanation": "`SerializerMethodField` برای فیلدهای محاسبه‌شده یا خروجی شرطی عالی است."
+    }
+  ],
+  "summary": [
+    "`ModelSerializer` فیلدها را از مدل می‌سازد.",
+    "`create` و `update` را خودکار پیاده می‌کند.",
+    "`Meta` تنظیمات را نگه می‌دارد: `model`, `fields`, `read_only_fields`, `extra_kwargs`.",
+    "از `fields = \"__all__\"` اجتناب کنید.",
+    "`extra_kwargs` برای تنظیمات کوچک، بازنویسی صریح برای تغییرات بزرگ.",
+    "`depth` مفید ولی محدودکننده — سریالایزر تودرتو صریح بهتر است.",
+    "`ModelSerializer` انتخاب پیش‌فرض برای CRUD روی مدل‌هاست."
+  ],
+  "resources": [
+    { "title": "DRF — ModelSerializer", "url": "https://www.django-rest-framework.org/api-guide/serializers/#modelserializer", "official": true }
+  ]
+}

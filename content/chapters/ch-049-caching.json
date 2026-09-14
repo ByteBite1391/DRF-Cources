@@ -1,0 +1,331 @@
+{
+  "id": "ch-049",
+  "slug": "caching",
+  "title": "کش (Caching)",
+  "kicker": "فصل ۴۹",
+  "level": "advanced",
+  "estimatedMinutes": 45,
+  "lead": "کش سرعت را چند برابر می‌کند. این فصل از اصول تا الگوهای production را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا کش؟",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**سرعت:** پاسخ در میلی‌ثانیه به‌جای صدها میلی‌ثانیه.",
+            "**کاهش بار دیتابیس:** کوئری‌های تکراری حذف می‌شوند.",
+            "**پهنای باند:** نتیجه‌های آماده ارسال می‌شوند.",
+            "**مقیاس‌پذیری:** سرور بیشتر پاسخ می‌دهد.",
+            "**تجربه کاربری:** پاسخ آنی."
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "بدون کش.",
+          "better": "کش در سطح View یا QuerySet.",
+          "production": "کش لایه‌ای: Redis + CDN + هدرهای Cache-Control + invalidation هوشمند."
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "تنظیمات Cache",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "# توسعه — حافظه محلی\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.locmem.LocMemCache\",\n        \"LOCATION\": \"unique-snowflake\",\n    },\n}\n\n# تولید — Redis\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.redis.RedisCache\",\n        \"LOCATION\": \"redis://127.0.0.1:6379/1\",\n        \"OPTIONS\": {\n            \"CLIENT_CLASS\": \"django_redis.client.DefaultClient\",\n        },\n        \"KEY_PREFIX\": \"myapp\",\n        \"TIMEOUT\": 300,   # ۵ دقیقه پیش‌فرض\n    },\n}"
+        },
+        {
+          "type": "bash",
+          "code": "pip install django-redis   # برای Redis"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "KEY_PREFIX",
+          "text": "برای جلوگیری از تداخل با پروژه‌های دیگر روی همان Redis، `KEY_PREFIX` تنظیم کنید."
+        }
+      ]
+    },
+    {
+      "id": "levels",
+      "title": "سطوح کش",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["سطح", "ابزار", "کاربرد"],
+          "rows": [
+            ["Per-site", "Middleware", "کل سایت — نادر"],
+            ["Per-view", "`@cache_page`", "کل View"],
+            ["Per-QuerySet", "API دستی", "QuerySet گران"],
+            ["Fragment", "Template tags", "بخش‌هایی از template"],
+            ["Low-level", "`cache.get/set`", "هر چیزی — کنترل کامل"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cache-page",
+      "title": "cache_page",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.utils.decorators import method_decorator\nfrom django.views.decorators.cache import cache_page\n\n\n# در Generic View\n@method_decorator(cache_page(60 * 5), name=\"list\")\nclass BookListView(generics.ListAPIView):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n\n# در ViewSet\n@method_decorator(cache_page(60 * 5), name=\"list\")\n@method_decorator(cache_page(60 * 5), name=\"retrieve\")\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer"
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "خطر: کش پاسخ‌های کاربرمحور",
+          "text": "اگر پاسخ بر اساس کاربر متفاوت است، `@cache_page` بدون `vary_on_headers` می‌تواند پاسخ یک کاربر را به کاربر دیگر بدهد. حتماً `vary_on_headers(\"Authorization\")` یا `vary_on_cookie` را اضافه کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.views.decorators.vary import vary_on_headers, vary_on_cookie\nfrom django.views.decorators.cache import cache_page\n\n\n@method_decorator(cache_page(60 * 5), name=\"list\")\n@method_decorator(vary_on_headers(\"Authorization\"), name=\"list\")\nclass ProtectedBookViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer"
+        }
+      ]
+    },
+    {
+      "id": "low-level",
+      "title": "کش دستی (Low-level)",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.core.cache import cache\n\n\n# ذخیره\ncache.set(\"my_key\", \"value\", timeout=300)\ncache.set(\"my_key\", \"value\", timeout=None)   # هرگز منقضی نمی‌شود\n\n# خواندن\nvalue = cache.get(\"my_key\")\nvalue = cache.get(\"my_key\", default=\"fallback\")\n\n# چند کلید\ndata = cache.get_many([\"key1\", \"key2\"])\ncache.set_many({\"key1\": \"a\", \"key2\": \"b\"}, timeout=300)\n\n# حذف\ncache.delete(\"my_key\")\ncache.delete_many([\"key1\", \"key2\"])\n\n# افزایش / کاهش\ncache.set(\"counter\", 0)\ncache.incr(\"counter\")     # 1\ncache.decr(\"counter\")     # 0\n\n# پاک کردن همه\ncache.clear()   # با احتیاط!\n\n# get_or_set — الگوی رایج\ndef get_popular_books():\n    return cache.get_or_set(\n        \"popular_books\",\n        lambda: list(Book.objects.filter(is_popular=True)[:10]),\n        timeout=600,\n    )"
+        }
+      ]
+    },
+    {
+      "id": "queryset-cache",
+      "title": "کش کردن QuerySet",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.core.cache import cache\nfrom django.db.models import Count, Avg\n\n\ndef get_book_stats():\n    \"\"\"آمار کلی کتاب‌ها را کش می‌کند.\"\"\"\n    key = \"book_stats\"\n    data = cache.get(key)\n    if data is None:\n        data = {\n            \"total\": Book.objects.count(),\n            \"by_category\": list(\n                Book.objects.values(\"category__name\")\n                .annotate(count=Count(\"id\"))\n                .order_by(\"-count\")\n            ),\n            \"avg_rating\": Book.objects.aggregate(avg=Avg(\"rating\"))[\"avg\"],\n        }\n        cache.set(key, data, timeout=600)   # ۱۰ دقیقه\n    return data\n\n\n# الگوی cache-aside\ndef get_book(book_id):\n    key = f\"book:{book_id}\"\n    book = cache.get(key)\n    if book is None:\n        try:\n            book = Book.objects.select_related(\"author\").get(pk=book_id)\n            cache.set(key, book, timeout=300)\n        except Book.DoesNotExist:\n            return None\n    return book"
+        },
+        {
+          "type": "note",
+          "variant": "warn",
+          "title": "ارزیابی QuerySet",
+          "text": "QuerySet به‌طور Lazy ارزیابی می‌شود. اگر `cache.set(key, qs)` بگذارید، ممکن است QuerySet سریالایز نشود. همیشه `list(qs)` یا `qs.values()` را کش کنید."
+        }
+      ]
+    },
+    {
+      "id": "cache-viewset",
+      "title": "کش در ViewSet با get_queryset",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.core.cache import cache\nfrom rest_framework import viewsets\n\n\nclass BookViewSet(viewsets.ReadOnlyModelViewSet):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        # کش کردن فقط لیست (نه retrieve)\n        if self.action == \"list\":\n            key = \"books_list\"\n            data = cache.get(key)\n            if data is None:\n                data = list(\n                    Book.objects\n                    .select_related(\"author\")\n                    .filter(is_active=True)\n                    [:100]   # محدودیت\n                )\n                cache.set(key, data, timeout=300)\n            return data\n\n        return Book.objects.select_related(\"author\").all()"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "کش + فیلتر",
+          "text": "اگر ViewSet فیلتر/جستجو دارد، کش کردن لیست کامل بی‌فایده است. یا کش را روی `select_related` نگذارید، یا از کش fragment استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "invalidation",
+      "title": "Invalidation — مهم‌ترین چالش",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "کش‌ها باید در زمان درست باطل شوند. سه استراتژی:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "**Time-based:** TTL — ساده اما ممکن است کهنه باشد.",
+            "**Event-based:** باطل کردن در زمان تغییر داده.",
+            "**Version-based:** کلید شامل نسخه — همه کش قدیمی می‌شود."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.core.cache import cache\nfrom django.db.models.signals import post_save, post_delete\nfrom django.dispatch import receiver\nfrom .models import Book\n\n\nCACHE_KEY = \"books_list\"\n\n\n@receiver([post_save, post_delete], sender=Book)\ndef invalidate_book_cache(sender, instance, **kwargs):\n    cache.delete(CACHE_KEY)\n    cache.delete(f\"book:{instance.pk}\")\n    cache.delete(\"book_stats\")\n\n\n# نسخه‌گذاری\ndef get_cache_key(key, version=None):\n    if version is None:\n        version = cache.get(\"book_cache_version\", 1)\n    return f\"{key}:v{version}\"\n\n\ndef bump_version():\n    cache.incr(\"book_cache_version\")"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی Version-based",
+          "text": "وقتی data تغییر کرد، نسخه را بالا ببرید. کلیدهای قدیمی به‌طور خودکار نادیده گرفته می‌شوند و با TTL پاک می‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "http-cache",
+      "title": "HTTP Cache — Cache-Control و ETag",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from django.utils.decorators import method_decorator\nfrom django.views.decorators.cache import cache_control\n\n\n@method_decorator(\n    cache_control(public=True, max_age=3600),\n    name=\"list\",\n)\nclass BookListView(generics.ListAPIView):\n    ..."
+        },
+        {
+          "type": "table",
+          "headers": ["دستور", "معنی"],
+          "rows": [
+            ["`public`", "می‌تواند در CDN کش شود"],
+            ["`private`", "فقط در مرورگر کاربر"],
+            ["`max_age=3600`", "یک ساعت معتبر"],
+            ["`no_cache`", "قبل از استفاده، بازبینی کن"],
+            ["`no_store`", "هرگز کش نکن"],
+            ["`must_revalidate`", "حتماً بازبینی کن"],
+            ["`s_maxage=86400`", "در CDN یک روز"]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# ETag — Conditional GET\nimport hashlib\nfrom rest_framework.response import Response\n\n\ndef book_list(request):\n    books = Book.objects.all()\n    data = serialize(books)\n\n    # محاسبه ETag\n    etag = hashlib.md5(str(data).encode()).hexdigest()\n\n    # اگر کلاینت ETag مشابه فرستاده، 304\n    if request.headers.get(\"If-None-Match\") == etag:\n        return Response(status=304)\n\n    response = Response(data)\n    response[\"ETag\"] = etag\n    response[\"Cache-Control\"] = \"public, max_age=60\"\n    return response"
+        }
+      ]
+    },
+    {
+      "id": "redis-patterns",
+      "title": "الگوهای Redis",
+      "blocks": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**Cache-Aside:** برنامه کش را می‌خواند، اگر نبود از DB می‌خواند و کش می‌کند.",
+            "**Write-Through:** نوشتن همزمان در DB و کش.",
+            "**Write-Behind:** نوشتن در کش، بعداً به DB.",
+            "**Cache Stampede:** وقتی کش منقضی می‌شود، همه همزمان به DB می‌روند.",
+            "**Cache Warming:** پیش از ترافیک، کش را پر کن."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# Cache Stampede — استفاده از lock\nfrom django.core.cache import cache\nimport time\n\n\ndef get_or_compute(key, compute_fn, timeout=300, lock_timeout=10):\n    \"\"\"جلوگیری از stampede با lock.\"\"\"\n    data = cache.get(key)\n    if data is not None:\n        return data\n\n    lock_key = f\"{key}:lock\"\n    if cache.add(lock_key, \"1\", timeout=lock_timeout):\n        # ما lock گرفتیم — compute کن\n        try:\n            data = compute_fn()\n            cache.set(key, data, timeout=timeout)\n            return data\n        finally:\n            cache.delete(lock_key)\n    else:\n        # یکی دیگر compute می‌کند — صبر کن\n        for _ in range(50):\n            time.sleep(0.1)\n            data = cache.get(key)\n            if data is not None:\n                return data\n        # timeout — خودمان compute می‌کنیم\n        return compute_fn()"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# پیاده‌سازی در View\nclass PopularBooksView(APIView):\n    def get(self, request):\n        data = get_or_compute(\n            \"popular_books\",\n            lambda: list(Book.objects.filter(is_popular=True)[:20].values()),\n            timeout=600,\n        )\n        return Response(data)"
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "کش پاسخ‌های کاربرمحور بدون Vary",
+          "why": "کاربر A پاسخ کاربر B را می‌بیند. نقض حریم خصوصی.",
+          "when": "وقتی `cache_page` بدون `vary_on_headers`.",
+          "fix": "`vary_on_headers(\"Authorization\")` یا `vary_on_cookie`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود invalidation",
+          "why": "کاربر داده قدیمی می‌بیند.",
+          "when": "وقتی TTL بلند و بدون سیگنال.",
+          "fix": "signal یا version-based."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "TTL طولانی روی داده سریع‌التغییر",
+          "why": "داده کهنه نمایش داده می‌شود.",
+          "when": "وقتی همه چیز را ۲۴ ساعت کش می‌کنید.",
+          "fix": "TTL بر اساس سرعت تغییر: قیمت ۱ دقیقه، دسته‌بندی ۱ ساعت."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "کش QuerySet بدون ارزیابی",
+          "why": "QuerySet سریالایز نمی‌شود.",
+          "when": "وقتی `cache.set(key, qs)` می‌گذارید.",
+          "fix": "`list(qs)` یا `qs.values()`."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "Cache Stampede",
+          "why": "هنگام انقضا، همه به DB می‌روند و DB قطع می‌شود.",
+          "when": "وقتی کلید پرترافیک منقضی می‌شود.",
+          "fix": "Lock یا `get_or_set` با jitter."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود کش در GETهای پرترافیک",
+          "why": "DB اشباع می‌شود.",
+          "when": "وقتی همه چیز را هر بار محاسبه می‌کنید.",
+          "fix": "کش با TTL مناسب."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-049-q1",
+      "tag": "کوییز",
+      "question": "چرا `@cache_page` بدون `vary_on_headers` خطرناک است؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون می‌تواند پاسخ کاربر A را به کاربر B بدهد.", "correct": true, "explanation": "پاسخ‌های کاربرمحور باید بر اساس Authorization متفاوت کش شوند." },
+        { "text": "چون DRF پشتیبانی نمی‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-049-q2",
+      "tag": "کوییز",
+      "question": "چرا QuerySet را با `list()` کش می‌کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون QuerySet Lazy است و ممکن است سریالایز نشود.", "correct": true, "explanation": "باید ارزیابی شود تا در کش ذخیره شود." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-049-q3",
+      "tag": "کوییز",
+      "question": "Cache Stampede چیست؟",
+      "options": [
+        { "text": "پاک شدن کش", "correct": false },
+        { "text": "حمله‌ای که همه همزمان به DB می‌روند وقتی کش منقضی می‌شود.", "correct": true, "explanation": "با lock یا `get_or_set` جلوگیری می‌شود." },
+        { "text": "پر شدن فضای کش", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-049-ex1",
+      "title": "تمرین — کش QuerySet و Invalidation",
+      "problem": "برای یک API کتاب:\n- QuerySet لیست کتاب‌های محبوب را کش کنید (TTL 10 دقیقه).\n- در زمان save/delete کتاب، کش را باطل کنید.\n- از Cache Stampede جلوگیری کنید.\n- در ViewSet استفاده کنید.",
+      "hints": ["از `cache.get_or_set` با lock.", "از signals `post_save` و `post_delete`.", "کلید شامل category یا فیلتر نباشد."],
+      "solution": "```python\n# services.py\nfrom django.core.cache import cache\nfrom django.db.models import Count\nfrom .models import Book\n\nPOPULAR_KEY = \"books_popular\"\n\n\ndef get_popular_books():\n    def compute():\n        return list(\n            Book.objects\n            .filter(is_active=True)\n            .annotate(reviews_count=Count(\"reviews\"))\n            .order_by(\"-reviews_count\")[:20]\n            .values(\"id\", \"title\", \"price\", \"reviews_count\")\n        )\n\n    return cache.get_or_set(POPULAR_KEY, compute, timeout=600)\n\n\ndef invalidate_popular_books():\n    cache.delete(POPULAR_KEY)\n\n\n# signals.py\nfrom django.db.models.signals import post_save, post_delete\nfrom django.dispatch import receiver\nfrom .models import Book\nfrom .services import invalidate_popular_books\n\n\n@receiver([post_save, post_delete], sender=Book)\ndef invalidate_book_caches(sender, instance, **kwargs):\n    invalidate_popular_books()\n    cache.delete(f\"book:{instance.pk}\")\n\n\n# views.py\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom .services import get_popular_books\n\n\nclass PopularBooksView(APIView):\n    def get(self, request):\n        return Response(get_popular_books())\n\n\n# apps.py — اتصال signals\nfrom django.apps import AppConfig\n\n\nclass CatalogConfig(AppConfig):\n    default_auto_field = \"django.db.models.BigAutoField\"\n    name = \"catalog\"\n\n    def ready(self):\n        from . import signals   # noqa\n```",
+      "explanation": "این الگو، کش + invalidation + محافظت از stampede را در یک جا جمع می‌کند."
+    }
+  ],
+  "summary": [
+    "کش سرعت و مقیاس‌پذیری را چند برابر می‌کند.",
+    "سطوح: per-site، per-view، per-QuerySet، low-level.",
+    "`@cache_page` سریع اما با احتیاط (Vary).",
+    "QuerySet را با `list()` کش کنید.",
+    "Invalidation با signal یا version.",
+    "HTTP Cache با `Cache-Control` و `ETag`.",
+    "Cache Stampede با lock.",
+    "Redis در تولید، LocMem در توسعه."
+  ],
+  "resources": [
+    { "title": "Django — Caching", "url": "https://docs.djangoproject.com/en/stable/topics/cache/", "official": true },
+    { "title": "DRF — Caching", "url": "https://www.django-rest-framework.org/api-guide/caching/", "official": true },
+    { "title": "Redis — Documentation", "url": "https://redis.io/docs/", "official": true }
+  ]
+}

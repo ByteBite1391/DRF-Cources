@@ -1,0 +1,282 @@
+{
+  "id": "ch-023",
+  "slug": "apiview",
+  "title": "APIView",
+  "kicker": "فصل ۲۳",
+  "level": "intermediate",
+  "estimatedMinutes": 35,
+  "lead": "APIView نسخه کلاسی @api_view است. برای Endpointهایی که چند متد دارند و می‌خواهید سازمان‌یافته باشند، انتخاب درستی است.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا APIView؟",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "`APIView` همان قدرت `@api_view` را دارد اما در قالب کلاس. هر متد HTTP یک متد پایتون می‌شود و می‌توانید وضعیت مشترک، متدهای کمکی و ارث‌بری داشته باشید."
+        },
+        {
+          "type": "flow",
+          "steps": ["Request", "dispatch", "get/post/...", "Response"]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**سازمان‌یافته:** هر متد HTTP جداگانه.",
+            "**قابل ارث‌بری:** کلاس‌های دیگر می‌توانند از آن ارث‌بری کنند.",
+            "**دسترسی به `self`:** می‌توانید وضعیت مشترک نگه دارید.",
+            "**متدهای کمکی:** `get_object`، `validate_...` و... .",
+            "**قابل تست:** به‌راحتی می‌توانید نمونه بسازید و متدها را تست کنید."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basic",
+      "title": "شکل پایه",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookListView(APIView):\n    def get(self, request):\n        books = Book.objects.all()\n        serializer = BookSerializer(books, many=True)\n        return Response(serializer.data)\n\n    def post(self, request):\n        serializer = BookSerializer(data=request.data)\n        if serializer.is_valid():\n            serializer.save()\n            return Response(serializer.data, status=status.HTTP_201_CREATED)\n        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from django.urls import path\nfrom .views import BookListView\n\nurlpatterns = [\n    path(\"books/\", BookListView.as_view(), name=\"book-list\"),\n]"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "as_view()",
+          "text": "برای اتصال کلاس به URL، همیشه از `.as_view()` استفاده کنید. این متد یک تابع برمی‌گرداند که Django می‌تواند به مسیر وصل کند."
+        }
+      ]
+    },
+    {
+      "id": "detailed",
+      "title": "Detail View",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from django.shortcuts import get_object_or_404\n\n\nclass BookDetailView(APIView):\n    def get_object(self, pk):\n        return get_object_or_404(Book, pk=pk)\n\n    def get(self, request, pk):\n        book = self.get_object(pk)\n        return Response(BookSerializer(book).data)\n\n    def put(self, request, pk):\n        book = self.get_object(pk)\n        serializer = BookSerializer(book, data=request.data)\n        if serializer.is_valid():\n            serializer.save()\n            return Response(serializer.data)\n        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\n\n    def patch(self, request, pk):\n        book = self.get_object(pk)\n        serializer = BookSerializer(book, data=request.data, partial=True)\n        if serializer.is_valid():\n            serializer.save()\n            return Response(serializer.data)\n        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)\n\n    def delete(self, request, pk):\n        book = self.get_object(pk)\n        book.delete()\n        return Response(status=status.HTTP_204_NO_CONTENT)"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "get_object به‌عنوان متد کمکی",
+          "text": "این الگو را در `GenericAPIView` هم می‌بینید. یک متد کمکی برای پیدا کردن شیء، کد را تمیز می‌کند."
+        }
+      ]
+    },
+    {
+      "id": "class-attributes",
+      "title": "ویژگی‌های سطح کلاس",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "می‌توانید احراز هویت، مجوز، پارسر، رندرر و throttle را در سطح کلاس تعریف کنید."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "from rest_framework.authentication import TokenAuthentication\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.parsers import JSONParser, MultiPartParser\nfrom rest_framework.throttling import UserRateThrottle\nfrom rest_framework.renderers import JSONRenderer\n\n\nclass ProtectedView(APIView):\n    authentication_classes = [TokenAuthentication]\n    permission_classes = [IsAuthenticated]\n    parser_classes = [JSONParser, MultiPartParser]\n    throttle_classes = [UserRateThrottle]\n    renderer_classes = [JSONRenderer]\n\n    def get(self, request):\n        return Response({\"user\": request.user.username})"
+        },
+        {
+          "type": "table",
+          "headers": ["ویژگی", "معنی"],
+          "rows": [
+            ["`authentication_classes`", "روش‌های احراز هویت"],
+            ["`permission_classes`", "مجوزهای نما"],
+            ["`throttle_classes`", "محدودیت نرخ"],
+            ["`parser_classes`", "پارسرهای ورودی"],
+            ["`renderer_classes`", "رندررهای خروجی"],
+            ["`content_negotiation_class`", "کلاس مذاکره محتوا"],
+            ["`versioning_class`", "کلاس نسخه‌بندی"],
+            ["`schema`", "کلاس Schema (برای مستندات)"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "helper-methods",
+      "title": "متدهای کمکی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "این متدها در `APIView` وجود دارند و می‌توانید در متدهای خود استفاده یا بازنویسی کنید."
+        },
+        {
+          "type": "table",
+          "headers": ["متد", "کارکرد"],
+          "rows": [
+            ["`initial(request)`", "اجرای احراز هویت، مجوز، throttle"],
+            ["`perform_authentication(request)`", "اجرای احراز هویت"],
+            ["`check_permissions(request)`", "بررسی مجوزها"],
+            ["`check_throttles(request)`", "بررسی throttle"],
+            ["`permission_denied(request, ...)`", "خطای 403"],
+            ["`throttled(request, ...)`", "خطای 429"],
+            ["`handle_exception(exc)`", "تبدیل استثنا به پاسخ"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dispatch",
+      "title": "چرخه dispatch",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "وقتی یک درخواست می‌آید، `APIView.dispatch()` اجرا می‌شود که چند مرحله دارد:"
+        },
+        {
+          "type": "flow",
+          "steps": ["dispatch", "initial", "auth", "permission", "throttle", "method", "response"]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "# معادل مفهومی dispatch (نه کد واقعی)\ndef dispatch(self, request, *args, **kwargs):\n    self.args = args\n    self.kwargs = kwargs\n    request = self.initialize_request(request)\n    self.request = request\n    self.headers = self.default_response_headers\n\n    try:\n        self.initial(request)\n        # احراز هویت + مجوز + throttle در initial انجام می‌شود\n\n        if request.method.lower() in self.http_method_names:\n            handler = getattr(self, request.method.lower())\n        else:\n            handler = self.http_method_not_allowed\n\n        response = handler(request, *args, **kwargs)\n    except Exception as exc:\n        response = self.handle_exception(exc)\n\n    return self.finalize_response(request, response)"
+        },
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "چرا مهم است؟",
+          "text": "می‌توانید `initial()` یا `dispatch()` را بازنویسی کنید تا رفتار سراسری اضافه کنید — مثلاً لاگ‌گیری، تنظیم tenant، یا محدودیت خاص."
+        }
+      ]
+    },
+    {
+      "id": "custom-initial",
+      "title": "سفارشی‌سازی initial",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "code": "class TenantAwareView(APIView):\n    def initial(self, request, *args, **kwargs):\n        super().initial(request, *args, **kwargs)\n\n        # بعد از احراز هویت و مجوز، Tenant را از هدر بخوان\n        tenant_slug = request.headers.get(\"X-Tenant\")\n        if not tenant_slug:\n            from rest_framework.exceptions import ValidationError\n            raise ValidationError({\"X-Tenant\": \"الزامی است.\"})\n\n        try:\n            request.tenant = Tenant.objects.get(slug=tenant_slug)\n        except Tenant.DoesNotExist:\n            from rest_framework.exceptions import NotFound\n            raise NotFound(\"Tenant پیدا نشد.\")\n\n    def get(self, request):\n        return Response({\n            \"tenant\": request.tenant.slug,\n            \"user\": request.user.username,\n        })"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "الگوی چند-مستأجری (Multi-tenancy)",
+          "text": "این الگو برای SaaSها بسیار رایج است: tenant را در `initial` تعیین می‌کنید و بقیه ویوها به `request.tenant` دسترسی دارند."
+        }
+      ]
+    },
+    {
+      "id": "when",
+      "title": "APIView یا @api_view؟",
+      "blocks": [
+        {
+          "type": "table",
+          "headers": ["معیار", "`@api_view`", "`APIView`"],
+          "rows": [
+            ["منطق ساده (۱-۲ متد)", "بهتر", "زیادی است"],
+            ["چند متد (۳+)", "شلوغ", "بهتر"],
+            ["نیاز به متد کمکی", "سخت", "طبیعی"],
+            ["ارث‌بری", "ممکن نیست", "بله"],
+            ["نیاز به `self`", "ممکن نیست", "بله"],
+            ["تست‌پذیری", "خوب", "بهتر"],
+            ["خوانایی", "فشرده", "سازمان‌یافته"]
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "`@api_view` برای هر چیز.",
+          "better": "`@api_view` برای منطق کوچک، `APIView` برای چند متد.",
+          "production": "برای CRUD از Generic Views یا ViewSet؛ `APIView` فقط برای منطق‌های خاص که در قالب Generic جا نمی‌شوند."
+        }
+      ]
+    },
+    {
+      "id": "common-errors",
+      "title": "اشتباهات رایج",
+      "blocks": [
+        {
+          "type": "anti-pattern",
+          "title": "فراموش کردن `.as_view()` در urls",
+          "why": "Django خطای `TypeError: view must be a callable` می‌دهد.",
+          "when": "وقتی کلاس را مستقیم وصل می‌کنید.",
+          "fix": "`BookListView.as_view()`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "تعریف متد HTTP به‌حروف بزرگ",
+          "why": "DRF فقط متدهای lowercase را صدا می‌زند.",
+          "when": "وقتی از زبان دیگر آمده‌اید.",
+          "fix": "`def get(self, request):` نه `def GET(self, request):`"
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نبود متد HTTP لازم",
+          "why": "درخواست با 405 رد می‌شود بدون توضیح.",
+          "when": "وقتی `patch` را جا می‌اندازید.",
+          "fix": "همه متدهای پشتیبانی‌شده را پیاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "انجام کارها در `dispatch` به‌جای `initial`",
+          "why": "منطق با چرخه DRF درهم می‌شود و نگهداری سخت می‌شود.",
+          "when": "وقتی می‌خواهید کار سراسری انجام دهید.",
+          "fix": "از `initial()` یا متدهای دیگر override استفاده کنید."
+        },
+        {
+          "type": "anti-pattern",
+          "title": "نگه‌داشتن وضعیت در `self` بین درخواست‌ها",
+          "why": "هر درخواست یک نمونه جدید از View می‌سازد (در Django). پس وضعیت بین درخواست‌ها به اشتراک گذاشته نمی‌شود.",
+          "when": "وقتی می‌خواهید کش یا وضعیت داشته باشید.",
+          "fix": "از کش، دیتابیس یا `request` استفاده کنید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-023-q1",
+      "tag": "کوییز",
+      "question": "چرا `.as_view()` لازم است؟",
+      "options": [
+        { "text": "اختیاری است.", "correct": false },
+        { "text": "چون Django فقط توابع را به URL وصل می‌کند و `.as_view()` کلاس را به تابع تبدیل می‌کند.", "correct": true, "explanation": "این الگو از Django View ارث‌رسیده است." },
+        { "text": "برای فعال کردن احراز هویت.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-023-q2",
+      "tag": "کوییز",
+      "question": "کدام مرحله در `dispatch` قبل از صدا زدن متد HTTP اجرا می‌شود؟",
+      "options": [
+        { "text": "فقط احراز هویت", "correct": false },
+        { "text": "`initial()` — که شامل احراز هویت، مجوز و throttle است.", "correct": true, "explanation": "initial همه بررسی‌های امنیتی را انجام می‌دهد." },
+        { "text": "هیچ چیزی", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-023-ex1",
+      "title": "تمرین — APIView کامل",
+      "problem": "یک `ArticleView` بسازید که:\n- با GET لیست مقالات منتشرشده را برگرداند.\n- با POST مقاله جدید بسازد.\n- فقط کاربران ادمین بتوانند POST کنند.\n- GET برای همه آزاد باشد.",
+      "hints": ["از `permission_classes` با مجوز شرطی استفاده کنید.", "از `get_permissions` برای مجوز پویا.", "از `serializer.is_valid(raise_exception=True)`."],
+      "solution": "```python\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom rest_framework.permissions import AllowAny, IsAdminUser\nfrom .models import Article\nfrom .serializers import ArticleSerializer\n\n\nclass ArticleView(APIView):\n    def get_permissions(self):\n        if self.request.method == \"POST\":\n            return [IsAdminUser()]\n        return [AllowAny()]\n\n    def get(self, request):\n        articles = Article.objects.filter(is_published=True)\n        serializer = ArticleSerializer(articles, many=True)\n        return Response(serializer.data)\n\n    def post(self, request):\n        serializer = ArticleSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        serializer.save(author=request.user)\n        return Response(serializer.data, status=status.HTTP_201_CREATED)\n```",
+      "explanation": "این الگو با `get_permissions` برای مجوز پویا در APIView رایج است. در ViewSet معادلش `get_permissions` است."
+    }
+  ],
+  "summary": [
+    "`APIView` نسخه کلاسی `@api_view` است.",
+    "هر متد HTTP یک متد پایتون می‌شود.",
+    "ویژگی‌های سطح کلاس: `permission_classes`, `authentication_classes`, `parser_classes`, ... .",
+    "`dispatch` چرخه اصلی است: `initial` → احراز هویت → مجوز → throttle → متد HTTP.",
+    "می‌توانید `initial` را برای منطق سراسری بازنویسی کنید.",
+    "برای CRUD، Generic Views بهترند؛ `APIView` برای منطق‌های خاص.",
+    "همیشه `.as_view()` در urls."
+  ],
+  "resources": [
+    { "title": "DRF — APIView", "url": "https://www.django-rest-framework.org/api-guide/views/#class-based-views", "official": true }
+  ]
+}
