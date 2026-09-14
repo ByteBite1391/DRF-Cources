@@ -1,0 +1,90 @@
+{
+  "id": "ch-053",
+  "slug": "drf-spectacular",
+  "title": "drf-spectacular در عمل",
+  "kicker": "فصل ۵۳",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "نصب، تنظیم و استفاده حرفه‌ای از drf-spectacular در پروژه واقعی.",
+  "sections": [
+    {
+      "id": "install-full",
+      "title": "نصب کامل",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install drf-spectacular\npip install drf-spectacular[sidecar]   # برای سرو محلی Swagger UI بدون CDN" },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "INSTALLED_APPS = [\n    # ...\n    \"rest_framework\",\n    \"drf_spectacular\",\n    \"drf_spectacular_sidecar\",   # اگر sidecar نصب کرده‌اید\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_SCHEMA_CLASS\": \"drf_spectacular.openapi.AutoSchema\",\n}\n\nSPECTACULAR_SETTINGS = {\n    \"TITLE\": \"Library API\",\n    \"DESCRIPTION\": \"مستندات API کتابخانه\",\n    \"VERSION\": \"1.0.0\",\n    \"SERVE_INCLUDE_SCHEMA\": False,\n    \"COMPONENT_SPLIT_REQUEST\": True,\n    \"SWAGGER_UI_DIST\": \"SIDECAR\",\n    \"SWAGGER_UI_FAVICON_HREF\": \"SIDECAR\",\n    \"REDOC_DIST\": \"SIDECAR\",\n}" }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "مسیرها",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from drf_spectacular.views import (\n    SpectacularAPIView,\n    SpectacularSwaggerView,\n    SpectacularRedocView,\n)\n\nurlpatterns += [\n    path(\"api/schema/\", SpectacularAPIView.as_view(), name=\"schema\"),\n    path(\"api/schema/swagger-ui/\", SpectacularSwaggerView.as_view(url_name=\"schema\")),\n    path(\"api/schema/redoc/\", SpectacularRedocView.as_view(url_name=\"schema\")),\n]" }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "تنظیم امنیت",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "SPECTACULAR_SETTINGS = {\n    # ...\n    \"SERVE_PERMISSIONS\": [\"rest_framework.permissions.IsAdminUser\"],\n    \"SERVE_AUTHENTICATION\": [\n        \"rest_framework.authentication.SessionAuthentication\",\n    ],\n    \"SWAGGER_UI_SETTINGS\": {\n        \"persistAuthorization\": True,\n        \"displayOperationId\": True,\n        \"filter\": True,\n    },\n}\n\n# یا در ویو\nurlpatterns += [\n    path(\n        \"api/schema/\",\n        SpectacularAPIView.as_view(permission_classes=[IsAdminUser]),\n        name=\"schema\",\n    ),\n]" },
+        { "type": "note", "variant": "danger", "title": "در تولید", "text": "schema را در تولید در دسترس عموم نگذارید. حداقل `SERVE_PERMISSIONS` به admin محدود کنید." }
+      ]
+    },
+    {
+      "id": "auth-schemes",
+      "title": "طرح‌های احراز هویت",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# JWT\nSPECTACULAR_SETTINGS = {\n    # ...\n    \"SECURITY\": [{\"BearerAuth\": []}],\n    \"SECURITY_DEFINITIONS\": {\n        \"BearerAuth\": {\n            \"type\": \"http\",\n            \"scheme\": \"bearer\",\n            \"bearerFormat\": \"JWT\",\n        },\n    },\n}\n\n# Token\nSPECTACULAR_SETTINGS = {\n    \"SECURITY_DEFINITIONS\": {\n        \"TokenAuth\": {\n            \"type\": \"apiKey\",\n            \"in\": \"header\",\n            \"name\": \"Authorization\",\n            \"description\": \"Token <key>\",\n        },\n    },\n}" }
+      ]
+    },
+    {
+      "id": "inline-serializer",
+      "title": "سریالایزر inline",
+      "blocks": [
+        { "type": "paragraph", "text": "برای Endpointهای ساده که سریالایزر جدا لازم نیست:" },
+        { "type": "code", "lang": "python", "code": "from drf_spectacular.utils import extend_schema, inline_serializer\nfrom rest_framework import serializers\n\n\n@extend_schema(\n    responses=inline_serializer(\n        name=\"DashboardStats\",\n        fields={\n            \"total_users\": serializers.IntegerField(),\n            \"total_books\": serializers.IntegerField(),\n            \"active_loans\": serializers.IntegerField(),\n        },\n    ),\n)\n@api_view([\"GET\"])\ndef dashboard_stats(request):\n    return Response({\n        \"total_users\": User.objects.count(),\n        \"total_books\": Book.objects.count(),\n        \"active_loans\": Loan.objects.filter(is_returned=False).count(),\n    })" }
+      ]
+    },
+    {
+      "id": "ci",
+      "title": "ادغام در CI",
+      "blocks": [
+        { "type": "code", "lang": "yaml", "filename": ".github/workflows/schema.yml", "code": "name: OpenAPI Schema Check\n\non: [push, pull_request]\n\njobs:\n  check-schema:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.11\"\n      - run: pip install -r requirements.txt\n      - name: Generate schema\n        run: python manage.py spectacular --file schema.yml --validate\n      - name: Upload artifact\n        uses: actions/upload-artifact@v4\n        with:\n          name: openapi-schema\n          path: schema.yml" },
+        { "type": "note", "variant": "tip", "title": "مزیت", "text": "با هر commit، اگر schema تغییر شکستنی داشته باشد، CI هشدار می‌دهد." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "schema بدون تنظیم امنیت", "why": "همه می‌توانند schema را ببینند.", "when": "در تولید.", "fix": "`SERVE_PERMISSIONS`." },
+        { "type": "anti-pattern", "title": "نبود validate در CI", "why": "schema بی‌اعتبار منتشر می‌شود.", "when": "وقتی اتوماسیون ندارید.", "fix": "CI step با `--validate`." },
+        { "type": "anti-pattern", "title": "فراموش کردن `@extend_schema` روی اکشن‌های سفارشی", "why": "مستندات ناقص.", "when": "وقتی `@action` دارید.", "fix": "برای هر `@action`، `@extend_schema`." },
+        { "type": "anti-pattern", "title": "نمونه‌های غیرواقعی", "why": "کلاینت سردرگم می‌شود.", "when": "وقتی فقط `\"string\"` می‌گذارید.", "fix": "نمونه‌های واقعی و معنادار." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-053-q1", "tag": "کوییز", "question": "چرا schema را در تولید محدود می‌کنیم؟", "options": [
+      { "text": "چون سنگین است.", "correct": false },
+      { "text": "چون ساختار داخلی API را افشا می‌کند.", "correct": true, "explanation": "برای امنیت بیشتر، فقط admin." },
+      { "text": "چون DRF اجبار می‌کند.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-053-ex1", "title": "تمرین — مستندسازی کامل", "problem": "برای یک ViewSet سفارشی با اکشن `publish`، schema کامل بسازید: پارامترها، نمونه‌ها، امنیت.", "hints": ["`@extend_schema` روی متدها.", "`@extend_schema_view` برای همه.", "`OpenApiExample` برای نمونه."], "solution": "```python\nfrom drf_spectacular.utils import (\n    extend_schema, extend_schema_view, OpenApiExample, OpenApiResponse,\n)\nfrom drf_spectacular.openapi import OpenApiTypes\n\n\n@extend_schema_view(\n    list=extend_schema(\n        summary=\"لیست مقالات\",\n        description=\"مقالات منتشرشده با فیلتر دسته.\",\n        examples=[\n            OpenApiExample(\"نمونه\", value={\"id\": 1, \"title\": \"...\"}, response_only=True),\n        ],\n    ),\n    retrieve=extend_schema(summary=\"جزئیات مقاله\"),\n    create=extend_schema(\n        summary=\"ساخت مقاله\",\n        responses={201: None, 400: OpenApiResponse(description=\"داده نامعتبر\")},\n    ),\n)\nclass ArticleViewSet(viewsets.ModelViewSet):\n    queryset = Article.objects.all()\n    serializer_class = ArticleSerializer\n\n    @extend_schema(\n        summary=\"انتشار مقاله\",\n        request=None,\n        responses={\n            200: OpenApiResponse(description=\"منتشر شد\"),\n            400: OpenApiResponse(description=\"قبلاً منتشر شده\"),\n        },\n        examples=[\n            OpenApiExample(\"پاسخ موفق\", value={\"status\": \"published\"}, response_only=True),\n        ],\n    )\n    @action(detail=True, methods=[\"post\"])\n    def publish(self, request, pk=None):\n        article = self.get_object()\n        if article.is_published:\n            return Response({\"detail\": \"قبلاً منتشر شده\"}, status=400)\n        article.is_published = True\n        article.save(update_fields=[\"is_published\"])\n        return Response({\"status\": \"published\"})\n```", "explanation": "این الگو مستندسازی کامل و حرفه‌ای را نشان می‌دهد." }
+  ],
+  "summary": [
+    "نصب `drf-spectacular` + `drf-spectacular[sidecar]`.",
+    "مسیرها: schema، swagger-ui، redoc.",
+    "محدودسازی schema در تولید.",
+    "`SECURITY_DEFINITIONS` برای JWT و Token.",
+    "`inline_serializer` برای Endpointهای ساده.",
+    "validate در CI.",
+    "`@extend_schema` روی اکشن‌های سفارشی."
+  ],
+  "resources": [
+    { "title": "drf-spectacular docs", "url": "https://drf-spectacular.readthedocs.io/", "official": true }
+  ]
+}

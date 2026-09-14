@@ -1,0 +1,129 @@
+{
+  "id": "ch-057",
+  "slug": "performance",
+  "title": "بهینه‌سازی عملکرد",
+  "kicker": "فصل ۵۷",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 50,
+  "lead": "عملکرد API تفاوت بین یک سرویس حرفه‌ای و یک پروژه آماتور است. این فصل از N+1 تا Profiling را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "n1",
+      "title": "مشکل N+1",
+      "blocks": [
+        { "type": "paragraph", "text": "اگر ۱۰۰ کتاب را لیست کنید و هر کتاب نویسنده‌اش را نشان دهید، بدون بهینه‌سازی: ۱ کوئری برای لیست + ۱۰۰ کوئری برای نویسنده‌ها = ۱۰۱ کوئری." },
+        { "type": "code", "lang": "python", "code": "# ❌ N+1\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer   # به author.full_name دسترسی دارد\n\n# ✅ حل شده\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\", \"category\")\n    serializer_class = BookSerializer" }
+      ]
+    },
+    {
+      "id": "select-related",
+      "title": "select_related و prefetch_related",
+      "blocks": [
+        { "type": "table", "headers": ["متد", "برای", "روش"], "rows": [
+          ["`select_related`", "ForeignKey و OneToOne", "JOIN"],
+          ["`prefetch_related`", "ManyToMany و reverse", "کوئری جداگانه + ترکیب در پایتون"],
+          ["`Prefetch`", "prefetch سفارشی", "با queryset دلخواه"]
+        ]},
+        { "type": "code", "lang": "python", "code": "# ❌ N+1 با reverse\nfor author in Author.objects.all():\n    for book in author.books.all():   # N کوئری\n        print(book.title)\n\n# ✅ حل\nfor author in Author.objects.prefetch_related(\"books\"):\n    for book in author.books.all():\n        print(book.title)\n\n# Prefetch سفارشی\nfrom django.db.models import Prefetch\n\nauthors = Author.objects.prefetch_related(\n    Prefetch(\n        \"books\",\n        queryset=Book.objects.filter(is_active=True).only(\"id\", \"title\"),\n        to_attr=\"active_books\",\n    )\n)\n# استفاده: author.active_books" }
+      ]
+    },
+    {
+      "id": "only-defer",
+      "title": "only و defer",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# فقط فیلدهای لازم\nbooks = Book.objects.only(\"id\", \"title\", \"price\")\n\n# همه به‌جز فیلدهای سنگین\nbooks = Book.objects.defer(\"description\", \"full_text\")\n\n# استفاده از values برای لیست‌های بزرگ\nbooks = Book.objects.values(\"id\", \"title\", \"price\")\n\n# values_list برای فیلدهای منفرد\ntitles = Book.objects.values_list(\"title\", flat=True)" }
+      ]
+    },
+    {
+      "id": "annotate",
+      "title": "annotate و aggregate",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from django.db.models import Count, Avg, Sum, F, Q\n\n\n# تعداد نظرات هر کتاب\nbooks = Book.objects.annotate(\n    reviews_count=Count(\"reviews\"),\n    average_rating=Avg(\"reviews__rating\"),\n)\n\n# فیلتر روی annotate\npopular = books.filter(reviews_count__gte=10)\n\n# محاسبه با F\nbooks = Book.objects.annotate(\n    discounted_price=F(\"price\") * 0.9,\n)\n\n# aggregate برای کل جدول\nstats = Book.objects.aggregate(\n    total=Count(\"id\"),\n    avg_price=Avg(\"price\"),\n)" }
+      ]
+    },
+    {
+      "id": "subquery",
+      "title": "Subquery و Exists",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from django.db.models import Subquery, OuterRef, Exists\n\n\n# هر نویسنده با آخرین کتابش\nlatest_book = Book.objects.filter(author=OuterRef(\"pk\")).order_by(\"-published_at\")\nauthors = Author.objects.annotate(\n    latest_book_title=Subquery(latest_book.values(\"title\")[:1]),\n)\n\n# بررسی وجود با Exists\nhas_books = Book.objects.filter(author=OuterRef(\"pk\"))\nauthors_with_books = Author.objects.annotate(\n    has_books=Exists(has_books),\n).filter(has_books=True)" }
+      ]
+    },
+    {
+      "id": "indexes",
+      "title": "ایندکس‌گذاری",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "catalog/models.py", "code": "class Book(models.Model):\n    title = models.CharField(max_length=250, db_index=True)\n    isbn = models.CharField(max_length=13, unique=True)   # ایندکس خودکار\n    price = models.DecimalField(max_digits=9, decimal_places=2, db_index=True)\n    published_at = models.DateField(db_index=True)\n\n    class Meta:\n        indexes = [\n            models.Index(fields=[\"-published_at\"]),\n            models.Index(fields=[\"category\", \"-published_at\"]),\n            models.Index(fields=[\"is_active\", \"-price\"]),\n        ]" },
+        { "type": "note", "variant": "tip", "title": "کدام فیلدها؟", "text": "فیلدهایی که در `filter`, `order_by`, `exclude` استفاده می‌شوند. نه همه فیلدها — ایندکس حافظه مصرف می‌کند." }
+      ]
+    },
+    {
+      "id": "pagination",
+      "title": "صفحه‌بندی کارآمد",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "REST_FRAMEWORK = {\n    \"DEFAULT_PAGINATION_CLASS\": \"rest_framework.pagination.CursorPagination\",\n    \"PAGE_SIZE\": 20,\n}\n\n# Cursor بدون COUNT(*) گران است\nclass TimelinePagination(CursorPagination):\n    page_size = 25\n    ordering = \"-created_at\"" },
+        { "type": "note", "variant": "info", "title": "Cursor در برابر PageNumber", "text": "PageNumber برای هر درخواست `COUNT(*)` می‌زند. روی جدول بزرگ گران. Cursor این کار را نمی‌کند." }
+      ]
+    },
+    {
+      "id": "cache-performance",
+      "title": "کش برای عملکرد",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from django.core.cache import cache\n\n\ndef get_popular_books():\n    key = \"popular_books\"\n    data = cache.get(key)\n    if data is None:\n        data = list(\n            Book.objects.filter(is_active=True)\n            .annotate(reviews_count=Count(\"reviews\"))\n            .order_by(\"-reviews_count\")[:20]\n            .values(\"id\", \"title\", \"price\", \"reviews_count\")\n        )\n        cache.set(key, data, timeout=600)\n    return data" }
+      ]
+    },
+    {
+      "id": "profiling",
+      "title": "Profiling",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install django-debug-toolbar django-silk" },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "INSTALLED_APPS += [\"debug_toolbar\", \"silk\"]\n\nMIDDLEWARE = [\n    \"debug_toolbar.middleware.DebugToolbarMiddleware\",\n    \"silk.middleware.SilkyMiddleware\",\n    # ...\n]\n\nINTERNAL_IPS = [\"127.0.0.1\"]\n\n# silk URLs\nurlpatterns += [path(\"silk/\", include(\"silk.urls\", namespace=\"silk\"))]" },
+        { "type": "code", "lang": "python", "code": "# شمارش کوئری‌های یک ویو\nfrom django.test.utils import CaptureQueriesContext\nfrom django.db import connection\n\nwith CaptureQueriesContext(connection) as queries:\n    list(Book.objects.select_related(\"author\"))\n    print(f\"Query count: {len(queries)}\")" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "N+1 در serializer", "why": "کند‌ترین باگ عملکرد.", "when": "سریالایزر تودرتو یا `SerializerMethodField`.", "fix": "`select_related` + `prefetch_related`." },
+        { "type": "anti-pattern", "title": "بدون ایندکس روی فیلتر", "why": "Full Table Scan.", "when": "فیلترهای مکرر.", "fix": "`db_index=True`." },
+        { "type": "anti-pattern", "title": "PageNumber روی جدول میلیونی", "why": "COUNT گران.", "when": "جدول بزرگ.", "fix": "CursorPagination." },
+        { "type": "anti-pattern", "title": "بدون کش برای داده‌های تغییرناپذیر", "why": "محاسبه تکراری.", "when": "داده‌ای که هر روز یک بار عوض می‌شود.", "fix": "کش با TTL." },
+        { "type": "anti-pattern", "title": "بدون Profiling", "why": "نمی‌دانید کجا کند است.", "when": "همیشه.", "fix": "Debug Toolbar و Silk." },
+        { "type": "anti-pattern", "title": "SerializerMethodField با کوئری", "why": "برای هر شیء، یک کوئری.", "when": "وقتی داخلش ORM صدا می‌زنید.", "fix": "annotate در queryset." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-057-q1", "tag": "کوییز", "question": "برای ManyToMany از کدام متد استفاده می‌کنیم؟", "options": [
+      { "text": "`select_related`", "correct": false },
+      { "text": "`prefetch_related`", "correct": true, "explanation": "select_related برای FK و OneToOne است." },
+      { "text": "`values`", "correct": false }
+    ]},
+    { "id": "ch-057-q2", "tag": "کوییز", "question": "کدام Pagination برای جدول بزرگ بهتر است؟", "options": [
+      { "text": "PageNumberPagination", "correct": false },
+      { "text": "CursorPagination", "correct": true, "explanation": "بدون COUNT گران." },
+      { "text": "LimitOffsetPagination", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-057-ex1", "title": "تمرین — رفع N+1", "problem": "کد زیر را بهینه کنید تا N+1 نداشته باشد:\n\n```python\nclass AuthorViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Author.objects.all()\n    serializer_class = AuthorSerializer\n```\n\nserializer: `books_count = obj.books.count()`, `books = [{'title': b.title} for b in obj.books.all()]`", "hints": ["برای count از `annotate(Count)`.", "برای books از `prefetch_related`.", "برای فقط فیلد لازم از Prefetch."], "solution": "```python\nfrom django.db.models import Count, Prefetch\n\n\nclass AuthorViewSet(viewsets.ReadOnlyModelViewSet):\n    serializer_class = AuthorSerializer\n\n    def get_queryset(self):\n        return (\n            Author.objects\n            .annotate(books_count=Count(\"books\", distinct=True))\n            .prefetch_related(\n                Prefetch(\n                    \"books\",\n                    queryset=Book.objects.filter(is_active=True).only(\"id\", \"title\", \"author_id\"),\n                    to_attr=\"active_books\",\n                )\n            )\n        )\n\n\nclass AuthorSerializer(serializers.ModelSerializer):\n    books_count = serializers.IntegerField(read_only=True)\n    books = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"books_count\", \"books\"]\n\n    def get_books(self, obj):\n        return [{\"id\": b.id, \"title\": b.title} for b in obj.active_books]\n```", "explanation": "این بهینه‌سازی از ۲N+1 کوئری به ۳ کوئری می‌رسد." }
+  ],
+  "summary": [
+    "N+1 مشکل اصلی عملکرد.",
+    "`select_related` برای FK/OneToOne.",
+    "`prefetch_related` برای M2M/reverse.",
+    "`only`, `defer`, `values` برای فیلدهای کمتر.",
+    "`annotate` برای محاسبات در DB.",
+    "Subquery و Exists برای کوئری‌های پیچیده.",
+    "ایندکس روی فیلتر و sort.",
+    "CursorPagination برای جدول بزرگ.",
+    "کش برای داده تغییرناپذیر.",
+    "Profiling با Debug Toolbar و Silk."
+  ],
+  "resources": [
+    { "title": "Django — QuerySet optimization", "url": "https://docs.djangoproject.com/en/stable/topics/db/optimization/", "official": true },
+    { "title": "Django Debug Toolbar", "url": "https://django-debug-toolbar.readthedocs.io/", "official": true },
+    { "title": "django-silk", "url": "https://github.com/jazzband/django-silk", "official": false }
+  ]
+}

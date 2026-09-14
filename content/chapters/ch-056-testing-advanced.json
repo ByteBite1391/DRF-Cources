@@ -1,0 +1,105 @@
+{
+  "id": "ch-056",
+  "slug": "testing-advanced",
+  "title": "تست‌های پیشرفته",
+  "kicker": "فصل ۵۶",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "تست‌های یکپارچگی، Mock، تست نسخه‌بندی و استراتژی‌های تست پیشرفته.",
+  "sections": [
+    {
+      "id": "integration",
+      "title": "تست‌های یکپارچگی",
+      "blocks": [
+        { "type": "paragraph", "text": "تست یکپارچگی، یک جریان کامل را از ابتدا تا انتها آزمایش می‌کند." },
+        { "type": "code", "lang": "python", "filename": "tests/integration/test_purchase_flow.py", "code": "import pytest\nfrom rest_framework.test import APIClient\n\n\n@pytest.mark.django_db\n@pytest.mark.integration\ndef test_full_purchase_flow():\n    client = APIClient()\n\n    # ۱. ثبت‌نام\n    register = client.post(\"/api/auth/register/\", {\n        \"username\": \"sara\",\n        \"email\": \"sara@example.com\",\n        \"password\": \"S3cret!Pass\",\n        \"password_confirm\": \"S3cret!Pass\",\n    }, format=\"json\")\n    assert register.status_code == 201\n    client.credentials(HTTP_AUTHORIZATION=f\"Bearer {register.data['access']}\")\n\n    # ۲. مشاهده محصولات\n    products = client.get(\"/api/products/\")\n    assert products.status_code == 200\n\n    # ۳. ساخت سفارش\n    product_id = products.data[\"results\"][0][\"id\"]\n    order = client.post(\"/api/orders/\", {\n        \"items\": [{\"product\": product_id, \"quantity\": 1}],\n    }, format=\"json\")\n    assert order.status_code == 201\n\n    # ۴. پرداخت (Mock)\n    payment = client.post(f\"/api/orders/{order.data['id']}/pay/\", format=\"json\")\n    assert payment.status_code == 200\n\n    # ۵. مشاهده سفارش پرداخت‌شده\n    order_detail = client.get(f\"/api/orders/{order.data['id']}/\")\n    assert order_detail.data[\"status\"] == \"paid\"" }
+      ]
+    },
+    {
+      "id": "mock",
+      "title": "Mock کردن سرویس‌های خارجی",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import pytest\nfrom unittest.mock import patch, MagicMock\n\n\n@pytest.mark.django_db\ndef test_payment_success(authenticated_client, order):\n    with patch(\"catalog.services.gateway.charge\") as mock_charge:\n        mock_charge.return_value = {\"status\": \"success\", \"transaction_id\": \"tx_123\"}\n\n        response = authenticated_client.post(f\"/api/orders/{order.id}/pay/\")\n\n        assert response.status_code == 200\n        mock_charge.assert_called_once()\n\n\n@pytest.mark.django_db\ndef test_payment_timeout(authenticated_client, order):\n    with patch(\"catalog.services.gateway.charge\") as mock_charge:\n        mock_charge.side_effect = TimeoutError()\n\n        response = authenticated_client.post(f\"/api/orders/{order.id}/pay/\")\n\n        assert response.status_code == 502\n        order.refresh_from_db()\n        assert order.status == \"pending\"   # تراکنش برنگشته" }
+      ]
+    },
+    {
+      "id": "transaction",
+      "title": "تست تراکنش‌ها",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import pytest\nfrom django.db import transaction\n\n\n@pytest.mark.django_db\ndef test_order_atomic_on_failure(authenticated_client, product):\n    initial_stock = product.stock\n\n    payload = {\n        \"items\": [\n            {\"product\": product.id, \"quantity\": 5},\n            {\"product\": 99999, \"quantity\": 1},   # محصول ناموجود\n        ],\n    }\n    response = authenticated_client.post(\"/api/orders/\", payload, format=\"json\")\n\n    assert response.status_code == 400\n\n    # اطمینان از برگشت تراکنش\n    product.refresh_from_db()\n    assert product.stock == initial_stock\n    assert Order.objects.count() == 0" }
+      ]
+    },
+    {
+      "id": "versioning-tests",
+      "title": "تست نسخه‌بندی",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "@pytest.mark.django_db\nclass TestVersioning:\n    def test_v1_returns_author_id(self, api_client):\n        book = BookFactory()\n        response = api_client.get(f\"/api/v1/books/{book.id}/\")\n        assert \"author\" in response.data\n        assert isinstance(response.data[\"author\"], int)\n\n    def test_v2_returns_author_object(self, api_client):\n        book = BookFactory()\n        response = api_client.get(f\"/api/v2/books/{book.id}/\")\n        assert \"author\" in response.data\n        assert isinstance(response.data[\"author\"], dict)\n        assert \"full_name\" in response.data[\"author\"]\n\n    def test_v2_has_new_field(self, api_client):\n        book = BookFactory()\n        response = api_client.get(f\"/api/v2/books/{book.id}/\")\n        assert \"average_rating\" in response.data" }
+      ]
+    },
+    {
+      "id": "n1-test",
+      "title": "تست N+1",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import pytest\nfrom django.test.utils import CaptureQueriesContext\nfrom django.db import connection\n\n\n@pytest.mark.django_db\ndef test_book_list_query_count(api_client):\n    # ساخت ۱۰ کتاب با نویسنده\n    BookFactory.create_batch(10)\n\n    with CaptureQueriesContext(connection) as queries:\n        response = api_client.get(\"/api/books/\")\n        assert response.status_code == 200\n\n    # حداکثر ۵ کوئری (auth + pagination + list + related)\n    assert len(queries) < 8, f\"N+1 detected: {len(queries)} queries\"\n\n\n@pytest.mark.django_db\ndef test_book_detail_uses_select_related(api_client):\n    book = BookFactory()\n\n    with CaptureQueriesContext(connection) as queries:\n        response = api_client.get(f\"/api/books/{book.id}/\")\n\n    assert len(queries) <= 3" }
+      ]
+    },
+    {
+      "id": "error-tests",
+      "title": "تست خطاهای دامنه",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from catalog.exceptions import InsufficientStock\n\n\ndef test_insufficient_stock_raises(authenticated_client, product):\n    product.stock = 0\n    product.save()\n\n    payload = {\n        \"items\": [{\"product\": product.id, \"quantity\": 1}],\n    }\n    response = authenticated_client.post(\"/api/orders/\", payload, format=\"json\")\n\n    assert response.status_code == 409\n    assert response.data[\"error\"][\"code\"] == \"INSUFFICIENT_STOCK\"\n    assert \"موجودی\" in response.data[\"error\"][\"message\"]" }
+      ]
+    },
+    {
+      "id": "coverage-strategy",
+      "title": "استراتژی Coverage",
+      "blocks": [
+        { "type": "table", "headers": ["کد", "هدف Coverage", "دلیل"], "rows": [
+          ["Models & ORM", "70%", "کمتر تغییر می‌کند"],
+          ["Serializers", "90%", "اعتبارسنجی حساس"],
+          ["Views/ViewSets", "85%", "منطق اصلی"],
+          ["Permissions", "95%", "امنیت"],
+          ["Services (منطق)", "95%", "قلب کسب‌وکار"],
+          ["Exceptions", "80%", "پاسخ‌ها"],
+          ["Admin", "0%", "کمتر حساس"],
+          ["Migrations", "0%", "خودکار"]
+        ]},
+        { "type": "code", "lang": "ini", "filename": ".coveragerc", "code": "[run]\nsource = .\nomit =\n    */migrations/*\n    */tests/*\n    */admin.py\n    manage.py\n    */settings/*\n    */asgi.py\n    */wsgi.py\n\n[report]\nexclude_lines =\n    pragma: no cover\n    def __repr__\n    raise AssertionError\n    raise NotImplementedError\n    if __name__ == .__main__.:\n    if TYPE_CHECKING:" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "Coverage ۱۰۰٪ به‌عنوان هدف", "why": "تست‌های بی‌ارزش زیاد می‌شوند.", "when": "وقتی مدیر می‌خواهد.", "fix": "۸۰-۹۰٪ روی کد حساس کافی است." },
+        { "type": "anti-pattern", "title": "Mock همه چیز", "why": "تست دیگر چیزی را واقعاً آزمایش نمی‌کند.", "when": "وقتی Mock بیش از حد می‌شود.", "fix": "Mock فقط سرویس‌های خارجی." },
+        { "type": "anti-pattern", "title": "تست بدون assert قوی", "why": "تست همیشه پاس می‌شود.", "when": "وقتی فقط `assert response` می‌گذارید.", "fix": "assert روی status، data، DB." },
+        { "type": "anti-pattern", "title": "تست در Production DB", "why": "داده واقعی خراب می‌شود.", "when": "وقتی تنظیمات جدا ندارید.", "fix": "دیتابیس جدا در settings_test." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-056-q1", "tag": "کوییز", "question": "برای تست N+1 از چه استفاده می‌کنیم؟", "options": [
+      { "text": "`print()`", "correct": false },
+      { "text": "`CaptureQueriesContext`", "correct": true, "explanation": "تعداد کوئری‌ها را می‌شمارد." },
+      { "text": "`time.time()`", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-056-ex1", "title": "تمرین — تست یکپارچگی", "problem": "یک تست یکپارچگی بنویسید برای جریان کامل ثبت‌نام → ساخت کتاب → ویرایش کتاب → حذف کتاب.", "hints": ["از یک APIClient در همه مراحل.", "credentials را حفظ کنید.", "assert روی هر مرحله."], "solution": "```python\n@pytest.mark.django_db\n@pytest.mark.integration\ndef test_full_book_flow():\n    client = APIClient()\n\n    # ۱. ثبت‌نام\n    register = client.post(\"/api/auth/register/\", {\n        \"username\": \"sara\",\n        \"email\": \"sara@example.com\",\n        \"password\": \"S3cret!Pass\",\n        \"password_confirm\": \"S3cret!Pass\",\n    }, format=\"json\")\n    assert register.status_code == 201\n    client.credentials(HTTP_AUTHORIZATION=f\"Bearer {register.data['access']}\")\n\n    # ۲. ساخت کتاب\n    create = client.post(\"/api/books/\", {\n        \"title\": \"Clean Code\",\n        \"author\": \"Robert C. Martin\",\n        \"isbn\": \"9780132350884\",\n        \"price\": \"42.50\",\n        \"published_at\": \"2008-08-01\",\n    }, format=\"json\")\n    assert create.status_code == 201\n    book_id = create.data[\"id\"]\n\n    # ۳. ویرایش\n    update = client.patch(f\"/api/books/{book_id}/\", {\"price\": \"39.90\"}, format=\"json\")\n    assert update.status_code == 200\n    assert update.data[\"price\"] == \"39.90\"\n\n    # ۴. حذف\n    delete = client.delete(f\"/api/books/{book_id}/\")\n    assert delete.status_code == 204\n\n    # ۵. اطمینان از حذف\n    get_after = client.get(f\"/api/books/{book_id}/\")\n    assert get_after.status_code == 404\n```", "explanation": "تست یکپارچگی، اطمینان می‌دهد که همه لایه‌ها با هم کار می‌کنند." }
+  ],
+  "summary": [
+    "تست یکپارچگی برای جریان‌های کامل.",
+    "Mock فقط برای سرویس‌های خارجی.",
+    "تست atomic بودن تراکنش‌ها.",
+    "تست نسخه‌بندی برای سازگاری.",
+    "تست N+1 با `CaptureQueriesContext`.",
+    "Coverage هدفمند، نه ۱۰۰٪.",
+    "تست‌های مستقل و معنادار."
+  ],
+  "resources": [
+    { "title": "Django — Testing tools", "url": "https://docs.djangoproject.com/en/stable/topics/testing/tools/", "official": true },
+    { "title": "unittest.mock", "url": "https://docs.python.org/3/library/unittest.mock.html", "official": true }
+  ]
+}

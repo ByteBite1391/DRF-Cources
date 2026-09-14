@@ -1,0 +1,123 @@
+{
+  "id": "ch-055",
+  "slug": "pytest",
+  "title": "pytest و factory_boy",
+  "kicker": "فصل ۵۵",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 45,
+  "lead": "pytest و factory_boy استاندارد پروژه‌های حرفه‌ای هستند. تست‌ها خواناتر، سریع‌تر و قابل نگهداری‌تر.",
+  "sections": [
+    {
+      "id": "install",
+      "title": "نصب",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install pytest pytest-django pytest-cov factory_boy faker\npip freeze | grep pytest >> requirements-dev.txt" },
+        { "type": "code", "lang": "ini", "filename": "pytest.ini", "code": "[pytest]\nDJANGO_SETTINGS_MODULE = library_api.settings\npython_files = test_*.py tests.py\naddopts =\n    --reuse-db\n    --cov=.\n    --cov-report=term-missing\n    --cov-report=html\n    -ra\n    -q\nmarkers =\n    slow: tests that take too long\n    integration: integration tests" }
+      ]
+    },
+    {
+      "id": "first-test",
+      "title": "اولین تست با pytest",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "catalog/tests/test_books.py", "code": "import pytest\nfrom django.urls import reverse\nfrom rest_framework.test import APIClient\nfrom catalog.models import Book\n\n\n@pytest.fixture\ndef api_client():\n    return APIClient()\n\n\n@pytest.mark.django_db\ndef test_list_books_is_public(api_client):\n    Book.objects.create(\n        title=\"Clean Code\",\n        isbn=\"9780132350884\",\n        price=\"42.50\",\n        published_at=\"2008-08-01\",\n    )\n    response = api_client.get(\"/api/books/\")\n    assert response.status_code == 200\n    assert response.data[\"count\"] == 1" }
+      ]
+    },
+    {
+      "id": "fixtures",
+      "title": "Fixtureها",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "conftest.py", "code": "import pytest\nfrom django.contrib.auth import get_user_model\nfrom rest_framework.test import APIClient\n\nUser = get_user_model()\n\n\n@pytest.fixture\ndef api_client():\n    return APIClient()\n\n\n@pytest.fixture\ndef authenticated_client(api_client, user):\n    api_client.force_authenticate(user=user)\n    return api_client\n\n\n@pytest.fixture\ndef user(db):\n    return User.objects.create_user(\n        username=\"sara\", password=\"s3cret!\",\n    )\n\n\n@pytest.fixture\ndef admin_user(db):\n    return User.objects.create_user(\n        username=\"admin\", password=\"admin123\", is_staff=True,\n    )\n\n\n@pytest.fixture\ndef authenticated_admin_client(api_client, admin_user):\n    api_client.force_authenticate(user=admin_user)\n    return api_client" }
+      ]
+    },
+    {
+      "id": "factory-boy",
+      "title": "factory_boy",
+      "blocks": [
+        { "type": "paragraph", "text": "factory_boy برای ساخت داده تست به‌شکل معنادار و قابل نگهداری." },
+        { "type": "code", "lang": "python", "filename": "catalog/tests/factories.py", "code": "import factory\nfrom factory.django import DjangoModelFactory\nfrom faker import Faker\nfrom django.contrib.auth import get_user_model\nfrom catalog.models import Author, Book\n\nUser = get_user_model()\nfake = Faker(\"fa_IR\")\n\n\nclass UserFactory(DjangoModelFactory):\n    class Meta:\n        model = User\n        django_get_or_create = (\"username\",)\n\n    username = factory.Sequence(lambda n: f\"user{n}\")\n    email = factory.LazyAttribute(lambda o: f\"{o.username}@example.com\")\n    password = factory.PostGenerationMethodCall(\"set_password\", \"pass12345\")\n\n\nclass AdminFactory(UserFactory):\n    is_staff = True\n    is_superuser = True\n\n\nclass AuthorFactory(DjangoModelFactory):\n    class Meta:\n        model = Author\n\n    full_name = factory.LazyFunction(lambda: fake.name())\n    bio = factory.LazyFunction(lambda: fake.text(max_nb_chars=200))\n\n\nclass BookFactory(DjangoModelFactory):\n    class Meta:\n        model = Book\n\n    title = factory.LazyFunction(lambda: fake.sentence(nb_words=4))\n    author = factory.SubFactory(AuthorFactory)\n    isbn = factory.Sequence(lambda n: f\"978{n:010d}\")\n    price = factory.LazyFunction(lambda: fake.pydecimal(left_digits=2, right_digits=2, positive=True))\n    published_at = factory.LazyFunction(lambda: fake.date_between(start_date=\"-10y\"))\n    is_active = True" }
+      ]
+    },
+    {
+      "id": "factory-usage",
+      "title": "استفاده از factory_boy",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import pytest\nfrom .factories import BookFactory, UserFactory\n\n\n@pytest.mark.django_db\ndef test_factory_creates_book():\n    book = BookFactory(title=\"Clean Code\")\n    assert book.title == \"Clean Code\"\n    assert book.pk is not None\n    assert book.author is not None\n\n\n@pytest.mark.django_db\ndef test_batch_create():\n    books = BookFactory.create_batch(5)\n    assert len(books) == 5\n    assert Book.objects.count() == 5\n\n\n@pytest.mark.django_db\ndef test_build_without_save():\n    book = BookFactory.build()   # بدون ذخیره در DB\n    assert book.pk is None\n\n\n@pytest.mark.django_db\ndef test_custom_field():\n    user = UserFactory(username=\"specific\")\n    assert user.username == \"specific\"" }
+      ]
+    },
+    {
+      "id": "api-tests",
+      "title": "تست API با pytest",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "catalog/tests/test_api.py", "code": "import pytest\nfrom rest_framework import status\nfrom .factories import BookFactory, AdminFactory\n\n\n@pytest.mark.django_db\nclass TestBookAPI:\n    url = \"/api/books/\"\n\n    def test_list_public(self, api_client):\n        BookFactory.create_batch(3)\n        response = api_client.get(self.url)\n        assert response.status_code == status.HTTP_200_OK\n        assert response.data[\"count\"] == 3\n\n    def test_create_requires_auth(self, api_client):\n        response = api_client.post(self.url, {\"title\": \"X\"})\n        assert response.status_code == status.HTTP_401_UNAUTHORIZED\n\n    def test_admin_can_create(self, authenticated_admin_client):\n        payload = {\n            \"title\": \"New Book\",\n            \"author\": \"Author\",\n            \"isbn\": \"9780000000001\",\n            \"price\": \"10.00\",\n            \"published_at\": \"2020-01-01\",\n        }\n        response = authenticated_admin_client.post(self.url, payload)\n        assert response.status_code == status.HTTP_201_CREATED\n\n    def test_detail_not_found(self, api_client):\n        response = api_client.get(f\"{self.url}9999/\")\n        assert response.status_code == status.HTTP_404_NOT_FOUND" }
+      ]
+    },
+    {
+      "id": "parametrize",
+      "title": "پارامترسازی تست‌ها",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import pytest\n\n\n@pytest.mark.django_db\n@pytest.mark.parametrize(\"price,expected_status\", [\n    (\"10.00\", 201),\n    (\"0.01\", 201),\n    (\"0.00\", 400),\n    (\"-5.00\", 400),\n    (\"abc\", 400),\n])\ndef test_create_book_with_various_prices(authenticated_admin_client, price, expected_status):\n    payload = {\n        \"title\": \"Test\",\n        \"author\": \"Someone\",\n        \"isbn\": \"9780000000001\",\n        \"price\": price,\n        \"published_at\": \"2020-01-01\",\n    }\n    response = authenticated_admin_client.post(\"/api/books/\", payload)\n    assert response.status_code == expected_status" },
+        { "type": "note", "variant": "tip", "title": "مزیت", "text": "پارامترسازی، تست‌های مشابه را فشرده و خوانا می‌کند." }
+      ]
+    },
+    {
+      "id": "marks",
+      "title": "Markها",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import pytest\n\n\n@pytest.mark.django_db\ndef test_normal(): ...\n\n\n@pytest.mark.django_db\n@pytest.mark.slow\ndef test_slow_operation(): ...\n\n\n@pytest.mark.django_db\n@pytest.mark.integration\ndef test_full_flow(): ...\n\n\n@pytest.mark.skip(reason=\"not implemented yet\")\ndef test_future_feature(): ...\n\n\n@pytest.mark.xfail(reason=\"known bug #123\")\ndef test_known_bug(): ..." },
+        { "type": "code", "lang": "bash", "code": "# اجرای تست‌های سریع\npytest -m \"not slow\"\n\n# فقط integration\npytest -m integration\n\n# همه به‌جز slow\npytest -m \"not slow and not integration\"" }
+      ]
+    },
+    {
+      "id": "vs-unittest",
+      "title": "pytest یا unittest؟",
+      "blocks": [
+        { "type": "table", "headers": ["معیار", "unittest", "pytest"], "rows": [
+          ["Syntax", "کلاس‌محور", "تابع‌محور"],
+          ["Fixture", "setUp/tearDown", "fixture‌های انعطاف‌پذیر"],
+          ["Parametrize", "ندارد", "بومی"],
+          ["assert", "self.assertEqual", "assert ساده"],
+          ["پلاگین", "محدود", "غنی"],
+          ["سرعت اجرا", "خوب", "خوب"],
+          ["یادگیری", "آشنا برای Java/C#", "ساده‌تر"],
+          ["محبوبیت", "کاهشی", "رو به رشد"]
+        ]},
+        { "type": "callout-level", "basic": "unittest با `APITestCase`.", "better": "pytest + pytest-django.", "production": "pytest + factory_boy + coverage + CI." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "Fixtureهای تودرتو", "why": "پیچیدگی درک تست.", "when": "وقتی fixture روی fixture می‌گذارید.", "fix": "تست‌ها را ساده و مستقل نگه دارید." },
+        { "type": "anti-pattern", "title": "factory بدون Sequence", "why": "خطای unique.", "when": "وقتی چند شیء می‌سازید.", "fix": "`factory.Sequence`." },
+        { "type": "anti-pattern", "title": "تست‌های وابسته به ترتیب", "why": "failهای ناپایدار.", "when": "وقتی وضعیت مشترک است.", "fix": "هر تست مستقل." },
+        { "type": "anti-pattern", "title": "نبود coverage", "why": "نمی‌دانید چه چیزی تست نشده.", "when": "همیشه.", "fix": "`pytest-cov` در CI." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-055-q1", "tag": "کوییز", "question": "چرا factory_boy مفید است؟", "options": [
+      { "text": "چون سریع‌تر است.", "correct": false },
+      { "text": "چون داده تست معنادار، قابل تغییر و بدون تکرار می‌سازد.", "correct": true, "explanation": "به‌جای کپی داده در هر تست." },
+      { "text": "چون Django اجبار می‌کند.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-055-ex1", "title": "تمرین — تست با pytest + factory", "problem": "برای Endpoint ساخت سفارش، تست بنویسید که: سفارش با آیتم‌های معتبر (201)، سفارش بدون آیتم (400)، موجودی ناکافی (409).", "hints": ["factory برای Order و OrderItem.", "pytest.fixture.", "پارامترسازی برای حالات."], "solution": "```python\n# factories.py\nclass OrderFactory(DjangoModelFactory):\n    class Meta:\n        model = Order\n\n    customer = factory.SubFactory(UserFactory)\n    status = \"pending\"\n\n\nclass OrderItemFactory(DjangoModelFactory):\n    class Meta:\n        model = OrderItem\n\n    order = factory.SubFactory(OrderFactory)\n    product = factory.SubFactory(ProductFactory)\n    quantity = 1\n    unit_price = factory.LazyFunction(lambda: Decimal(\"10.00\"))\n\n\n# test_orders.py\nimport pytest\nfrom rest_framework import status\nfrom .factories import ProductFactory, UserFactory\n\n\n@pytest.fixture\ndef product(db):\n    return ProductFactory(stock=10, price=Decimal(\"10.00\"))\n\n\n@pytest.mark.django_db\nclass TestOrderCreate:\n    url = \"/api/orders/\"\n\n    def test_create_valid_order(self, authenticated_client, product):\n        payload = {\n            \"items\": [\n                {\"product\": product.id, \"quantity\": 2},\n            ],\n        }\n        response = authenticated_client.post(self.url, payload, format=\"json\")\n        assert response.status_code == status.HTTP_201_CREATED\n\n    def test_create_without_items(self, authenticated_client):\n        response = authenticated_client.post(self.url, {\"items\": []}, format=\"json\")\n        assert response.status_code == status.HTTP_400_BAD_REQUEST\n\n    def test_insufficient_stock(self, authenticated_client, product):\n        payload = {\n            \"items\": [\n                {\"product\": product.id, \"quantity\": 100},\n            ],\n        }\n        response = authenticated_client.post(self.url, payload, format=\"json\")\n        assert response.status_code == status.HTTP_409_CONFLICT\n```", "explanation": "این ترکیب pytest + factory_boy استاندارد پروژه‌های حرفه‌ای است." }
+  ],
+  "summary": [
+    "pytest + pytest-django استاندارد مدرن.",
+    "fixtureهای انعطاف‌پذیر.",
+    "factory_boy برای داده معنادار.",
+    "parametrize برای تست‌های فشرده.",
+    "mark برای دسته‌بندی.",
+    "coverage در CI.",
+    "تست مستقل، خوانا، سریع."
+  ],
+  "resources": [
+    { "title": "pytest Documentation", "url": "https://docs.pytest.org/", "official": true },
+    { "title": "pytest-django", "url": "https://pytest-django.readthedocs.io/", "official": true },
+    { "title": "factory_boy", "url": "https://factoryboy.readthedocs.io/", "official": true }
+  ]
+}

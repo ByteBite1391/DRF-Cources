@@ -1,0 +1,112 @@
+{
+  "id": "ch-052",
+  "slug": "openapi",
+  "title": "OpenAPI",
+  "kicker": "فصل ۵۲",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 35,
+  "lead": "OpenAPI استاندارد بین‌المللی توصیف APIهاست. ابزارهای مستندسازی، SDK و تست خودکار از آن ساخته می‌شوند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "OpenAPI چیست؟",
+      "blocks": [
+        { "type": "paragraph", "text": "**OpenAPI** (سابقاً Swagger) یک مشخصات استاندارد برای توصیف APIهای REST است. یک فایل JSON یا YAML که می‌گوید:\n- چه Endpointهایی وجود دارند\n- چه پارامترهایی می‌پذیرند\n- چه بدنه‌ای می‌خواهند\n- چه پاسخی می‌دهند\n- چطور احراز هویت می‌شوند" },
+        { "type": "list", "ordered": false, "items": [
+          "**مستندات تعاملی:** Swagger UI، ReDoc",
+          "**تولید SDK:** کلاینت‌های چندزبانه",
+          "**تست خودکار:** از روی اسکیما",
+          "**Code Generation:** stubهای سرور",
+          "**اعتبارسنجی:** بررسی سازگاری"
+        ]}
+      ]
+    },
+    {
+      "id": "structure",
+      "title": "ساختار OpenAPI",
+      "blocks": [
+        { "type": "code", "lang": "yaml", "filename": "openapi.yaml", "code": "openapi: 3.0.3\ninfo:\n  title: Library API\n  version: 1.0.0\n  description: API کتابخانه دیجیتال\n\nservers:\n  - url: https://api.example.com/v1\n\npaths:\n  /books/:\n    get:\n      summary: لیست کتاب‌ها\n      parameters:\n        - name: category\n          in: query\n          schema:\n            type: string\n      responses:\n        '200':\n          description: موفق\n          content:\n            application/json:\n              schema:\n                type: array\n                items:\n                  $ref: '#/components/schemas/Book'\n    post:\n      summary: ساخت کتاب جدید\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              $ref: '#/components/schemas/BookInput'\n      responses:\n        '201':\n          description: ساخته شد\n\ncomponents:\n  schemas:\n    Book:\n      type: object\n      properties:\n        id: {type: integer}\n        title: {type: string}\n        price: {type: string, format: decimal}\n    BookInput:\n      type: object\n      required: [title, price]\n      properties:\n        title: {type: string, maxLength: 250}\n        price: {type: string, format: decimal}\n\n  securitySchemes:\n    BearerAuth:\n      type: http\n      scheme: bearer\n      bearerFormat: JWT" }
+      ]
+    },
+    {
+      "id": "drf-spectacular",
+      "title": "drf-spectacular",
+      "blocks": [
+        { "type": "paragraph", "text": "پکیج پیشنهادی برای DRF. OpenAPI 3 را از ViewSetها، Serializerها و پارامترها استخراج می‌کند." },
+        { "type": "code", "lang": "bash", "code": "pip install drf-spectacular" },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "INSTALLED_APPS = [\n    # ...\n    \"drf_spectacular\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_SCHEMA_CLASS\": \"drf_spectacular.openapi.AutoSchema\",\n}\n\nSPECTACULAR_SETTINGS = {\n    \"TITLE\": \"Library API\",\n    \"DESCRIPTION\": \"API کتابخانه دیجیتال — نمونه آموزشی\",\n    \"VERSION\": \"1.0.0\",\n    \"SERVE_INCLUDE_SCHEMA\": False,\n    \"COMPONENT_SPLIT_REQUEST\": True,\n    \"SORT_OPERATIONS\": False,\n}" },
+        { "type": "code", "lang": "python", "filename": "urls.py", "code": "from drf_spectacular.views import (\n    SpectacularAPIView,\n    SpectacularSwaggerView,\n    SpectacularRedocView,\n)\n\nurlpatterns += [\n    path(\"api/schema/\", SpectacularAPIView.as_view(), name=\"schema\"),\n    path(\"api/docs/\", SpectacularSwaggerView.as_view(url_name=\"schema\")),\n    path(\"api/redoc/\", SpectacularRedocView.as_view(url_name=\"schema\")),\n]" },
+        { "type": "note", "variant": "tip", "title": "خروجی‌ها", "text": "`/api/schema/` فایل YAML یا JSON می‌دهد. `/api/docs/` Swagger UI تعاملی. `/api/redoc/` ReDoc خوانا." }
+      ]
+    },
+    {
+      "id": "extend-schema",
+      "title": "غنی‌سازی با extend_schema",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from drf_spectacular.utils import (\n    extend_schema, OpenApiParameter, OpenApiTypes, OpenApiExample, OpenApiResponse,\n)\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    @extend_schema(\n        summary=\"لیست کتاب‌ها\",\n        description=\"لیست کتاب‌های فعال با فیلتر و جستجو.\",\n        parameters=[\n            OpenApiParameter(\"category\", OpenApiTypes.STR, description=\"اسلاگ دسته‌بندی\"),\n            OpenApiParameter(\"min_price\", OpenApiTypes.DECIMAL, description=\"حداقل قیمت\"),\n            OpenApiParameter(\"search\", OpenApiTypes.STR, description=\"جستجو در عنوان\"),\n        ],\n        responses={200: BookListSerializer(many=True)},\n        examples=[\n            OpenApiExample(\n                \"نمونه پاسخ\",\n                value={\"id\": 1, \"title\": \"Clean Code\", \"price\": \"42.50\"},\n                response_only=True,\n            ),\n        ],\n    )\n    def list(self, request, *args, **kwargs):\n        return super().list(request, *args, **kwargs)\n\n    @extend_schema(\n        summary=\"ساخت کتاب\",\n        responses={\n            201: BookSerializer,\n            400: OpenApiResponse(description=\"داده نامعتبر\"),\n        },\n    )\n    def create(self, request, *args, **kwargs):\n        return super().create(request, *args, **kwargs)" }
+      ]
+    },
+    {
+      "id": "custom-schema",
+      "title": "سفارشی‌سازی Schema",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# در تنظیمات\nSPECTACULAR_SETTINGS = {\n    \"TITLE\": \"Library API\",\n    \"VERSION\": \"1.0.0\",\n    \"SERVE_PERMISSIONS\": [\"rest_framework.permissions.IsAdminUser\"],\n    \"SERVE_AUTHENTICATION\": [\"rest_framework.authentication.SessionAuthentication\"],\n    \"SWAGGER_UI_SETTINGS\": {\n        \"deepLinking\": True,\n        \"persistAuthorization\": True,\n        \"displayOperationId\": True,\n    },\n    \"COMPONENT_SPLIT_REQUEST\": True,\n    \"SORT_OPERATIONS\": False,\n    \"ENUM_NAME_OVERRIDES\": {\n        \"BookStatus\": \"catalog.models.Book.STATUS_CHOICES\",\n    },\n}" }
+      ]
+    },
+    {
+      "id": "tags",
+      "title": "گروه‌بندی با Tags",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class BookViewSet(viewsets.ModelViewSet):\n    @extend_schema(tags=[\"Books\"])\n    def list(self, request): ...\n\n    @extend_schema(tags=[\"Books\"])\n    def create(self, request): ...\n\n\n# یا با @extend_schema_view برای کل کلاس\nfrom drf_spectacular.utils import extend_schema_view\n\n\n@extend_schema_view(\n    list=extend_schema(tags=[\"Books\"]),\n    retrieve=extend_schema(tags=[\"Books\"]),\n    create=extend_schema(tags=[\"Books\"]),\n    update=extend_schema(tags=[\"Books\"]),\n    destroy=extend_schema(tags=[\"Books\"]),\n)\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer" }
+      ]
+    },
+    {
+      "id": "examples",
+      "title": "مثال‌های چندریختی",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from drf_spectacular.utils import extend_schema, OpenApiExample\n\n\n@extend_schema(\n    examples=[\n        OpenApiExample(\n            \"فرضی — موفق\",\n            value={\"email\": \"sara@example.com\", \"password\": \"secret\"},\n            request_only=True,\n        ),\n        OpenApiExample(\n            \"فرضی — ناموفق\",\n            value={\"email\": \"bad-email\"},\n            request_only=True,\n        ),\n        OpenApiExample(\n            \"پاسخ موفق\",\n            value={\"access\": \"eyJ...\", \"refresh\": \"eyJ...\"},\n            response_only=True,\n        ),\n    ],\n)\nclass LoginView(APIView):\n    def post(self, request): ..." }
+      ]
+    },
+    {
+      "id": "cli-tips",
+      "title": "دستورات CLI مفید",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "# تولید فایل schema\npython manage.py spectacular --file schema.yml\n\n# اعتبارسنجی schema\npython manage.py spectacular --validate\n\n# با فرمت JSON\npython manage.py spectacular --file schema.json --format openapi-json" },
+        { "type": "note", "variant": "tip", "title": "در CI", "text": "با هر commit، schema را تولید و اعتبارسنجی کنید. تغییرات شکننده را زود بگیرید." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "نبود schema در پروژه", "why": "کلاینت نمی‌داند چطور استفاده کند، مستندسازی دستی زود کهنه می‌شود.", "when": "همیشه در پروژه‌های جدی.", "fix": "drf-spectacular از روز اول." },
+        { "type": "anti-pattern", "title": "schema در تولید در دسترس عموم", "why": "افشای ساختار داخلی.", "when": "وقتی API عمومی است.", "fix": "`SERVE_PERMISSIONS` = admin، یا schema فقط در staging." },
+        { "type": "anti-pattern", "title": "نبود مثال در schema", "why": "کلاینت نمی‌داند چه بفرستد.", "when": "همیشه.", "fix": "`OpenApiExample` برای هر Endpoint حساس." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-052-q1", "tag": "کوییز", "question": "کدام پکیج پیشنهادی برای OpenAPI در DRF است؟", "options": [
+      { "text": "`drf-yasg`", "correct": false },
+      { "text": "`drf-spectacular`", "correct": true, "explanation": "نسخه مدرن و پشتیبانی OpenAPI 3." },
+      { "text": "`drf-docs`", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-052-ex1", "title": "تمرین — OpenAPI برای یک ViewSet", "problem": "برای یک ViewSet محصول، OpenAPI بسازید با: توضیح فارسی، پارامترهای فیلتر، مثال پاسخ موفق، مثال پاسخ 400.", "hints": ["از `extend_schema` استفاده کنید.", "برای پارامترها از `OpenApiParameter`.", "برای مثال‌ها از `OpenApiExample`."], "solution": "```python\nfrom drf_spectacular.utils import (\n    extend_schema, OpenApiParameter, OpenApiTypes, OpenApiExample, OpenApiResponse,\n)\n\n\nclass ProductViewSet(viewsets.ModelViewSet):\n    queryset = Product.objects.all()\n    serializer_class = ProductSerializer\n\n    @extend_schema(\n        summary=\"لیست محصولات\",\n        description=\"محصولات فعال با فیلتر دسته، برند و بازه قیمت.\",\n        parameters=[\n            OpenApiParameter(\"category\", OpenApiTypes.STR),\n            OpenApiParameter(\"brand\", OpenApiTypes.STR),\n            OpenApiParameter(\"min_price\", OpenApiTypes.DECIMAL),\n            OpenApiParameter(\"max_price\", OpenApiTypes.DECIMAL),\n        ],\n        examples=[\n            OpenApiExample(\"نمونه\", value={\"id\": 1, \"name\": \"Keyboard\", \"price\": \"89.50\"}, response_only=True),\n        ],\n    )\n    def list(self, request, *args, **kwargs):\n        return super().list(request, *args, **kwargs)\n\n    @extend_schema(\n        responses={\n            201: ProductSerializer,\n            400: OpenApiResponse(description=\"داده نامعتبر\"),\n        },\n    )\n    def create(self, request, *args, **kwargs):\n        return super().create(request, *args, **kwargs)\n```", "explanation": "این کار schema را برای مصرف‌کننده‌ها کاربردی می‌کند." }
+  ],
+  "summary": [
+    "OpenAPI استاندارد توصیف API.",
+    "drf-spectacular پکیج پیشنهادی.",
+    "Swagger UI + ReDoc از schema ساخته می‌شوند.",
+    "`extend_schema` برای غنی‌سازی.",
+    "`OpenApiExample` برای نمونه.",
+    "Tags برای گروه‌بندی.",
+    "در CI، schema را اعتبارسنجی کنید."
+  ],
+  "resources": [
+    { "title": "OpenAPI Specification", "url": "https://spec.openapis.org/", "official": true },
+    { "title": "drf-spectacular", "url": "https://drf-spectacular.readthedocs.io/", "official": true }
+  ]
+}

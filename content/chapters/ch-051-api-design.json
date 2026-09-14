@@ -1,0 +1,128 @@
+{
+  "id": "ch-051",
+  "slug": "api-design",
+  "title": "اصول طراحی API",
+  "kicker": "فصل ۵۱",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "طراحی خوب API، تفاوت بین یک سرویس حرفه‌ای و یک پروژه آماتور است. این فصل اصول عملی را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "resources",
+      "title": "نام‌گذاری منابع",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**اسم جمع:** `/books/` نه `/book/`",
+          "**حروف کوچک:** `/user-profiles/` نه `/UserProfiles/`",
+          "**خط تیره، نه زیرخط:** `/user-profiles/` نه `/user_profiles/`",
+          "**بدون پسوند:** `/books/` نه `/books.json`",
+          "**سلسله‌مراتب با /:** `/books/42/reviews/`",
+          "**بدون فعل:** `/books/` نه `/getBooks/`"
+        ]},
+        { "type": "code", "lang": "text", "code": "✅ درست:\nGET    /api/books/\nPOST   /api/books/\nGET    /api/books/42/\nPATCH  /api/books/42/\nDELETE /api/books/42/\nGET    /api/books/42/reviews/\n\n❌ غلط:\nGET  /api/getAllBooks\nPOST /api/createBook\nGET  /api/book/42\nPOST /api/books/delete/42\nGET  /api/BookReviews?book=42" }
+      ]
+    },
+    {
+      "id": "http-semantics",
+      "title": "استفاده درست از متدها",
+      "blocks": [
+        { "type": "table", "headers": ["عملیات", "متد", "بدنه؟", "ایدِم‌پوتنت؟"], "rows": [
+          ["خواندن لیست", "GET", "خیر", "بله"],
+          ["خواندن یک", "GET", "خیر", "بله"],
+          ["ساخت", "POST", "بله", "خیر"],
+          ["جایگزینی کامل", "PUT", "بله", "بله"],
+          ["ویرایش جزئی", "PATCH", "بله", "خیر"],
+          ["حذف", "DELETE", "خیر", "بله"]
+        ]},
+        { "type": "note", "variant": "warn", "title": "PUT در برابر PATCH", "text": "PUT منبع را **کاملاً** جایگزین می‌کند. اگر فیلدی نفرستید، پاک یا پیش‌فرض می‌شود. PATCH فقط فیلدهای ارسالی را تغییر می‌دهد." }
+      ]
+    },
+    {
+      "id": "status-codes",
+      "title": "انتخاب کد وضعیت",
+      "blocks": [
+        { "type": "table", "headers": ["سناریو", "کد"], "rows": [
+          ["GET موفق", "200"],
+          ["POST موفق", "201"],
+          ["DELETE موفق", "204"],
+          ["داده نامعتبر", "400"],
+          ["بدون احراز هویت", "401"],
+          ["بدون مجوز", "403"],
+          ["پیدا نشد", "404"],
+          ["متد غیرمجاز", "405"],
+          ["تناقض (unique)", "409"],
+          ["Content-Type نامعتبر", "415"],
+          ["Throttled", "429"],
+          ["خطای سرور", "500"],
+          ["سرویس در دسترس نیست", "503"]
+        ]}
+      ]
+    },
+    {
+      "id": "error-format",
+      "title": "ساختار خطا",
+      "blocks": [
+        { "type": "code", "lang": "json", "code": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"داده‌های ورودی نامعتبرند.\",\n    \"details\": {\n      \"email\": [\"این ایمیل قبلاً ثبت شده است.\"]\n    }\n  },\n  \"request_id\": \"req_abc123\"\n}" },
+        { "type": "note", "variant": "tip", "title": "کد خطا را جدا بدهید", "text": "کلاینت باید بتواند بر اساس `code` تصمیم برنامه‌نویسی‌شده بگیرد، نه بر اساس متن پیام." }
+      ]
+    },
+    {
+      "id": "pagination-filter",
+      "title": "صفحه‌بندی، فیلتر، جستجو",
+      "blocks": [
+        { "type": "code", "lang": "text", "code": "# صفحه‌بندی\nGET /api/books/?page=2&page_size=20\n\n# فیلتر\nGET /api/books/?category=fiction&min_price=10\n\n# جستجو\nGET /api/books/?search=clean+code\n\n# مرتب‌سازی\nGET /api/books/?ordering=-price\n\n# ترکیب همه\nGET /api/books/?category=fiction&search=clean&ordering=-price&page=2" },
+        { "type": "note", "variant": "info", "title": "قواعد نام‌گذاری پارامترها", "text": "snake_case، حروف کوچک، معنادار. بازه‌ها با `_min`/`_max`، تاریخ‌ها با `_after`/`_before`." }
+      ]
+    },
+    {
+      "id": "versioning",
+      "title": "نسخه‌بندی و Deprecation",
+      "blocks": [
+        { "type": "code", "lang": "text", "code": "/api/v1/books/\n/api/v2/books/" },
+        { "type": "paragraph", "text": "پیش از بازنشستگی نسخه، در هدرها اطلاع دهید:" },
+        { "type": "code", "lang": "text", "code": "Deprecation: true\nSunset: Sat, 31 Dec 2025 23:59:59 GMT\nLink: </api/v2/>; rel=\"successor-version\"" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "فعل در URL", "why": "URL منبع را توصیف می‌کند، متد عملیات.", "when": "وقتی از PHP آمده‌اید.", "fix": "`DELETE /books/42/` نه `POST /books/42/delete/`." },
+        { "type": "anti-pattern", "title": "GET برای تغییر داده", "why": "خزنده‌ها و پیش‌بارگذاری مرورگر آن را اجرا می‌کنند.", "when": "همیشه.", "fix": "POST، PUT، PATCH یا DELETE." },
+        { "type": "anti-pattern", "title": "کد 200 برای همه چیز", "why": "کلاینت نمی‌فهمد چه اتفاقی افتاده.", "when": "وقتی تیم فرهنگ ضعیف دارد.", "fix": "کد دقیق + بدنه خطا." },
+        { "type": "anti-pattern", "title": "بازگرداندن همه فیلدها", "why": "داده حساس، حجم زیاد.", "when": "وقتی `fields = \"__all__\"`.", "fix": "فیلدها صریح لیست." },
+        { "type": "anti-pattern", "title": "نبود صفحه‌بندی", "why": "سرور و کلاینت خفه می‌شوند.", "when": "در همه APIها.", "fix": "Pagination همیشه." },
+        { "type": "anti-pattern", "title": "URLهای غیرقابل پیش‌بینی", "why": "کلاینت باید حدس بزند.", "when": "وقتی طراحی منظم نیست.", "fix": "قواعد یکسان در همه منابع." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-051-q1", "tag": "کوییز", "question": "کدام URL استاندارد REST است؟", "options": [
+      { "text": "`GET /getAllBooks`", "correct": false },
+      { "text": "`GET /books/`", "correct": true, "explanation": "اسم جمع + بدون فعل + متد GET." },
+      { "text": "`POST /books/delete/42`", "correct": false }
+    ]},
+    { "id": "ch-051-q2", "tag": "کوییز", "question": "برای حذف موفق چه کدی؟", "options": [
+      { "text": "200", "correct": false },
+      { "text": "204", "correct": true, "explanation": "204 No Content یعنی موفق بدون بدنه." },
+      { "text": "404", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-051-ex1", "title": "تمرین — طراحی API کتابخانه", "problem": "برای یک کتابخانه آنلاین، Endpointها را طراحی کنید: کاربران، کتاب‌ها، امانت‌ها، رزروها. تمام قواعد نام‌گذاری و کدهای وضعیت را رعایت کنید.", "hints": ["اسم جمع", "زیرمنابع با /", "کدهای وضعیت دقیق"], "solution": "```\n# کاربران\nGET    /api/users/\nPOST   /api/users/\nGET    /api/users/42/\nPATCH  /api/users/42/\nDELETE /api/users/42/\n\n# کتاب‌ها\nGET    /api/books/\nPOST   /api/books/\nGET    /api/books/42/\nPATCH  /api/books/42/\n\n# امانت‌ها\nGET    /api/loans/\nPOST   /api/loans/\nGET    /api/loans/42/\nPOST   /api/loans/42/return/\n\n# رزروها\nGET    /api/books/42/reservations/\nPOST   /api/books/42/reservations/\nDELETE /api/books/42/reservations/7/\n```", "explanation": "این الگو در همه منابع تکرار می‌شود." }
+  ],
+  "summary": [
+    "اسم جمع، بدون فعل، خط تیره در slug.",
+    "GET/HEAD/OPTIONS امن، POST/PUT/PATCH/DELETE تغییردهنده.",
+    "کد وضعیت دقیق، نه 200 برای همه چیز.",
+    "ساختار خطا یکدست با code و message.",
+    "صفحه‌بندی همیشه.",
+    "نسخه‌بندی از روز اول.",
+    "Deprecation با هدر Sunset."
+  ],
+  "resources": [
+    { "title": "Microsoft REST API Guidelines", "url": "https://github.com/microsoft/api-guidelines", "official": false },
+    { "title": "Zalando RESTful API Guidelines", "url": "https://opensource.zalando.com/restful-api-guidelines/", "official": false }
+  ]
+}

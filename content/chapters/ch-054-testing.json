@@ -1,0 +1,102 @@
+{
+  "id": "ch-054",
+  "slug": "testing",
+  "title": "تست‌نویسی در DRF",
+  "kicker": "فصل ۵۴",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 45,
+  "lead": "تست‌ها به شما اجازه می‌دهند بدون ترس تغییر دهید. DRF ابزارهای اختصاصی برای تست API دارد.",
+  "sections": [
+    {
+      "id": "setup",
+      "title": "راه‌اندازی",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "catalog/tests/__init__.py", "code": "# ساختار پیشنهادی\n# catalog/tests/\n# ├── __init__.py\n# ├── test_models.py\n# ├── test_serializers.py\n# ├── test_views.py\n# ├── test_permissions.py\n# ├── test_services.py\n# └── factories.py" }
+      ]
+    },
+    {
+      "id": "api-client",
+      "title": "APIClient و APITestCase",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "catalog/tests/test_views.py", "code": "from rest_framework.test import APITestCase, APIClient\nfrom rest_framework import status\nfrom django.contrib.auth import get_user_model\nfrom catalog.models import Book\n\nUser = get_user_model()\n\n\nclass BookAPITestCase(APITestCase):\n    def setUp(self):\n        self.user = User.objects.create_user(\n            username=\"sara\", password=\"s3cret!\",\n        )\n        self.staff = User.objects.create_user(\n            username=\"admin\", password=\"admin123\", is_staff=True,\n        )\n        self.book = Book.objects.create(\n            title=\"Clean Code\",\n            author=\"Robert C. Martin\",\n            isbn=\"9780132350884\",\n            price=\"42.50\",\n            published_at=\"2008-08-01\",\n        )\n\n    def test_list_books_is_public(self):\n        response = self.client.get(\"/api/books/\")\n        self.assertEqual(response.status_code, status.HTTP_200_OK)\n        self.assertEqual(response.data[\"count\"], 1)\n\n    def test_create_requires_auth(self):\n        response = self.client.post(\"/api/books/\", {\"title\": \"X\"}, format=\"json\")\n        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)\n\n    def test_staff_can_create(self):\n        self.client.force_authenticate(user=self.staff)\n        payload = {\n            \"title\": \"Refactoring\",\n            \"author\": \"Martin Fowler\",\n            \"isbn\": \"9780134757599\",\n            \"price\": \"55.00\",\n            \"published_at\": \"2018-11-20\",\n        }\n        response = self.client.post(\"/api/books/\", payload, format=\"json\")\n        self.assertEqual(response.status_code, status.HTTP_201_CREATED)\n        self.assertEqual(Book.objects.count(), 2)\n\n    def test_update_book(self):\n        self.client.force_authenticate(user=self.staff)\n        response = self.client.patch(\n            f\"/api/books/{self.book.id}/\",\n            {\"price\": \"39.90\"},\n            format=\"json\",\n        )\n        self.assertEqual(response.status_code, status.HTTP_200_OK)\n        self.book.refresh_from_db()\n        self.assertEqual(str(self.book.price), \"39.90\")\n\n    def test_delete_book(self):\n        self.client.force_authenticate(user=self.staff)\n        response = self.client.delete(f\"/api/books/{self.book.id}/\")\n        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)\n        self.assertFalse(Book.objects.filter(id=self.book.id).exists())" }
+      ]
+    },
+    {
+      "id": "auth-tests",
+      "title": "روش‌های احراز هویت در تست",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# روش ۱: force_authenticate — سریع‌ترین\nself.client.force_authenticate(user=self.user)\n\n# روش ۲: login واقعی\nself.client.login(username=\"sara\", password=\"s3cret!\")\n\n# روش ۳: با توکن\nfrom rest_framework.authtoken.models import Token\n\ntoken = Token.objects.create(user=self.user)\nself.client.credentials(HTTP_AUTHORIZATION=f\"Token {token.key}\")\n\n# روش ۴: با JWT\nfrom rest_framework_simplejwt.tokens import RefreshToken\n\nrefresh = RefreshToken.for_user(self.user)\nself.client.credentials(HTTP_AUTHORIZATION=f\"Bearer {refresh.access_token}\")\n\n# پاک کردن credentials\nself.client.credentials()" }
+      ]
+    },
+    {
+      "id": "serializer-tests",
+      "title": "تست سریالایزر",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "catalog/tests/test_serializers.py", "code": "from rest_framework.test import APITestCase\nfrom catalog.serializers import BookSerializer\n\n\nclass BookSerializerTests(APITestCase):\n    def test_isbn_must_be_numeric(self):\n        data = {\n            \"title\": \"Test\",\n            \"author\": \"Someone\",\n            \"isbn\": \"ABC-123\",\n            \"price\": \"10.00\",\n            \"published_at\": \"2020-01-01\",\n        }\n        serializer = BookSerializer(data=data)\n        self.assertFalse(serializer.is_valid())\n        self.assertIn(\"isbn\", serializer.errors)\n\n    def test_price_must_be_positive(self):\n        data = {\n            \"title\": \"Test\",\n            \"author\": \"Someone\",\n            \"isbn\": \"9781234567897\",\n            \"price\": \"-5.00\",\n            \"published_at\": \"2020-01-01\",\n        }\n        serializer = BookSerializer(data=data)\n        self.assertFalse(serializer.is_valid())\n        self.assertIn(\"price\", serializer.errors)\n\n    def test_valid_data_creates_book(self):\n        data = {\n            \"title\": \"Valid Book\",\n            \"author\": \"Some Author\",\n            \"isbn\": \"9781234567897\",\n            \"price\": \"19.99\",\n            \"published_at\": \"2020-01-01\",\n        }\n        serializer = BookSerializer(data=data)\n        self.assertTrue(serializer.is_valid(), serializer.errors)\n        book = serializer.save()\n        self.assertEqual(book.title, \"Valid Book\")" }
+      ]
+    },
+    {
+      "id": "permission-tests",
+      "title": "تست مجوزها",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class BookPermissionTests(APITestCase):\n    def setUp(self):\n        self.owner = User.objects.create_user(username=\"owner\", password=\"pass12345\")\n        self.other = User.objects.create_user(username=\"other\", password=\"pass12345\")\n        self.admin = User.objects.create_user(username=\"admin\", password=\"pass12345\", is_staff=True)\n        self.book = Book.objects.create(owner=self.owner, title=\"Mine\", isbn=\"9780000000001\", price=\"10.00\", published_at=\"2020-01-01\")\n\n    def test_owner_can_edit(self):\n        self.client.force_authenticate(self.owner)\n        response = self.client.patch(f\"/api/books/{self.book.id}/\", {\"title\": \"Edited\"}, format=\"json\")\n        self.assertEqual(response.status_code, 200)\n\n    def test_other_cannot_edit(self):\n        self.client.force_authenticate(self.other)\n        response = self.client.patch(f\"/api/books/{self.book.id}/\", {\"title\": \"Hacked\"}, format=\"json\")\n        self.assertIn(response.status_code, (403, 404))\n\n    def test_admin_can_delete(self):\n        self.client.force_authenticate(self.admin)\n        response = self.client.delete(f\"/api/books/{self.book.id}/\")\n        self.assertEqual(response.status_code, 204)\n\n    def test_anonymous_cannot_create(self):\n        response = self.client.post(\"/api/books/\", {}, format=\"json\")\n        self.assertEqual(response.status_code, 401)" }
+      ]
+    },
+    {
+      "id": "auth-endpoint-tests",
+      "title": "تست Endpointهای احراز هویت",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class AuthEndpointTests(APITestCase):\n    def test_register_creates_user(self):\n        payload = {\n            \"username\": \"newuser\",\n            \"email\": \"new@example.com\",\n            \"password\": \"S3cret!Pass\",\n            \"password_confirm\": \"S3cret!Pass\",\n        }\n        response = self.client.post(\"/api/auth/register/\", payload, format=\"json\")\n        self.assertEqual(response.status_code, 201)\n        self.assertIn(\"access\", response.data)\n\n    def test_login_returns_tokens(self):\n        User.objects.create_user(username=\"sara\", password=\"s3cret!\")\n        response = self.client.post(\n            \"/api/auth/login/\",\n            {\"username\": \"sara\", \"password\": \"s3cret!\"},\n            format=\"json\",\n        )\n        self.assertEqual(response.status_code, 200)\n        self.assertIn(\"access\", response.data)\n        self.assertIn(\"refresh\", response.data)\n\n    def test_login_wrong_password(self):\n        User.objects.create_user(username=\"sara\", password=\"s3cret!\")\n        response = self.client.post(\n            \"/api/auth/login/\",\n            {\"username\": \"sara\", \"password\": \"wrong\"},\n            format=\"json\",\n        )\n        self.assertEqual(response.status_code, 401)" }
+      ]
+    },
+    {
+      "id": "throttle-tests",
+      "title": "تست Throttling",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from django.core.cache import cache\nfrom django.test import override_settings\n\n\n@override_settings(\n    REST_FRAMEWORK={\n        \"DEFAULT_THROTTLE_RATES\": {\"login\": \"3/min\"},\n    }\n)\nclass ThrottleTests(APITestCase):\n    def setUp(self):\n        cache.clear()\n\n    def test_login_throttled_after_limit(self):\n        for _ in range(3):\n            self.client.post(\n                \"/api/auth/login/\",\n                {\"username\": \"x\", \"password\": \"y\"},\n                format=\"json\",\n            )\n        response = self.client.post(\n            \"/api/auth/login/\",\n            {\"username\": \"x\", \"password\": \"y\"},\n            format=\"json\",\n        )\n        self.assertEqual(response.status_code, 429)\n        self.assertIn(\"Retry-After\", response.headers)" }
+      ]
+    },
+    {
+      "id": "coverage",
+      "title": "Coverage",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install coverage\n\ncoverage run --source='.' manage.py test\ncoverage report\ncoverage html   # گزارش HTML در htmlcov/" },
+        { "type": "note", "variant": "tip", "title": "هدف", "text": "هدف ۸۰٪ پوشش کد. اما کیفیت تست مهم‌تر از درصد است — تست‌های معنادار بنویسید." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "تست ننوشتن", "why": "هر تغییر ممکن است چیزی را بشکند.", "when": "همیشه.", "fix": "حداقل برای منطق کسب‌وکار و مجوزها." },
+        { "type": "anti-pattern", "title": "تست بدون assert", "why": "تست همیشه پاس می‌شود اما چیزی را بررسی نمی‌کند.", "when": "وقتی تازه‌کار هستید.", "fix": "همیشه assert." },
+        { "type": "anti-pattern", "title": "تست با دیتابیس واقعی در همه جا", "why": "کند.", "when": "برای سریالایزرها.", "fix": "سریالایزر را با داده ساده تست کنید." },
+        { "type": "anti-pattern", "title": "تست‌های وابسته به ترتیب", "why": "fail‌های ناپایدار.", "when": "وقتی setUp مشترک نیست.", "fix": "هر تست مستقل." },
+        { "type": "anti-pattern", "title": "نبود تست مجوز", "why": "باگ امنیتی.", "when": "وقتی مجوز دارید.", "fix": "برای هر نقش، یک تست." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-054-q1", "tag": "کوییز", "question": "سریع‌ترین روش احراز هویت در تست چیست؟", "options": [
+      { "text": "`client.login()`", "correct": false },
+      { "text": "`client.force_authenticate()`", "correct": true, "explanation": "بدون overhead احراز هویت واقعی." },
+      { "text": "JWT دستی", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-054-ex1", "title": "تمرین — تست کامل یک Endpoint", "problem": "برای Endpoint ساخت کتاب، تست بنویسید که پوشش دهد: ناشناس (401)، کاربر عادی (201)، داده نامعتبر (400)، یونیک بودن ISBN (400).", "hints": ["از `APITestCase`.", "برای ناشناس، بدون force_authenticate.", "برای داده نامعتبر، فیلد الزامی را ندهید."], "solution": "```python\nclass CreateBookTests(APITestCase):\n    def setUp(self):\n        self.user = User.objects.create_user(username=\"sara\", password=\"s3cret!\")\n        self.valid_payload = {\n            \"title\": \"Clean Code\",\n            \"author\": \"Robert C. Martin\",\n            \"isbn\": \"9780132350884\",\n            \"price\": \"42.50\",\n            \"published_at\": \"2008-08-01\",\n        }\n\n    def test_anonymous_gets_401(self):\n        response = self.client.post(\"/api/books/\", self.valid_payload, format=\"json\")\n        self.assertEqual(response.status_code, 401)\n\n    def test_authenticated_creates_201(self):\n        self.client.force_authenticate(self.user)\n        response = self.client.post(\"/api/books/\", self.valid_payload, format=\"json\")\n        self.assertEqual(response.status_code, 201)\n        self.assertEqual(Book.objects.count(), 1)\n\n    def test_invalid_payload_gets_400(self):\n        self.client.force_authenticate(self.user)\n        invalid = self.valid_payload.copy()\n        invalid.pop(\"title\")\n        response = self.client.post(\"/api/books/\", invalid, format=\"json\")\n        self.assertEqual(response.status_code, 400)\n        self.assertIn(\"title\", response.data)\n\n    def test_duplicate_isbn_gets_400(self):\n        self.client.force_authenticate(self.user)\n        Book.objects.create(**{k: v for k, v in self.valid_payload.items()})\n        response = self.client.post(\"/api/books/\", self.valid_payload, format=\"json\")\n        self.assertEqual(response.status_code, 400)\n        self.assertIn(\"isbn\", response.data)\n```", "explanation": "این الگو تمام سناریوهای یک Endpoint را پوشش می‌دهد." }
+  ],
+  "summary": [
+    "`APITestCase` و `APIClient` ابزارهای اصلی.",
+    "`force_authenticate` سریع‌ترین روش Auth در تست.",
+    "تست سریالایزر، View، مجوز، Throttle.",
+    "`override_settings` برای تغییرات موقت.",
+    "Coverage برای سنجش پوشش.",
+    "تست مستقل، معنادار، با assert."
+  ],
+  "resources": [
+    { "title": "DRF — Testing", "url": "https://www.django-rest-framework.org/api-guide/testing/", "official": true },
+    { "title": "Django — Testing", "url": "https://docs.djangoproject.com/en/stable/topics/testing/", "official": true }
+  ]
+}
