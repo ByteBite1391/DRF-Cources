@@ -1,0 +1,79 @@
+{
+  "id": "ch-068",
+  "slug": "drf-internals-request",
+  "title": "درون‌کاوی DRF — Request",
+  "kicker": "فصل ۶۸",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 30,
+  "lead": "وقتی می‌دانید DRF چطور کار می‌کند، می‌توانید رفتارش را تغییر دهید و باگ‌ها را سریع پیدا کنید.",
+  "sections": [
+    {
+      "id": "initialize-request",
+      "title": "initialize_request",
+      "blocks": [
+        { "type": "paragraph", "text": "هنگام ورود درخواست، `APIView.dispatch()` یک `Request` DRF می‌سازد که `HttpRequest` را wrap می‌کند." },
+        { "type": "code", "lang": "python", "code": "# معادل مفهومی\ndef initialize_request(self, request, *args, **kwargs):\n    parsers = self.get_parsers()\n    authenticators = self.get_authenticators()\n    negotiator = self.get_content_negotiator()\n    parser_context = self.get_parser_context(request)\n\n    return Request(\n        request,\n        parsers=parsers,\n        authenticators=authenticators,\n        negotiator=negotiator,\n        parser_context=parser_context,\n    )" }
+      ]
+    },
+    {
+      "id": "request-properties",
+      "title": "ویژگی‌های Request",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class Request:\n    def __init__(self, request, parsers=None, authenticators=None, ...):\n        self._request = request           # HttpRequest Django\n        self.parsers = parsers or ()\n        self.authenticators = authenticators or ()\n        self._data = Empty\n        self._files = Empty\n        self._full_data = Empty\n        self._user = Empty\n        self._auth = Empty\n\n    @property\n    def data(self):\n        if not _hasattr(self, \"_full_data\"):\n            self._load_data_and_files()\n        return self._full_data\n\n    @property\n    def query_params(self):\n        return self._request.GET\n\n    @property\n    def user(self):\n        if not _hasattr(self, \"_user\"):\n            self._authenticate()\n        return self._user\n\n    @property\n    def auth(self):\n        if not _hasattr(self, \"_auth\"):\n            self._authenticate()\n        return self._auth" }
+      ]
+    },
+    {
+      "id": "lazy-loading",
+      "title": "Lazy Loading",
+      "blocks": [
+        { "type": "paragraph", "text": "`data` و `user` فقط وقتی که به آن‌ها دسترسی پیدا کنید، بارگذاری می‌شوند. این کار کارایی را بالا می‌برد." },
+        { "type": "code", "lang": "python", "code": "# در ویو:\ndef get(self, request):\n    # اینجا request.data فراخوانی نمی‌شود — پارسر اجرا نمی‌شود\n    return Response({\"ok\": True})\n\n# فقط وقتی به data دسترسی داشتیم، پارسر اجرا می‌شود\ndef post(self, request):\n    data = request.data   # پارسر اینجا اجرا می‌شود\n    return Response(data)" }
+      ]
+    },
+    {
+      "id": "authenticate",
+      "title": "چرخه احراز هویت",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def _authenticate(self):\n    for authenticator in self.authenticators:\n        try:\n            user_auth_tuple = authenticator.authenticate(self)\n        except APIException:\n            self._not_authenticated()\n            raise\n\n        if user_auth_tuple is not None:\n            self._authenticator = authenticator\n            self.user, self.auth = user_auth_tuple\n            return\n\n    self._not_authenticated()\n\n\ndef _not_authenticated(self):\n    self._authenticator = None\n    if api_settings.UNAUTHENTICATED_USER:\n        self.user = api_settings.UNAUTHENTICATED_USER()  # AnonymousUser\n    else:\n        self.user = None\n    self.auth = None" },
+        { "type": "note", "variant": "tip", "title": "دسترسی مستقیم", "text": "می‌توانید `request._request` را برای دسترسی به `HttpRequest` خام Django استفاده کنید. اما مراقب باشید — راه استاندارد نیست." }
+      ]
+    },
+    {
+      "id": "custom",
+      "title": "سفارشی‌سازی Request",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from rest_framework.request import Request\n\n\nclass TenantRequest(Request):\n    \"\"\"Request با tenant از هدر.\"\"\"\n\n    @property\n    def tenant(self):\n        if not hasattr(self, \"_tenant\"):\n            slug = self.headers.get(\"X-Tenant\")\n            self._tenant = Tenant.objects.filter(slug=slug).first() if slug else None\n        return self._tenant\n\n\n# در View\nclass MyView(APIView):\n    def initialize_request(self, request, *args, **kwargs):\n        request = super().initialize_request(request, *args, **kwargs)\n        request.__class__ = TenantRequest\n        return request" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "استفاده از `_request` مستقیم", "why": "غیراستاندارد، شکننده.", "when": "همیشه.", "fix": "از API عمومی Request استفاده کنید." },
+        { "type": "anti-pattern", "title": "دستکاری مستقیم `_data`", "why": "lazy loading را می‌شکنید.", "when": "می‌خواهید داده را تغییر دهید.", "fix": "در serializer یا service." },
+        { "type": "anti-pattern", "title": "Request سفارشی برای همه چیز", "why": "پیچیدگی.", "when": "پروژه ساده.", "fix": "Context به سریالایزر." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-068-q1", "tag": "کوییز", "question": "چرا `request.data` lazy است؟", "options": [
+      { "text": "چون باگ دارد.", "correct": false },
+      { "text": "چون برای ویوهایی که داده نمی‌خوانند، پارسر اجرا نشود.", "correct": true, "explanation": "کارایی بالاتر." },
+      { "text": "چون DRF اجبار می‌کند.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-068-ex1", "title": "تمرین — سفارشی‌سازی Request", "problem": "یک Request سفارشی بسازید که کشور کاربر را از هدر `X-Country` بخواند.", "hints": ["از `Request` ارث‌بری کنید.", "property جدید.", "در ویو initialize_request."], "solution": "```python\nfrom rest_framework.request import Request\n\n\nclass GeoRequest(Request):\n    @property\n    def country(self):\n        if not hasattr(self, \"_country\"):\n            code = self.headers.get(\"X-Country\", \"IR\")\n            self._country = code.upper()\n        return self._country\n\n\nclass GeoView(APIView):\n    def initialize_request(self, request, *args, **kwargs):\n        request = super().initialize_request(request, *args, **kwargs)\n        request.__class__ = GeoRequest\n        return request\n\n    def get(self, request):\n        return Response({\"country\": request.country})\n```", "explanation": "این الگو برای multi-tenancy، i18n پویا، یا تنظیمات منطقه‌ای مفید است." }
+  ],
+  "summary": [
+    "`Request` DRF روی `HttpRequest` Django wrap می‌شود.",
+    "`data`, `user`, `auth` Lazy هستند.",
+    "احراز هویت در اولین دسترسی اجرا می‌شود.",
+    "می‌توان Request سفارشی ساخت.",
+    "از API عمومی استفاده کنید، نه `_request`."
+  ],
+  "resources": [
+    { "title": "DRF Source — request.py", "url": "https://github.com/encode/django-rest-framework/blob/master/rest_framework/request.py", "official": true }
+  ]
+}

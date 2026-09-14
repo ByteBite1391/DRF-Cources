@@ -1,0 +1,124 @@
+{
+  "id": "ch-061",
+  "slug": "async",
+  "title": "Async در DRF",
+  "kicker": "فصل ۶۱",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "Async می‌تواند throughput را چند برابر کند. اما برای استفاده درست، باید تفاوت sync/async و محدودیت‌های ORM را بدانید.",
+  "sections": [
+    {
+      "id": "concept",
+      "title": "Sync در برابر Async",
+      "blocks": [
+        { "type": "table", "headers": ["معیار", "Sync", "Async"], "rows": [
+          ["مدل", "یک کار در یک زمان", "چند کار همزمان"],
+          ["مناسب", "CPU-bound", "I/O-bound"],
+          ["Thread/Event Loop", "Thread", "Event Loop"],
+          ["کد", "تابع عادی", "`async def`"],
+          ["Throughput", "محدود", "بالاتر"],
+          ["پیچیدگی", "کم", "بیشتر"]
+        ]},
+        { "type": "note", "variant": "info", "title": "چه زمانی async؟", "text": "وقتی درخواست‌ها I/O-bound هستند (دیتابیس، API خارجی، فایل). برای CPU-bound (محاسبات)، async کمک نمی‌کند." }
+      ]
+    },
+    {
+      "id": "asgi",
+      "title": "ASGI در برابر WSGI",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**WSGI:** استاندارد sync. Gunicorn با workerهای sync.",
+          "**ASGI:** استاندارد async. Uvicorn، Daphne، Hypercorn.",
+          "**Django:** از ASGI پشتیبانی می‌کند از ۳.۰.",
+          "**DRF:** برای async، هنوز محدودیت‌هایی دارد."
+        ]},
+        { "type": "code", "lang": "bash", "code": "# اجرا با ASGI\nuvicorn library_api.asgi:application --workers 4\n\n# Gunicorn با worker ASGI\ngunicorn library_api.asgi:application \\\n  --worker-class uvicorn.workers.UvicornWorker \\\n  --workers 4" }
+      ]
+    },
+    {
+      "id": "async-view",
+      "title": "Async View",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nimport httpx\n\n\nclass ExternalAPIView(APIView):\n    async def get(self, request):\n        async with httpx.AsyncClient() as client:\n            response = await client.get(\"https://api.example.com/data\")\n        return Response(response.json())" },
+        { "type": "note", "variant": "warn", "title": "ORM در async", "text": "ORM Django به‌طور پیش‌فرض sync است. برای استفاده در async، از `sync_to_async` استفاده کنید یا `async` ORM Django 4.1+" }
+      ]
+    },
+    {
+      "id": "sync-to-async",
+      "title": "sync_to_async",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from asgiref.sync import sync_to_async\n\n\nclass BookListView(APIView):\n    async def get(self, request):\n        # ORM sync را در thread جدا اجرا کن\n        books = await sync_to_async(list)(\n            Book.objects.select_related(\"author\").all()[:20]\n        )\n        serializer = BookSerializer(books, many=True)\n        return Response(serializer.data)" },
+        { "type": "note", "variant": "tip", "title": "sync_to_async", "text": "این wrapper کد sync را در یک thread جدا اجرا می‌کند تا event loop بلاک نشود. overhead دارد." }
+      ]
+    },
+    {
+      "id": "async-orm",
+      "title": "Async ORM (Django 4.1+)",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\n\n\nclass BookListView(APIView):\n    async def get(self, request):\n        # Django 4.1+: متدهای async\n        books = []\n        async for book in Book.objects.select_related(\"author\").all()[:20]:\n            books.append(book)\n        serializer = BookSerializer(books, many=True)\n        return Response(serializer.data)\n\n\n# یا با aget / afilter\nasync def get_book(pk):\n    return await Book.objects.aget(pk=pk)" }
+      ]
+    },
+    {
+      "id": "httpx",
+      "title": "httpx برای درخواست‌های async",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import httpx\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\n\n\nclass WeatherView(APIView):\n    async def get(self, request, city):\n        async with httpx.AsyncClient(timeout=5.0) as client:\n            try:\n                response = await client.get(\n                    f\"https://api.weather.com/v1/{city}\"\n                )\n                response.raise_for_status()\n                return Response(response.json())\n            except httpx.HTTPError:\n                return Response({\"detail\": \"خطای API هوا\"}, status=503)" }
+      ]
+    },
+    {
+      "id": "gather",
+      "title": "اجرای موازی با asyncio.gather",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import asyncio\nimport httpx\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\n\n\nclass DashboardView(APIView):\n    async def get(self, request):\n        async with httpx.AsyncClient() as client:\n            weather, news, stock = await asyncio.gather(\n                client.get(\"https://api.weather.com/...\"),\n                client.get(\"https://api.news.com/...\"),\n                client.get(\"https://api.stock.com/...\"),\n                return_exceptions=True,\n            )\n        # در زمان سریع‌ترین درخواست، همه اجرا می‌شوند\n        return Response({\n            \"weather\": weather.json() if not isinstance(weather, Exception) else None,\n            \"news\": news.json() if not isinstance(news, Exception) else None,\n            \"stock\": stock.json() if not isinstance(stock, Exception) else None,\n        })" }
+      ]
+    },
+    {
+      "id": "limitations",
+      "title": "محدودیت‌ها",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**ORM sync:** مگر از `async for` استفاده کنید.",
+          "**Session Authentication:** در async، محدودیت دارد.",
+          "**پکیج‌های قدیمی:** ممکن است async نداشته باشند.",
+          "**دیباگ:** سخت‌تر از sync.",
+          "**Thread safety:** باید مراقب بود."
+        ]},
+        { "type": "callout-level", "basic": "بدون async.", "better": "async برای Endpointهایی که I/O خارجی دارند.", "production": "ASGI + async views + async ORM + monitoring." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "async برای CPU-bound", "why": "کمکی نمی‌کند، فقط پیچیدگی اضافه می‌شود.", "when": "محاسبات سنگین.", "fix": "Celery یا multiprocessing." },
+        { "type": "anti-pattern", "title": "async بدون ASGI", "why": "کار نمی‌کند.", "when": "اجرای WSGI.", "fix": "uvicorn یا Daphne." },
+        { "type": "anti-pattern", "title": "ORM sync در async view", "why": "Blocking، throughput پایین.", "when": "استفاده مستقیم از ORM.", "fix": "`sync_to_async` یا async ORM." },
+        { "type": "anti-pattern", "title": "async برای همه چیز", "why": "پیچیدگی بی‌مورد.", "when": "پروژه ساده.", "fix": "async فقط برای Endpointهای خارجی." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-061-q1", "tag": "کوییز", "question": "Async برای چه نوع کارهایی مفید است؟", "options": [
+      { "text": "CPU-bound", "correct": false },
+      { "text": "I/O-bound", "correct": true, "explanation": "دیتابیس، API خارجی، فایل." },
+      { "text": "همه چیز", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-061-ex1", "title": "تمرین — Endpoint async", "problem": "یک Endpoint بسازید که به‌طور موازی ۳ API خارجی را صدا بزند و نتیجه‌ها را برگرداند.", "hints": ["`asyncio.gather`.", "`httpx.AsyncClient`.", "خطاها را مدیریت کنید."], "solution": "```python\nimport asyncio\nimport httpx\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\n\n\nasync def fetch(client, url):\n    try:\n        response = await client.get(url, timeout=5.0)\n        response.raise_for_status()\n        return {\"ok\": True, \"data\": response.json()}\n    except httpx.HTTPError as e:\n        return {\"ok\": False, \"error\": str(e)}\n\n\nclass AggregatedDataView(APIView):\n    async def get(self, request):\n        urls = [\n            \"https://api.weather.com/tehran\",\n            \"https://api.news.com/top\",\n            \"https://api.stock.com/tec\",\n        ]\n        async with httpx.AsyncClient() as client:\n            results = await asyncio.gather(\n                *[fetch(client, u) for u in urls]\n            )\n        return Response({\"results\": results})\n```", "explanation": "این Endpoint در زمان سریع‌ترین API خارجی پاسخ می‌دهد." }
+  ],
+  "summary": [
+    "Async برای I/O-bound.",
+    "ASGI برای async views.",
+    "`sync_to_async` برای ORM sync.",
+    "Async ORM Django 4.1+.",
+    "httpx برای HTTP async.",
+    "`asyncio.gather` برای اجرای موازی.",
+    "async برای همه چیز نه."
+  ],
+  "resources": [
+    { "title": "Django — Async support", "url": "https://docs.djangoproject.com/en/stable/topics/async/", "official": true },
+    { "title": "httpx", "url": "https://www.python-httpx.org/", "official": true }
+  ]
+}

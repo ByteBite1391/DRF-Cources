@@ -1,0 +1,99 @@
+{
+  "id": "ch-063",
+  "slug": "sse",
+  "title": "Server-Sent Events (SSE)",
+  "kicker": "فصل ۶۳",
+  "level": "professional",
+  "difficulty": 3,
+  "estimatedMinutes": 30,
+  "lead": "SSE ساده‌تر از WebSocket است و برای جریان‌های یک‌طرفه (سرور → کلاینت) عالی است.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "SSE چیست؟",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**یک‌طرفه:** فقط سرور به کلاینت.",
+          "**بر پایه HTTP:** همان پروتکل معمولی.",
+          "**Reconnect خودکار:** مرورگر خودکار وصل می‌شود.",
+          "**متن ساده:** بدون framing پیچیده.",
+          "**محدود به ۶ اتصال per دامنه:** در HTTP/1.1."
+        ]},
+        { "type": "table", "headers": ["معیار", "SSE", "WebSocket"], "rows": [
+          ["جهت", "سرور → کلاینت", "دوطرفه"],
+          ["پروتکل", "HTTP", "WS"],
+          ["Reconnect", "خودکار", "دستی"],
+          ["Binary", "خیر", "بله"],
+          ["پیچیدگی", "کم", "متوسط"],
+          ["مناسب", "اعلان، لاگ، progress", "چت، بازی"]
+        ]}
+      ]
+    },
+    {
+      "id": "django-view",
+      "title": "SSE در Django",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "notifications/views.py", "code": "import json\nimport time\nfrom django.http import StreamingHttpResponse\nfrom django.views.decorators.http import require_GET\n\n\n@require_GET\ndef notification_stream(request):\n    def event_stream():\n        last_id = 0\n        while True:\n            # خواندن اعلان‌های جدید از DB\n            notifications = Notification.objects.filter(\n                user=request.user,\n                id__gt=last_id,\n            ).order_by(\"id\")[:10]\n\n            for notif in notifications:\n                last_id = notif.id\n                data = {\n                    \"id\": notif.id,\n                    \"message\": notif.message,\n                    \"created_at\": notif.created_at.isoformat(),\n                }\n                yield f\"event: notification\\ndata: {json.dumps(data)}\\n\\n\"\n\n            # heartbeat هر ۳۰ ثانیه\n            yield \": heartbeat\\n\\n\"\n            time.sleep(5)\n\n    response = StreamingHttpResponse(\n        event_stream(),\n        content_type=\"text/event-stream\",\n    )\n    response[\"Cache-Control\"] = \"no-cache\"\n    response[\"X-Accel-Buffering\"] = \"no\"   # برای Nginx\n    return response" },
+        { "type": "code", "lang": "python", "filename": "urls.py", "code": "path(\"api/notifications/stream/\", notification_stream, name=\"notification-stream\")," }
+      ]
+    },
+    {
+      "id": "async-sse",
+      "title": "SSE Async",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "import asyncio\nimport json\nfrom django.http import StreamingHttpResponse\n\n\nasync def notification_stream(request):\n    async def event_stream():\n        last_id = 0\n        while True:\n            notifications = await sync_to_async(list)(\n                Notification.objects.filter(user=request.user, id__gt=last_id)[:10]\n            )\n            for notif in notifications:\n                last_id = notif.id\n                data = {\n                    \"id\": notif.id,\n                    \"message\": notif.message,\n                }\n                yield f\"event: notification\\ndata: {json.dumps(data)}\\n\\n\"\n\n            yield \": heartbeat\\n\\n\"\n            await asyncio.sleep(5)\n\n    return StreamingHttpResponse(\n        event_stream(),\n        content_type=\"text/event-stream\",\n    )" }
+      ]
+    },
+    {
+      "id": "client",
+      "title": "کلاینت جاوااسکریپت",
+      "blocks": [
+        { "type": "code", "lang": "javascript", "code": "const eventSource = new EventSource(\n  \"/api/notifications/stream/\",\n  { withCredentials: true }\n);\n\neventSource.addEventListener(\"notification\", (event) => {\n  const data = JSON.parse(event.data);\n  console.log(\"New notification:\", data);\n  showNotification(data.message);\n});\n\neventSource.onerror = () => {\n  // EventSource خودکار reconnect می‌کند\n  console.warn(\"Connection lost, reconnecting...\");\n};" }
+      ]
+    },
+    {
+      "id": "when",
+      "title": "SSE یا WebSocket؟",
+      "blocks": [
+        { "type": "table", "headers": ["نیاز", "انتخاب"], "rows": [
+          ["اعلان یک‌طرفه", "SSE"],
+          ["Progress bar", "SSE"],
+          ["Live log stream", "SSE"],
+          ["چت", "WebSocket"],
+          ["داده دوطرفه", "WebSocket"],
+          ["بازی", "WebSocket"]
+        ]}
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "SSE برای چت", "why": "SSE یک‌طرفه است.", "when": "اشتباه انتخاب.", "fix": "WebSocket." },
+        { "type": "anti-pattern", "title": "بدون heartbeat", "why": "پروکسی اتصال را می‌بندد.", "when": "در Nginx.", "fix": "heartbeat هر ۳۰ ثانیه." },
+        { "type": "anti-pattern", "title": "بدون Cache-Control", "why": "کش پاسخ را نگه می‌دارد.", "when": "همیشه.", "fix": "`Cache-Control: no-cache`." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-063-q1", "tag": "کوییز", "question": "SSE برای چه نوع جریانی مناسب است؟", "options": [
+      { "text": "دوطرفه", "correct": false },
+      { "text": "یک‌طرفه (سرور → کلاینت)", "correct": true, "explanation": "برعکس WebSocket." },
+      { "text": "باینری", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-063-ex1", "title": "تمرین — Progress Stream", "problem": "یک Endpoint بسازید که پیشرفت یک کار طولانی را به‌شکل SSE گزارش دهد.", "hints": ["`StreamingHttpResponse`.", "Content-Type: text/event-stream.", "پیام‌های event:progress."], "solution": "```python\nimport json\nimport time\nfrom django.http import StreamingHttpResponse\n\n\ndef task_progress(request, task_id):\n    def stream():\n        for i in range(101):\n            yield f\"event: progress\\ndata: {json.dumps({'percent': i})}\\n\\n\"\n            time.sleep(0.1)\n\n        yield f\"event: done\\ndata: {json.dumps({'status': 'completed'})}\\n\\n\"\n\n    response = StreamingHttpResponse(stream(), content_type=\"text/event-stream\")\n    response[\"Cache-Control\"] = \"no-cache\"\n    response[\"X-Accel-Buffering\"] = \"no\"\n    return response\n```", "explanation": "این الگو برای progress bar، ایمپورت گروهی، پردازش طولانی استفاده می‌شود." }
+  ],
+  "summary": [
+    "SSE یک‌طرفه، بر پایه HTTP.",
+    "Reconnect خودکار در مرورگر.",
+    "StreamingHttpResponse + Content-Type: text/event-stream.",
+    "Heartbeat برای جلوگیری از بستن اتصال.",
+    "برای progress، اعلان، لاگ.",
+    "WebSocket برای دوطرفه."
+  ],
+  "resources": [
+    { "title": "MDN — Server-Sent Events", "url": "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events", "official": false }
+  ]
+}

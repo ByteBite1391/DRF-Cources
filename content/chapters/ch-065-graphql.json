@@ -1,0 +1,101 @@
+{
+  "id": "ch-065",
+  "slug": "graphql",
+  "title": "GraphQL در برابر REST",
+  "kicker": "فصل ۶۵",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "GraphQL جایگزین REST نیست، یک انتخاب متفاوت است. این فصل به شما کمک می‌کند تصمیم درست بگیرید.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "GraphQL چیست؟",
+      "blocks": [
+        { "type": "paragraph", "text": "**GraphQL** یک زبان کوئری برای API است که توسط Facebook ساخته شد. کلاینت دقیقاً می‌گوید چه فیلدهایی می‌خواهد و سرور همان را برمی‌گرداند." },
+        { "type": "code", "lang": "graphql", "code": "query {\n  book(id: 42) {\n    title\n    author {\n      fullName\n      bio\n    }\n    reviews(last: 5) {\n      rating\n      comment\n    }\n  }\n}" },
+        { "type": "code", "lang": "json", "code": "{\n  \"data\": {\n    \"book\": {\n      \"title\": \"Clean Code\",\n      \"author\": {\"fullName\": \"Robert C. Martin\", \"bio\": \"...\"},\n      \"reviews\": [\n        {\"rating\": 5, \"comment\": \"عالی\"}\n      ]\n    }\n  }\n}" }
+      ]
+    },
+    {
+      "id": "rest-vs-graphql",
+      "title": "REST در برابر GraphQL",
+      "blocks": [
+        { "type": "table", "headers": ["معیار", "REST", "GraphQL"], "rows": [
+          ["کوئری", "چند Endpoint", "یک Endpoint"],
+          ["Over-fetching", "ممکن", "خیر"],
+          ["Under-fetching", "چند درخواست", "یک درخواست"],
+          ["کش", "بومی HTTP", "پیچیده"],
+          ["یادگیری", "آسان‌تر", "منحنی"],
+          ["ابزار", "در همه جا", "محدودتر"],
+          ["فایل آپلود", "استاندارد", "نیاز به کتابخانه"],
+          ["نسخه‌بندی", "URL/هدر", "Deprecation در Schema"],
+          ["مناسب", "CRUD استاندارد", "داده‌های رابطه‌ای پیچیده"]
+        ]}
+      ]
+    },
+    {
+      "id": "graphene",
+      "title": "Graphene-Django",
+      "blocks": [
+        { "type": "bash", "code": "pip install graphene-django" },
+        { "type": "python", "filename": "settings.py", "code": "INSTALLED_APPS = [\n    \"graphene_django\",\n]\n\nGRAPHENE = {\n    \"SCHEMA\": \"library_api.schema.schema\",\n}\n\n# urls\nfrom graphene_django.views import GraphQLView\n\nurlpatterns += [\n    path(\"graphql/\", GraphQLView.as_view(graphiql=True)),\n]" },
+        { "type": "python", "filename": "catalog/schema.py", "code": "import graphene\nfrom graphene_django import DjangoObjectType\nfrom .models import Book, Author\n\n\nclass AuthorType(DjangoObjectType):\n    class Meta:\n        model = Author\n        fields = (\"id\", \"full_name\", \"bio\")\n\n\nclass BookType(DjangoObjectType):\n    class Meta:\n        model = Book\n        fields = (\"id\", \"title\", \"author\", \"price\", \"published_at\")\n\n\nclass Query(graphene.ObjectType):\n    books = graphene.List(BookType, category=graphene.String())\n    book = graphene.Field(BookType, id=graphene.Int(required=True))\n\n    def resolve_books(self, info, category=None):\n        qs = Book.objects.select_related(\"author\")\n        if category:\n            qs = qs.filter(category__slug=category)\n        return qs\n\n    def resolve_book(self, info, id):\n        return Book.objects.select_related(\"author\").get(pk=id)\n\n\nschema = graphene.Schema(query=Query)" }
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "احراز هویت در GraphQL",
+      "blocks": [
+        { "type": "python", "code": "class GraphQLView(JWTGraphQLView):\n    @classmethod\n    def as_view(cls, *args, **kwargs):\n        view = super().as_view(*args, **kwargs)\n        return csrf_exempt(view)\n\n\nclass Query(graphene.ObjectType):\n    me = graphene.Field(UserType)\n\n    def resolve_me(self, info):\n        user = info.context.user\n        if not user.is_authenticated:\n            raise Exception(\"Not authenticated\")\n        return user\n\n\nclass CreateBook(graphene.Mutation):\n    class Arguments:\n        title = graphene.String(required=True)\n        price = graphene.Decimal(required=True)\n\n    book = graphene.Field(BookType)\n\n    def mutate(self, info, title, price):\n        user = info.context.user\n        if not user.is_authenticated:\n            raise Exception(\"Not authenticated\")\n        book = Book.objects.create(title=title, price=price, owner=user)\n        return CreateBook(book=book)" }
+      ]
+    },
+    {
+      "id": "when-graphql",
+      "title": "چه زمانی GraphQL؟",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**کلاینت‌های متعدد:** موبایل، وب، دسکتاپ با نیاز متفاوت.",
+          "**داده‌های رابطه‌ای پیچیده:** کوئری‌های عمیق.",
+          "**Over-fetching مشکل:** کلاینت درخواست داده کمتر دارد.",
+          "**تیم فرانت قوی:** می‌تواند کوئری بنویسد.",
+          "**الزام:** شرکای خارجی GraphQL می‌خواهند."
+        ]},
+        { "type": "note", "variant": "warn", "title": "چه زمانی نه؟", "text": "پروژه ساده، تیم کوچک، نیاز به فایل آپلود، کش ساده HTTP، یا API عمومی با مصرف‌کننده‌های ناشناس." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "GraphQL چون مد است", "why": "پیچیدگی بی‌مورد.", "when": "پروژه ساده.", "fix": "REST کافی است." },
+        { "type": "anti-pattern", "title": "بدون N+1 prevention", "why": "کوئری‌های explode.", "when": "resolve‌ها بدون optimize.", "fix": "DataLoader یا select_related." },
+        { "type": "anti-pattern", "title": "بدون Query depth limit", "why": "کوئری‌های عمیق DoS.", "when": "بدون محدودیت.", "fix": "`graphql-depth-limit`." },
+        { "type": "anti-pattern", "title": "بدون Query complexity analysis", "why": "کوئری‌های پیچیده.", "when": "بدون تحلیل.", "fix": "`graphene-django-optimizer`." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-065-q1", "tag": "کوییز", "question": "GraphQL چه مشکلی را حل می‌کند؟", "options": [
+      { "text": "کندی سرور", "correct": false },
+      { "text": "Over-fetching و Under-fetching", "correct": true, "explanation": "کلاینت دقیقاً داده مورد نظرش را می‌گیرد." },
+      { "text": "امنیت", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-065-ex1", "title": "تمرین — Schema ساده", "problem": "برای مدل Product، یک Query با فیلتر دسته و یک Mutation برای ساخت بنویسید.", "hints": ["از `DjangoObjectType`.", "resolve_* برای کوئری.", "Mutation برای تغییر."], "solution": "```python\nimport graphene\nfrom graphene_django import DjangoObjectType\nfrom .models import Product\n\n\nclass ProductType(DjangoObjectType):\n    class Meta:\n        model = Product\n        fields = (\"id\", \"name\", \"price\", \"stock\")\n\n\nclass Query(graphene.ObjectType):\n    products = graphene.List(ProductType, category=graphene.String())\n\n    def resolve_products(self, info, category=None):\n        qs = Product.objects.filter(is_active=True)\n        if category:\n            qs = qs.filter(category__slug=category)\n        return qs.select_related(\"category\")\n\n\nclass CreateProduct(graphene.Mutation):\n    class Arguments:\n        name = graphene.String(required=True)\n        price = graphene.Decimal(required=True)\n        stock = graphene.Int(default_value=0)\n\n    product = graphene.Field(ProductType)\n\n    def mutate(self, info, name, price, stock):\n        if not info.context.user.is_staff:\n            raise Exception(\"Permission denied\")\n        product = Product.objects.create(name=name, price=price, stock=stock)\n        return CreateProduct(product=product)\n\n\nclass Mutation(graphene.ObjectType):\n    create_product = CreateProduct.Field()\n\n\nschema = graphene.Schema(query=Query, mutation=Mutation)\n```", "explanation": "این ساختار پایه GraphQL در Django است." }
+  ],
+  "summary": [
+    "GraphQL یک زبان کوئری، جایگزین REST نیست.",
+    "مزیت: بدون Over-fetching و Under-fetching.",
+    "عیب: کش پیچیده، ابزار محدودتر.",
+    "Graphene-Django پکیج استاندارد.",
+    "DataLoader برای N+1.",
+    "Depth limit و complexity برای امنیت.",
+    "REST برای CRUD استاندارد، GraphQL برای روابط پیچیده."
+  ],
+  "resources": [
+    { "title": "GraphQL Spec", "url": "https://spec.graphql.org/", "official": true },
+    { "title": "Graphene-Django", "url": "https://docs.graphene-python.org/projects/django/", "official": true }
+  ]
+}

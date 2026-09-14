@@ -1,0 +1,84 @@
+{
+  "id": "ch-071",
+  "slug": "drf-internals-viewset",
+  "title": "درون‌کاوی DRF — ViewSet و Router",
+  "kicker": "فصل ۷۱",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 30,
+  "lead": "چطور Router از یک ViewSet، مسیرهای متعدد می‌سازد؟ این فصل جادوی پشت‌صحنه را نشان می‌دهد.",
+  "sections": [
+    {
+      "id": "viewset-mixin",
+      "title": "ViewSetMixin",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class ViewSetMixin:\n    @classonlymethod\n    def as_view(cls, actions=None, **initkwargs):\n        if not actions:\n            raise TypeError(\"actions الزامی است\")\n\n        def view(request, *args, **kwargs):\n            self = cls(**initkwargs)\n            self.action_map = actions\n\n            # در dispatch، متد HTTP به action نگاشت می‌شود\n            for method, action in actions.items():\n                handler = getattr(self, action)\n                setattr(self, method, handler)\n\n            return self.dispatch(request, *args, **kwargs)\n\n        return view\n\n    def initialize_request(self, request, *args, **kwargs):\n        request = super().initialize_request(request, *args, **kwargs)\n        method = request.method.lower()\n        if method == \"options\":\n            method = getattr(self, \"action\", None) or method\n        self.action = self.action_map.get(method)\n        return request" }
+      ]
+    },
+    {
+      "id": "router",
+      "title": "Router Route",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# Route تعریف می‌کند چه actionهایی به چه URLی نگاشت می‌شوند\nRoute(\n    url=r\"^{prefix}/{lookup}{trailing_slash}$\",\n    mapping={\n        \"get\": \"retrieve\",\n        \"put\": \"update\",\n        \"patch\": \"partial_update\",\n        \"delete\": \"destroy\",\n    },\n    name=\"{basename}-detail\",\n    detail=True,\n    initkwargs={\"suffix\": \"Instance\"},\n)\n\n# DynamicRoute برای @action\nDynamicRoute(\n    url=r\"^{prefix}/{lookup}/{url_path}{trailing_slash}$\",\n    name=\"{basename}-{url_name}\",\n    detail=True,\n    initkwargs={},\n)" }
+      ]
+    },
+    {
+      "id": "register",
+      "title": "register چطور کار می‌کند",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def register(self, prefix, viewset, basename=None):\n    if basename is None:\n        basename = self.get_default_basename(viewset)\n    self.registry.append((prefix, viewset, basename))\n\n    # اگر ViewSet قبلاً ثبت شده، خطا\n    if basename in self._urls:\n        raise ImproperlyConfigured(...)\n\n\ndef get_urls(self):\n    urls = []\n    for prefix, viewset, basename in self.registry:\n        # برای هر Route\n        for route in self.routes:\n            # URL را فرمت کن\n            url = route.url.format(prefix=prefix, lookup=lookup, ...)\n\n            # Mapping از متد به action\n            mapping = route.mapping\n\n            # پیدا کردن اکشن‌های @action\n            for method, action in mapping.items():\n                handler = getattr(viewset, action, None)\n                if handler:\n                    # ساخت view\n                    view = viewset.as_view(mapping, **route.initkwargs)\n                    name = route.name.format(basename=basename)\n                    urls.append(path(url, view, name=name))\n    return urls" }
+      ]
+    },
+    {
+      "id": "action",
+      "title": "@action چطور کار می‌کند",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def action(methods=None, detail=None, url_path=None, url_name=None, **kwargs):\n    def decorator(func):\n        func.mapping = MethodMapper(func, methods)\n        func.detail = detail\n        func.url_path = url_path or func.__name__\n        func.url_name = url_name or func.__name__.replace(\"_\", \"-\")\n        func.kwargs = kwargs\n        return func\n    return decorator\n\n\n# در Router، get_extra_actions:\ndef get_extra_actions(cls):\n    return [\n        method for _, method in getmembers(cls, _is_extra_action)\n        if _is_extra_action(method)\n    ]\n\n\n# Routing:\nfor method in viewset.get_extra_actions():\n    if method.detail:\n        # /books/{pk}/<url_path>/\n        url = r\"^{prefix}/{lookup}/{url_path}{trailing_slash}$\"\n    else:\n        # /books/<url_path>/\n        url = r\"^{prefix}/{url_path}{trailing_slash}$\"\n\n    # نگاشت متدهای HTTP به اکشن\n    mapping = method.mapping" }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "URLهای تولیدشده",
+      "blocks": [
+        { "type": "code", "lang": "text", "code": "# ModelViewSet books\n/books/                    list, create\n/books/{pk}/               retrieve, update, partial_update, destroy\n\n# @action(detail=False) latest\n/books/latest/             latest\n\n# @action(detail=True) publish\n/books/{pk}/publish/       publish\n\n# URL name (برای reverse)\nbook-list\nbook-detail\nbook-latest\nbook-publish" }
+      ]
+    },
+    {
+      "id": "custom-router",
+      "title": "Router سفارشی",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from rest_framework.routers import SimpleRouter, Route\n\n\nclass MyRouter(SimpleRouter):\n    routes = [\n        Route(\n            url=r\"^users/me/$\",\n            mapping={\"get\": \"me\", \"patch\": \"update_me\"},\n            name=\"user-me\",\n            detail=False,\n        ),\n    ] + SimpleRouter.routes\n\n\nclass UserViewSet(viewsets.ModelViewSet):\n    queryset = User.objects.all()\n\n    def me(self, request):\n        return Response(UserSerializer(request.user).data)\n\n    def update_me(self, request):\n        serializer = UserSerializer(request.user, data=request.data, partial=True)\n        serializer.is_valid(raise_exception=True)\n        serializer.save()\n        return Response(serializer.data)" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "سفارشی‌سازی زیاد Router", "why": "پیچیدگی، شکننده.", "when": "معمولاً.", "fix": "URLهای خاص را با path جدا." },
+        { "type": "anti-pattern", "title": "ViewSet بدون queryset و basename", "why": "خطای زمان بارگذاری.", "when": "فقط get_queryset.", "fix": "basename در register." },
+        { "type": "anti-pattern", "title": "اکشن‌های @action زیاد", "why": "ViewSet نامرتب.", "when": "بیش از ۵ اکشن.", "fix": "ViewSet جدا یا APIView." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-071-q1", "tag": "کوییز", "question": "Router چطور URLها را می‌سازد؟", "options": [
+      { "text": "با path دستی.", "correct": false },
+      { "text": "از `routes` و `register` ViewSetها.", "correct": true, "explanation": "Routeها الگو دارند." },
+      { "text": "با decorator.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-071-ex1", "title": "تمرین — تحلیل URLهای ViewSet", "problem": "برای یک ModelViewSet با ۲ @action (یکی detail=False، یکی detail=True)، URLها را بنویسید.", "hints": ["ModelViewSet: ۲ URL پایه.", "detail=False: /path/.", "detail=True: /{pk}/path/."], "solution": "```\n# ModelViewSet: books\nGET    /books/                list\nPOST   /books/                create\nGET    /books/{pk}/           retrieve\nPUT    /books/{pk}/           update\nPATCH  /books/{pk}/           partial_update\nDELETE /books/{pk}/           destroy\n\n# @action(detail=False) top_rated\nGET    /books/top-rated/      top_rated\n\n# @action(detail=True) publish\nPOST   /books/{pk}/publish/   publish\n```", "explanation": "این URLها خودکار تولید می‌شوند." }
+  ],
+  "summary": [
+    "ViewSetMixin، as_view را برای نگاشت HTTP به action تغییر می‌دهد.",
+    "Router از Routeها URL می‌سازد.",
+    "`@action` به DynamicRoute تبدیل می‌شود.",
+    "Router سفارشی برای URLهای خاص.",
+    "زیاده‌روی در Router نکنید."
+  ],
+  "resources": [
+    { "title": "DRF Source — routers.py", "url": "https://github.com/encode/django-rest-framework/blob/master/rest_framework/routers.py", "official": true },
+    { "title": "DRF Source — viewsets.py", "url": "https://github.com/encode/django-rest-framework/blob/master/rest_framework/viewsets.py", "official": true }
+  ]
+}

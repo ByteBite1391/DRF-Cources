@@ -1,0 +1,78 @@
+{
+  "id": "ch-072",
+  "slug": "drf-internals-schema",
+  "title": "درون‌کاوی DRF — Schema و Metadata",
+  "kicker": "فصل ۷۲",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 25,
+  "lead": "Schema و Metadata تعیین‌کننده مستندات و کشف API هستند. درک آن‌ها به سفارشی‌سازی کمک می‌کند.",
+  "sections": [
+    {
+      "id": "metadata",
+      "title": "Metadata",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# درخواست OPTIONS به یک Endpoint\n# پاسخ شامل metadata است\n\nfrom rest_framework.metadata import SimpleMetadata\n\n\nclass CustomMetadata(SimpleMetadata):\n    def determine_metadata(self, request, view):\n        metadata = super().determine_metadata(request, view)\n        metadata[\"my_custom_field\"] = \"مقدار دلخواه\"\n        metadata[\"api_version\"] = getattr(request, \"version\", \"1.0\")\n        return metadata\n\n\n# در تنظیمات\nREST_FRAMEWORK = {\n    \"DEFAULT_METADATA_CLASS\": \"catalog.metadata.CustomMetadata\",\n}" }
+      ]
+    },
+    {
+      "id": "schema-introspection",
+      "title": "Schema Introspection",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# drf-spectacular چطور از ViewSet schema می‌سازد؟\nclass AutoSchema:\n    def get_operation(self, path, path_regex, method, view):\n        # ۱. سریالایزر ورودی\n        request_serializer = self.get_request_serializer(path, method, view)\n\n        # ۲. سریالایزر خروجی\n        response_serializer = self.get_response_serializer(path, method, view)\n\n        # ۳. پارامترها\n        parameters = self.get_parameters(path, method, view)\n\n        # ۴. توضیحات\n        description = self.get_description(view)\n\n        return OpenApiOperation(\n            requestBody=...,\n            responses=...,\n            parameters=...,\n            description=...,\n        )" }
+      ]
+    },
+    {
+      "id": "extension-points",
+      "title": "Extension Points",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# Schema سفارشی برای مدل خاص\nfrom drf_spectacular.extensions import OpenApiSerializerExtension\n\n\nclass CustomSerializerExtension(OpenApiSerializerExtension):\n    target_class = \"catalog.serializers.CustomSerializer\"\n\n    def map_serializer(self, auto_schema, direction):\n        return {\n            \"type\": \"object\",\n            \"properties\": {\n                \"custom_field\": {\"type\": \"string\"},\n            },\n        }\n\n\n# Schema سفارشی برای فیلد خاص\nfrom drf_spectacular.extensions import OpenApiSerializerFieldExtension\nfrom rest_framework import serializers\n\n\nclass CustomFieldExtension(OpenApiSerializerFieldExtension):\n    target_class = \"catalog.fields.MyCustomField\"\n\n    def map_serializer_field(self, auto_schema, direction):\n        return {\"type\": \"string\", \"format\": \"custom\"}" }
+      ]
+    },
+    {
+      "id": "view-schema",
+      "title": "Schema در سطح View",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from drf_spectacular.utils import extend_schema_view, extend_schema\nfrom rest_framework import viewsets\n\n\n@extend_schema_view(\n    list=extend_schema(summary=\"لیست\", tags=[\"Books\"]),\n    retrieve=extend_schema(summary=\"جزئیات\", tags=[\"Books\"]),\n    create=extend_schema(summary=\"ساخت\", tags=[\"Books\"]),\n    update=extend_schema(summary=\"ویرایش\", tags=[\"Books\"]),\n    partial_update=extend_schema(summary=\"ویرایش جزئی\", tags=[\"Books\"]),\n    destroy=extend_schema(summary=\"حذف\", tags=[\"Books\"]),\n)\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer" }
+      ]
+    },
+    {
+      "id": "custom-schema-generator",
+      "title": "Schema Generator سفارشی",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from drf_spectacular.generators import SchemaGenerator\n\n\nclass CustomSchemaGenerator(SchemaGenerator):\n    def get_schema(self, request=None, public=False):\n        schema = super().get_schema(request, public)\n\n        # افزودن اطلاعات سازمانی\n        schema[\"info\"][\"contact\"] = {\n            \"name\": \"تیم API\",\n            \"email\": \"api@example.com\",\n        }\n        schema[\"info\"][\"x-logo\"] = {\n            \"url\": \"https://example.com/logo.png\",\n        }\n        return schema\n\n\nSPECTACULAR_SETTINGS = {\n    \"DEFAULT_GENERATOR_CLASS\": \"catalog.schema.CustomSchemaGenerator\",\n}" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "بازنویسی زیاد AutoSchema", "why": "شکننده در برابر بروزرسانی.", "when": "معمولاً.", "fix": "extensions برای موارد خاص." },
+        { "type": "anti-pattern", "title": "Schema بدون extension", "why": "کار تکراری.", "when": "سریالایزر خاص.", "fix": "`OpenApiSerializerExtension`." },
+        { "type": "anti-pattern", "title": "نبود schema در CI", "why": "بی‌اعتبار در تولید.", "when": "همیشه.", "fix": "validate در CI." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-072-q1", "tag": "کوییز", "question": "Metadata در چه درخواستی برمی‌گردد؟", "options": [
+      { "text": "GET", "correct": false },
+      { "text": "OPTIONS", "correct": true, "explanation": "بر اساس استاندارد HTTP." },
+      { "text": "HEAD", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-072-ex1", "title": "تمرین — Metadata سفارشی", "problem": "Metadata بسازید که در OPTIONS، نسخه API و لیست فیلدهای read-only را برگرداند.", "hints": ["`determine_metadata` را override کنید.", "از `view.serializer_class` استفاده کنید."], "solution": "```python\nfrom rest_framework.metadata import SimpleMetadata\n\n\nclass EnhancedMetadata(SimpleMetadata):\n    def determine_metadata(self, request, view):\n        metadata = super().determine_metadata(request, view)\n\n        metadata[\"api_version\"] = getattr(request, \"version\", \"1.0\")\n\n        # فیلدهای read-only\n        serializer_class = getattr(view, \"serializer_class\", None)\n        if serializer_class:\n            serializer = serializer_class()\n            read_only = [\n                name for name, field in serializer.fields.items()\n                if field.read_only\n            ]\n            metadata[\"read_only_fields\"] = read_only\n\n        return metadata\n\n\nREST_FRAMEWORK = {\n    \"DEFAULT_METADATA_CLASS\": \"catalog.metadata.EnhancedMetadata\",\n}\n```", "explanation": "Metadata به کشف API و ابزارهای کلاینت کمک می‌کند." }
+  ],
+  "summary": [
+    "Metadata در OPTIONS برمی‌گردد.",
+    "Schema برای مستندات استفاده می‌شود.",
+    "Extensionها برای سفارشی‌سازی.",
+    "`extend_schema_view` برای کل کلاس.",
+    "Schema Generator سفارشی.",
+    "بازنویسی زیاد نکنید."
+  ],
+  "resources": [
+    { "title": "DRF — Metadata", "url": "https://www.django-rest-framework.org/api-guide/metadata/", "official": true },
+    { "title": "drf-spectacular — Hooks", "url": "https://drf-spectacular.readthedocs.io/en/latest/customization.html", "official": true }
+  ]
+}

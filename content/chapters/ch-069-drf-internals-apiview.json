@@ -1,0 +1,91 @@
+{
+  "id": "ch-069",
+  "slug": "drf-internals-apiview",
+  "title": "درون‌کاوی DRF — APIView",
+  "kicker": "فصل ۶۹",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 30,
+  "lead": "چرخه dispatch و initial قلب APIView است. درک آن به شما امکان سفارشی‌سازی عمیق می‌دهد.",
+  "sections": [
+    {
+      "id": "dispatch",
+      "title": "dispatch",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def dispatch(self, request, *args, **kwargs):\n    self.args = args\n    self.kwargs = kwargs\n\n    # ۱. ساخت Request DRF\n    request = self.initialize_request(request, *args, **kwargs)\n    self.request = request\n    self.headers = self.default_response_headers\n\n    try:\n        # ۲. احراز هویت + مجوز + throttle\n        self.initial(request, *args, **kwargs)\n\n        # ۳. پیدا کردن متد HTTP\n        if request.method.lower() in self.http_method_names:\n            handler = getattr(self, request.method.lower(), self.http_method_not_allowed)\n        else:\n            handler = self.http_method_not_allowed\n\n        # ۴. اجرا\n        response = handler(request, *args, **kwargs)\n    except Exception as exc:\n        # ۵. مدیریت خطا\n        response = self.handle_exception(exc)\n\n    # ۶. finalize\n    self.response = self.finalize_response(request, response, *args, **kwargs)\n    return self.response" }
+      ]
+    },
+    {
+      "id": "initial",
+      "title": "initial",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def initial(self, request, *args, **kwargs):\n    self.format_kwarg = self.get_format_suffix(**kwargs)\n\n    # محاسبه محتوا\n    neg = self.perform_content_negotiation(request)\n    request.accepted_renderer, request.accepted_media_type = neg\n\n    # تعیین نسخه\n    version, scheme = self.determine_version(request, *args, **kwargs)\n    request.version, request.versioning_scheme = version, scheme\n\n    # احراز هویت\n    self.perform_authentication(request)\n\n    # بررسی مجوز\n    self.check_permissions(request)\n\n    # بررسی throttle\n    self.check_throttles(request)" }
+      ]
+    },
+    {
+      "id": "hooks",
+      "title": "متدهای قابل بازنویسی",
+      "blocks": [
+        { "type": "table", "headers": ["متد", "کار"], "rows": [
+          ["`initial`", "چرخه اولیه"],
+          ["`perform_authentication`", "اجرای احراز هویت"],
+          ["`check_permissions`", "بررسی مجوز"],
+          ["`check_throttles`", "بررسی throttle"],
+          ["`get_authenticators`", "لیست authenticatorها"],
+          ["`get_permissions`", "لیست permissionها"],
+          ["`get_throttles`", "لیست throttleها"],
+          ["`get_parsers`", "لیست parserها"],
+          ["`get_renderers`", "لیست rendererها"],
+          ["`get_content_negotiator`", "کلاس مذاکره"],
+          ["`get_exception_handler`", "exception handler"],
+          ["`handle_exception`", "تبدیل استثنا به Response"],
+          ["`finalize_response`", "پردازش نهایی"]
+        ]}
+      ]
+    },
+    {
+      "id": "custom-initial",
+      "title": "سفارشی‌سازی initial",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class TenantView(APIView):\n    def initial(self, request, *args, **kwargs):\n        super().initial(request, *args, **kwargs)\n\n        # بعد از احراز هویت\n        tenant_slug = request.headers.get(\"X-Tenant\")\n        if not tenant_slug:\n            raise ValidationError({\"X-Tenant\": \"الزامی است.\"})\n\n        try:\n            request.tenant = Tenant.objects.get(slug=tenant_slug)\n        except Tenant.DoesNotExist:\n            raise NotFound(\"Tenant پیدا نشد.\")\n\n    def get(self, request):\n        return Response({\"tenant\": request.tenant.slug})" }
+      ]
+    },
+    {
+      "id": "finalize",
+      "title": "finalize_response",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def finalize_response(self, request, response, *args, **kwargs):\n    # اگر data خام بود، آن را به Response تبدیل کن\n    if isinstance(response, HttpResponseBase):\n        return response\n\n    if not isinstance(response, Response):\n        response = Response(response)\n\n    # اعمال renderer\n    if getattr(request, \"accepted_renderer\", None) is not None:\n        response.accepted_renderer = request.accepted_renderer\n        response.accepted_media_type = request.accepted_media_type\n        response.renderer_context = self.get_renderer_context()\n\n    # افزودن Vary\n    for key, value in self.headers.items():\n        response[key] = value\n\n    return response" },
+        { "type": "note", "variant": "tip", "title": "کاربرد", "text": "می‌توانید `finalize_response` را بازنویسی کنید تا هدرهای عمومی اضافه کنید (مثل `X-API-Version`, `X-Request-ID`)." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "بازنویسی dispatch", "why": "شکننده در برابر نسخه DRF.", "when": "معمولاً.", "fix": "از hookهای دیگر." },
+        { "type": "anti-pattern", "title": "نبود super() در initial", "why": "احراز هویت و مجوز اجرا نمی‌شوند.", "when": "بازنویسی.", "fix": "همیشه `super().initial()` اول." },
+        { "type": "anti-pattern", "title": "دستکاری response در dispatch", "why": "finalize_response کار نمی‌کند.", "when": "برای هدر.", "fix": "در `finalize_response`." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-069-q1", "tag": "کوییز", "question": "کدام متد قبل از handler اجرا می‌شود؟", "options": [
+      { "text": "`finalize_response`", "correct": false },
+      { "text": "`initial`", "correct": true, "explanation": "احراز هویت، مجوز، throttle." },
+      { "text": "`handle_exception`", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-069-ex1", "title": "تمرین — افزودن هدر به همه پاسخ‌ها", "problem": "یک `APIView` سفارشی بسازید که به همه پاسخ‌ها هدر `X-API-Version: 1.0` اضافه کند.", "hints": ["از `finalize_response`.", "همیشه super."], "solution": "```python\nfrom rest_framework.views import APIView\n\n\nclass VersionedAPIView(APIView):\n    def finalize_response(self, request, response, *args, **kwargs):\n        response = super().finalize_response(request, response, *args, **kwargs)\n        response[\"X-API-Version\"] = \"1.0\"\n        return response\n\n\n# همه ویوها از این ارث‌بری کنند\nclass BookView(VersionedAPIView):\n    def get(self, request):\n        return Response({\"books\": []})\n```", "explanation": "این الگو برای افزودن هدرهای عمومی به همه پاسخ‌ها مفید است." }
+  ],
+  "summary": [
+    "`dispatch` چرخه اصلی: init → initial → handler → finalize.",
+    "`initial` احراز هویت، مجوز، throttle.",
+    "hookهای قابل بازنویسی: `initial`, `perform_authentication`, `finalize_response`, ... .",
+    "`super()` را فراموش نکنید.",
+    "`finalize_response` برای هدرهای عمومی."
+  ],
+  "resources": [
+    { "title": "DRF Source — views.py", "url": "https://github.com/encode/django-rest-framework/blob/master/rest_framework/views.py", "official": true }
+  ]
+}

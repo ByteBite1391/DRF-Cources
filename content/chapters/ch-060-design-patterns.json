@@ -1,0 +1,78 @@
+{
+  "id": "ch-060",
+  "slug": "design-patterns",
+  "title": "الگوهای طراحی در DRF",
+  "kicker": "فصل ۶۰",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "الگوهای طراحی، راه‌حل‌های آزموده‌شده برای مسائل تکرارشونده هستند. این فصل آن‌هایی که در DRF کاربرد دارند را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "repository",
+      "title": "Repository Pattern",
+      "blocks": [
+        { "type": "paragraph", "text": "جداسازی کوئری‌های دیتابیس از منطق کسب‌وکار." },
+        { "type": "code", "lang": "python", "filename": "catalog/repositories.py", "code": "from django.db.models import Q, Count, Avg\nfrom .models import Book\n\n\nclass BookRepository:\n    @staticmethod\n    def get_active_books():\n        return Book.objects.filter(is_active=True)\n\n    @staticmethod\n    def get_by_isbn(isbn):\n        return Book.objects.filter(isbn=isbn).first()\n\n    @staticmethod\n    def search(query):\n        return Book.objects.filter(\n            Q(title__icontains=query) |\n            Q(description__icontains=query)\n        )\n\n    @staticmethod\n    def with_stats():\n        return Book.objects.annotate(\n            reviews_count=Count(\"reviews\"),\n            avg_rating=Avg(\"reviews__rating\"),\n        )\n\n\n# استفاده در Service\nclass BookService:\n    @staticmethod\n    def find_popular():\n        return BookRepository.with_stats().filter(reviews_count__gte=10)" }
+      ]
+    },
+    {
+      "id": "selector",
+      "title": "Selector Pattern",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# selectors برای خواندن‌های پیچیده\ndef get_dashboard_stats(*, user):\n    return {\n        \"my_books\": Book.objects.filter(owner=user).count(),\n        \"my_reviews\": Review.objects.filter(user=user).count(),\n        \"my_favorites\": Favorite.objects.filter(user=user).count(),\n        \"recent_activity\": list(\n            Activity.objects.filter(user=user)\n            .select_related(\"target\")\n            .order_by(\"-created_at\")[:10]\n            .values(\"id\", \"action\", \"target__title\", \"created_at\")\n        ),\n    }" }
+      ]
+    },
+    {
+      "id": "strategy",
+      "title": "Strategy Pattern",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# انتخاب استراتژی بر اساس نوع پرداخت\nfrom abc import ABC, abstractmethod\n\n\nclass PaymentStrategy(ABC):\n    @abstractmethod\n    def charge(self, amount, token): ...\n\n\nclass StripePayment(PaymentStrategy):\n    def charge(self, amount, token):\n        # پیاده‌سازی Stripe\n        ...\n\n\nclass ZarinpalPayment(PaymentStrategy):\n    def charge(self, amount, token):\n        # پیاده‌سازی زرین‌پال\n        ...\n\n\nclass PaymentContext:\n    def __init__(self, strategy: PaymentStrategy):\n        self.strategy = strategy\n\n    def process(self, amount, token):\n        return self.strategy.charge(amount, token)\n\n\n# انتخاب\nSTRATEGIES = {\n    \"stripe\": StripePayment(),\n    \"zarinpal\": ZarinpalPayment(),\n}\n\n\ndef process_payment(provider, amount, token):\n    strategy = STRATEGIES.get(provider)\n    if not strategy:\n        raise ValueError(\"Provider نامعتبر\")\n    return strategy.charge(amount, token)" }
+      ]
+    },
+    {
+      "id": "factory",
+      "title": "Factory Pattern",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# ساخت Notification بر اساس نوع\nclass NotificationFactory:\n    @staticmethod\n    def create(kind):\n        if kind == \"email\":\n            return EmailNotification()\n        if kind == \"sms\":\n            return SMSNotification()\n        if kind == \"push\":\n            return PushNotification()\n        raise ValueError(f\"نوع نامعتبر: {kind}\")\n\n\n# استفاده\nnotification = NotificationFactory.create(order.user.notification_type)\nnotification.send(\"سفارش شما ثبت شد\")" }
+      ]
+    },
+    {
+      "id": "dependency-injection",
+      "title": "Dependency Injection",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# تزریق وابستگی برای تست‌پذیری\nclass OrderService:\n    def __init__(self, payment_gateway=None, notifier=None):\n        self.payment_gateway = payment_gateway or StripeGateway()\n        self.notifier = notifier or EmailNotifier()\n\n    def create_order(self, user, items):\n        order = Order.objects.create(user=user)\n        # ...\n        self.payment_gateway.charge(order.total)\n        self.notifier.notify(user, \"سفارش ثبت شد\")\n        return order\n\n\n# در تست\nservice = OrderService(\n    payment_gateway=MockGateway(),\n    notifier=MockNotifier(),\n)" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "استفاده از الگو بدون نیاز", "why": "پیچیدگی بی‌مورد.", "when": "پروژه کوچک.", "fix": "الگو فقط وقتی تکرار دیده شود." },
+        { "type": "anti-pattern", "title": "Abstract برای همه چیز", "why": "سازمان بیش از حد.", "when": "تازه‌کار.", "fix": "بتن اول، abstract وقتی الگو دیده شد." },
+        { "type": "anti-pattern", "title": "DI برای هر کلاس", "why": "پیچیدگی بدون سود.", "when": "پروژه کوچک.", "fix": "DI فقط برای وابستگی‌های خارجی." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-060-q1", "tag": "کوییز", "question": "الگوی Strategy چه زمانی مفید است؟", "options": [
+      { "text": "برای همه چیز.", "correct": false },
+      { "text": "وقتی چند الگوریتم متفاوت برای یک کار دارید.", "correct": true, "explanation": "مثل چند درگاه پرداخت." },
+      { "text": "فقط برای پرداخت.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-060-ex1", "title": "تمرین — Factory برای Notification", "problem": "یک Factory بسازید که بر اساس `user.notification_preference` یکی از Email/SMS/Push را برگرداند.", "hints": ["از `@staticmethod`.", "دیکشنری mapping.", "خطا برای نوع نامعتبر."], "solution": "```python\nfrom abc import ABC, abstractmethod\n\n\nclass Notification(ABC):\n    @abstractmethod\n    def send(self, user, message): ...\n\n\nclass EmailNotification(Notification):\n    def send(self, user, message):\n        send_mail(\"Notification\", message, \"noreply@example.com\", [user.email])\n\n\nclass SMSNotification(Notification):\n    def send(self, user, message):\n        sms_client.send(user.phone, message)\n\n\nclass PushNotification(Notification):\n    def send(self, user, message):\n        push_client.send(user.device_token, message)\n\n\nclass NotificationFactory:\n    _mapping = {\n        \"email\": EmailNotification,\n        \"sms\": SMSNotification,\n        \"push\": PushNotification,\n    }\n\n    @classmethod\n    def create(cls, kind):\n        klass = cls._mapping.get(kind)\n        if not klass:\n            raise ValueError(f\"نوع نامعتبر: {kind}\")\n        return klass()\n\n\n# استفاده\nnotification = NotificationFactory.create(user.notification_preference)\nnotification.send(user, \"سفارش شما ثبت شد\")\n```", "explanation": "Factory این امکان را می‌دهد که بدون تغییر کد، نوع جدیدی اضافه کنید." }
+  ],
+  "summary": [
+    "Repository برای کوئری‌های دیتابیس.",
+    "Selector برای خواندن‌های پیچیده.",
+    "Strategy برای انتخاب الگوریتم.",
+    "Factory برای ساخت اشیاء بر اساس نوع.",
+    "Dependency Injection برای تست‌پذیری.",
+    "الگو فقط وقتی تکرار دیده شود."
+  ],
+  "resources": [
+    { "title": "Refactoring Guru — Design Patterns", "url": "https://refactoring.guru/design-patterns", "official": false }
+  ]
+}

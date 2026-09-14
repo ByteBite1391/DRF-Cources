@@ -1,0 +1,105 @@
+{
+  "id": "ch-064",
+  "slug": "celery",
+  "title": "Celery و کارهای پس‌زمینه",
+  "kicker": "فصل ۶۴",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 50,
+  "lead": "کارهای طولانی (ایمیل، گزارش، پردازش تصویر) نباید درخواست HTTP را بلاک کنند. Celery این کارها را پس‌زمینه انجام می‌دهد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا Celery؟",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**پاسخ سریع:** درخواست منتظر نمی‌ماند.",
+          "**Retry:** اگر خطا داد، دوباره تلاش می‌کند.",
+          "**Scheduling:** کارهای زمان‌بندی‌شده.",
+          "**مقیاس‌پذیری:** workerهای متعدد.",
+          "**مانیتورینگ:** Flower برای دیدن وضعیت."
+        ]}
+      ]
+    },
+    {
+      "id": "install",
+      "title": "نصب و تنظیمات",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install celery redis\npip install flower   # برای مانیتورینگ" },
+        { "type": "code", "lang": "python", "filename": "library_api/celery.py", "code": "import os\nfrom celery import Celery\n\nos.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"library_api.settings\")\n\napp = Celery(\"library_api\")\napp.config_from_object(\"django.conf:settings\", namespace=\"CELERY\")\napp.autodiscover_tasks()" },
+        { "type": "code", "lang": "python", "filename": "library_api/__init__.py", "code": "from .celery import app as celery_app\n\n__all__ = (\"celery_app\",)" },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "CELERY_BROKER_URL = \"redis://127.0.0.1:6379/0\"\nCELERY_RESULT_BACKEND = \"redis://127.0.0.1:6379/0\"\nCELERY_ACCEPT_CONTENT = [\"application/json\"]\nCELERY_TASK_SERIALIZER = \"json\"\nCELERY_RESULT_SERIALIZER = \"json\"\nCELERY_TIMEZONE = \"Asia/Tehran\"\nCELERY_TASK_TRACK_STARTED = True\nCELERY_TASK_TIME_LIMIT = 30 * 60   # ۳۰ دقیقه\n\nCELERY_BEAT_SCHEDULE = {\n    \"cleanup-expired-sessions\": {\n        \"task\": \"users.tasks.cleanup_sessions\",\n        \"schedule\": 60 * 60,   # هر ساعت\n    },\n    \"send-daily-report\": {\n        \"task\": \"reports.tasks.send_daily_report\",\n        \"schedule\": crontab(hour=8, minute=0),\n    },\n}" }
+      ]
+    },
+    {
+      "id": "tasks",
+      "title": "نوشتن Task",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "orders/tasks.py", "code": "from celery import shared_task\nfrom django.core.mail import send_mail\nfrom django.conf import settings\nimport logging\n\nlogger = logging.getLogger(__name__)\n\n\n@shared_task(bind=True, max_retries=3, default_retry_delay=60)\ndef send_order_email(self, order_id):\n    try:\n        order = Order.objects.select_related(\"user\").get(pk=order_id)\n    except Order.DoesNotExist:\n        logger.warning(f\"Order {order_id} not found\")\n        return\n\n    try:\n        send_mail(\n            subject=f\"سفارش #{order.id} ثبت شد\",\n            message=f\"مبلغ کل: {order.total}\",\n            from_email=settings.DEFAULT_FROM_EMAIL,\n            recipient_list=[order.user.email],\n        )\n        logger.info(f\"Order email sent for {order_id}\")\n    except Exception as exc:\n        logger.error(f\"Failed to send email: {exc}\")\n        raise self.retry(exc=exc)\n\n\n@shared_task\ndef generate_order_report(order_id):\n    order = Order.objects.get(pk=order_id)\n    pdf = build_pdf(order)\n    order.report.save(f\"order_{order.id}.pdf\", pdf)\n    return order.report.url\n\n\n@shared_task(bind=True)\ndef process_large_import(self, file_path, user_id):\n    total = 0\n    errors = []\n    with open(file_path) as f:\n        reader = csv.DictReader(f)\n        for i, row in enumerate(reader, 1):\n            try:\n                process_row(row)\n                total += 1\n            except Exception as e:\n                errors.append({\"row\": i, \"error\": str(e)})\n\n            self.update_state(\n                state=\"PROGRESS\",\n                meta={\"current\": i, \"total\": total},\n            )\n\n    return {\"imported\": total, \"errors\": errors}" }
+      ]
+    },
+    {
+      "id": "call",
+      "title": "فراخوانی Task",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# روش ۱: با .delay()\nsend_order_email.delay(order.id)\n\n# روش ۲: با apply_async برای کنترل بیشتر\nsend_order_email.apply_async(\n    args=[order.id],\n    countdown=60,           # ۶۰ ثانیه بعد\n    expires=3600,           # اگر تا یک ساعت اجرا نشد، لغو\n    queue=\"emails\",\n)\n\n# روش ۳: صف خاص\nsend_order_email.apply_async(args=[order.id], queue=\"high_priority\")\n\n# روش ۴: scheduling در آینده\nfrom datetime import datetime, timedelta\nsend_order_email.apply_async(\n    args=[order.id],\n    eta=datetime.utcnow() + timedelta(hours=1),\n)" }
+      ]
+    },
+    {
+      "id": "monitoring",
+      "title": "مانیتورینگ با Flower",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "# اجرای worker\ncelery -A library_api worker -l info\n\n# با queue مشخص\ncelery -A library_api worker -l info -Q emails,high_priority\n\n# اجرای beat (scheduler)\ncelery -A library_api beat -l info\n\n# Flower\ncelery -A library_api flower --port=5555" }
+      ]
+    },
+    {
+      "id": "patterns",
+      "title": "الگوها",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "# ۱. Task Chains — زنجیره\nfrom celery import chain\n\nchain(\n    process_payment.s(order.id),\n    generate_invoice.s(),\n    send_invoice_email.s(),\n).apply_async()\n\n# ۲. Groups — موازی\nfrom celery import group\n\ngroup(\n    send_email.s(user_id) for user_id in user_ids\n).apply_async()\n\n# ۳. Chords — گروه + callback\nfrom celery import chord\n\nchord(\n    (process_item.s(item_id) for item_id in item_ids),\n    aggregate_results.s(),\n).apply_async()\n\n# ۴. Idempotent Task — اجرای چندبار مشکلی ندارد\ndef process_order(order_id):\n    # بررسی وضعیت\n    if Order.objects.get(pk=order_id).status == \"processed\":\n        return\n    # ادامه" }
+      ]
+    },
+    {
+      "id": "error-handling",
+      "title": "مدیریت خطا",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "@shared_task(bind=True, max_retries=5, default_retry_delay=60)\ndef send_notification(self, notification_id):\n    try:\n        notification = Notification.objects.get(pk=notification_id)\n        send(notification)\n    except Notification.DoesNotExist:\n        return   # بدون retry\n    except (ConnectionError, TimeoutError) as exc:\n        # retry با exponential backoff\n        raise self.retry(exc=exc, countdown=2 ** self.request.retries)\n    except Exception as exc:\n        logger.exception(f\"Permanent failure: {exc}\")\n        raise\n\n\n@shared_task(autoretry_for=(ConnectionError,), retry_kwargs={\"max_retries\": 3})\ndef ping_external():\n    ..." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "Task بدون idempotency", "why": "اگر دوباره اجرا شد، داده تکراری.", "when": "retry فعال است.", "fix": "Task را idempotent بنویسید." },
+        { "type": "anti-pattern", "title": "Task طولانی بدون time_limit", "why": "Worker قفل می‌شود.", "when": "پردازش طولانی.", "fix": "`time_limit` و `soft_time_limit`." },
+        { "type": "anti-pattern", "title": "بدون retry", "why": "خطاهای موقت، کار را از بین می‌برند.", "when": "سرویس خارجی.", "fix": "`max_retries` + backoff." },
+        { "type": "anti-pattern", "title": "Task سنگین CPU", "why": "Worker بلاک می‌شود.", "when": "پردازش تصویر، PDF.", "fix": "صف جداگانه یا حذف از async." },
+        { "type": "anti-pattern", "title": "بدون Flower", "why": "نمی‌دانید چه اتفاقی می‌افتد.", "when": "تولید.", "fix": "Flower + هشدار." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-064-q1", "tag": "کوییز", "question": "Task را idempotent بنویسیم یعنی چه؟", "options": [
+      { "text": "سریع باشد.", "correct": false },
+      { "text": "اجرای چندبار آن، نتیجه یکسان بدهد.", "correct": true, "explanation": "برای retry امن است." },
+      { "text": "بدون خطا باشد.", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-064-ex1", "title": "تمرین — Task ایمپورت گروهی", "problem": "یک Task بنویسید که فایل CSV کتاب‌ها را import کند و progress را به‌روز کند.", "hints": ["`bind=True` برای self.update_state.", "خطاها را جمع کنید.", "در پایان نتیجه برگردانید."], "solution": "```python\n# tasks.py\nimport csv\nfrom celery import shared_task\nfrom django.db import transaction\n\n\n@shared_task(bind=True)\ndef import_books_from_csv(self, file_path):\n    imported = 0\n    errors = []\n\n    with open(file_path, encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        rows = list(reader)\n        total = len(rows)\n\n        with transaction.atomic():\n            for i, row in enumerate(rows, 1):\n                try:\n                    Book.objects.create(\n                        title=row[\"title\"],\n                        isbn=row[\"isbn\"],\n                        price=row[\"price\"],\n                        published_at=row[\"published_at\"],\n                    )\n                    imported += 1\n                except Exception as e:\n                    errors.append({\"row\": i, \"error\": str(e)})\n\n                self.update_state(\n                    state=\"PROGRESS\",\n                    meta={\"current\": i, \"total\": total, \"percent\": int(i / total * 100)},\n                )\n\n    return {\"imported\": imported, \"errors\": errors}\n```\n\n```python\n# در Service\nfrom .tasks import import_books_from_csv\n\ntask = import_books_from_csv.delay(\"/tmp/books.csv\")\nreturn Response({\"task_id\": task.id}, status=202)\n```", "explanation": "این الگو برای import گروهی، پردازش، گزارش‌گیری استفاده می‌شود." }
+  ],
+  "summary": [
+    "Celery برای کارهای پس‌زمینه.",
+    "Redis به‌عنوان broker.",
+    "`@shared_task` + `.delay()`.",
+    "Retry با `self.retry`.",
+    "Beat برای زمان‌بندی.",
+    "Flower برای مانیتورینگ.",
+    "Chain، Group، Chord برای الگوهای پیچیده.",
+    "Task را idempotent بنویسید."
+  ],
+  "resources": [
+    { "title": "Celery Documentation", "url": "https://docs.celeryq.dev/", "official": true },
+    { "title": "Flower", "url": "https://flower.readthedocs.io/", "official": true }
+  ]
+}

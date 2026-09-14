@@ -1,0 +1,110 @@
+{
+  "id": "ch-067",
+  "slug": "microservices",
+  "title": "DRF در معماری میکروسرویس",
+  "kicker": "فصل ۶۷",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "میکروسرویس‌ها همیشه جواب نیستند. این فصل نشان می‌دهد چه زمانی و چطور DRF را در این معماری استفاده کنید.",
+  "sections": [
+    {
+      "id": "evolution",
+      "title": "تکامل معماری",
+      "blocks": [
+        { "type": "flow", "steps": ["Monolith", "Modular Monolith", "Microservices"] },
+        { "type": "table", "headers": ["معماری", "مزیت", "عیب"], "rows": [
+          ["Monolith", "ساده، یک deploy", "مقیاس محدود، coupling"],
+          ["Modular Monolith", "ماژولار، یک deploy", "نیاز به discipline"],
+          ["Microservices", "استقلال، مقیاس", "پیچیدگی، distributed tracing"]
+        ]},
+        { "type": "note", "variant": "tip", "title": "توصیه", "text": "با **Modular Monolith** شروع کنید. اگر واقعاً نیاز شد، به میکروسرویس مهاجرت کنید." }
+      ]
+    },
+    {
+      "id": "when-micro",
+      "title": "چه زمانی میکروسرویس؟",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**تیم‌های مستقل:** هر تیم روی سرویس خودش.",
+          "**مقیاس متفاوت:** یک سرویس ترافیک بالا دارد.",
+          "**فناوری متفاوت:** تیم ML با Python، تیم وب با Node.",
+          "**انتشار مستقل:** یک سرویس می‌خواهد سریع deploy کند.",
+          "**مرزهای دامنه واضح:** Bounded Context."
+        ]},
+        { "type": "note", "variant": "warn", "title": "چه زمانی نه؟", "text": "تیم کوچک، مرزهای نامشخص، بدون DevOps قوی. میکروسرویس پیچیدگی زیادی اضافه می‌کند." }
+      ]
+    },
+    {
+      "id": "drf-service",
+      "title": "یک میکروسرویس DRF",
+      "blocks": [
+        { "type": "code", "lang": "text", "code": "order-service/\n├── order_service/\n│   ├── settings/\n│   ├── urls.py\n│   └── asgi.py\n├── orders/\n│   ├── models.py       # فقط داده‌های سفارش\n│   ├── serializers.py\n│   ├── views.py\n│   ├── services.py\n│   └── clients/        # کلاینت سرویس‌های دیگر\n│       ├── product_client.py\n│       └── user_client.py\n└── Dockerfile" },
+        { "type": "code", "lang": "python", "filename": "orders/clients/product_client.py", "code": "import httpx\nfrom django.conf import settings\nfrom rest_framework.exceptions import APIException\n\n\nclass ProductServiceError(APIException):\n    status_code = 502\n    default_detail = \"سرویس محصولات در دسترس نیست.\"\n\n\nclass ProductClient:\n    base_url = settings.PRODUCT_SERVICE_URL\n\n    @classmethod\n    def get_product(cls, product_id):\n        try:\n            response = httpx.get(\n                f\"{cls.base_url}/api/products/{product_id}/\",\n                timeout=5.0,\n                headers={\"X-Service-Token\": settings.SERVICE_TOKEN},\n            )\n            response.raise_for_status()\n            return response.json()\n        except httpx.HTTPError as exc:\n            raise ProductServiceError() from exc\n\n    @classmethod\n    def check_stock(cls, product_id, quantity):\n        try:\n            response = httpx.post(\n                f\"{cls.base_url}/api/products/{product_id}/check-stock/\",\n                json={\"quantity\": quantity},\n                timeout=5.0,\n            )\n            response.raise_for_status()\n            return response.json()[\"available\"]\n        except httpx.HTTPError:\n            return False" }
+      ]
+    },
+    {
+      "id": "service-communication",
+      "title": "ارتباط بین سرویس‌ها",
+      "blocks": [
+        { "type": "table", "headers": ["روش", "مزیت", "عیب"], "rows": [
+          ["HTTP/REST", "ساده، استاندارد", "Coupling زمانی"],
+          ["gRPC", "سریع، type-safe", "پیچیده"],
+          ["Message Queue", "Decoupled، resilient", "Eventual consistency"],
+          ["Event Bus", "Pub/Sub", "پیچیدگی"]
+        ]},
+        { "type": "code", "lang": "python", "code": "# HTTP با Authentication بین سرویس‌ها\nheaders = {\n    \"X-Service-Token\": settings.SERVICE_TOKEN,\n    \"X-Request-ID\": request.request_id,\n}\n\n# Service Token احراز هویت\nclass ServiceTokenAuthentication(BaseAuthentication):\n    def authenticate(self, request):\n        token = request.headers.get(\"X-Service-Token\")\n        if not token or token != settings.SERVICE_TOKEN:\n            raise AuthenticationFailed()\n        return (AnonymousUser(), None)" }
+      ]
+    },
+    {
+      "id": "patterns",
+      "title": "الگوهای ضروری",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**Circuit Breaker:** جلوگیری از cascade failure.",
+          "**Retry with Backoff:** تلاش مجدد هوشمند.",
+          "**Timeout:** هرگز بی‌نهایت منتظر نمانید.",
+          "**Bulkhead:** جداسازی منابع.",
+          "**Idempotency Key:** جلوگیری از عملیات تکراری.",
+          "**Saga:** تراکنش توزیع‌شده.",
+          "**Outbox Pattern:** اطمینان از ارسال event."
+        ]},
+        { "type": "code", "lang": "python", "code": "# Circuit Breaker ساده\nimport time\n\n\nclass CircuitBreaker:\n    def __init__(self, threshold=5, timeout=60):\n        self.failures = 0\n        self.threshold = threshold\n        self.timeout = timeout\n        self.opened_at = None\n\n    def call(self, func, *args, **kwargs):\n        if self.opened_at and time.time() - self.opened_at < self.timeout:\n            raise ServiceUnavailable(\"Circuit open\")\n\n        try:\n            result = func(*args, **kwargs)\n            self.failures = 0\n            self.opened_at = None\n            return result\n        except Exception:\n            self.failures += 1\n            if self.failures >= self.threshold:\n                self.opened_at = time.time()\n            raise" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "Distributed Monolith", "why": "میکروسرویس با coupling شدید.", "when": "بدون مرزهای واضح.", "fix": "Bounded Context قبل از تقسیم." },
+        { "type": "anti-pattern", "title": "بدون Timeout", "why": "cascade failure.", "when": "HTTP بین سرویس‌ها.", "fix": "همیشه timeout." },
+        { "type": "anti-pattern", "title": "اشتراک دیتابیس", "why": "coupling داده.", "when": "برای راحتی.", "fix": "هر سرویس دیتابیس خودش." },
+        { "type": "anti-pattern", "title": "بدون tracing", "why": "دیباگ غیرممکن.", "when": "چند سرویس.", "fix": "OpenTelemetry + Jaeger." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-067-q1", "tag": "کوییز", "question": "با چه معماری شروع کنیم؟", "options": [
+      { "text": "Microservices", "correct": false },
+      { "text": "Modular Monolith", "correct": true, "explanation": "ساده‌تر، قابل تکامل." },
+      { "text": "Monolith خالص", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-067-ex1", "title": "تمرین — Client سرویس خارجی", "problem": "یک Client برای سرویس پرداخت بنویسید که: timeout، retry، Circuit Breaker داشته باشد.", "hints": ["httpx با timeout.", "retry ساده.", "CircuitBreaker."], "solution": "```python\nimport time\nimport httpx\nfrom django.conf import settings\nfrom rest_framework.exceptions import APIException\n\n\nclass PaymentServiceError(APIException):\n    status_code = 502\n    default_detail = \"سرویس پرداخت در دسترس نیست.\"\n\n\nclass CircuitBreaker:\n    def __init__(self, threshold=5, timeout=60):\n        self.failures = 0\n        self.threshold = threshold\n        self.timeout = timeout\n        self.opened_at = None\n\n    def is_open(self):\n        return self.opened_at and time.time() - self.opened_at < self.timeout\n\n    def record_success(self):\n        self.failures = 0\n        self.opened_at = None\n\n    def record_failure(self):\n        self.failures += 1\n        if self.failures >= self.threshold:\n            self.opened_at = time.time()\n\n\nclass PaymentClient:\n    base_url = settings.PAYMENT_SERVICE_URL\n    breaker = CircuitBreaker()\n\n    @classmethod\n    def charge(cls, amount, token, max_retries=3):\n        if cls.breaker.is_open():\n            raise PaymentServiceError(\"Circuit open\")\n\n        for attempt in range(max_retries):\n            try:\n                response = httpx.post(\n                    f\"{cls.base_url}/charge/\",\n                    json={\"amount\": str(amount), \"token\": token},\n                    timeout=10.0,\n                )\n                response.raise_for_status()\n                cls.breaker.record_success()\n                return response.json()\n            except httpx.HTTPError:\n                if attempt == max_retries - 1:\n                    cls.breaker.record_failure()\n                    raise PaymentServiceError()\n                time.sleep(2 ** attempt)\n```", "explanation": "این الگو مقاومت سرویس شما را در برابر قطعی سرویس خارجی تضمین می‌کند." }
+  ],
+  "summary": [
+    "با Modular Monolith شروع، اگر نیاز شد microservices.",
+    "Bounded Context قبل از تقسیم.",
+    "DRF برای هر سرویس مستقل.",
+    "Client جدا برای سرویس‌های دیگر.",
+    "Circuit Breaker، Retry، Timeout.",
+    "Service Token برای احراز هویت بین سرویس‌ها.",
+    "هر سرویس دیتابیس خودش.",
+    "Tracing برای دیباگ."
+  ],
+  "resources": [
+    { "title": "Martin Fowler — Microservices", "url": "https://martinfowler.com/articles/microservices.html", "official": false },
+    { "title": "Microservices.io Patterns", "url": "https://microservices.io/patterns/", "official": false }
+  ]
+}

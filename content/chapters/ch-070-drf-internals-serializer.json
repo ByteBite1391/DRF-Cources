@@ -1,0 +1,85 @@
+{
+  "id": "ch-070",
+  "slug": "drf-internals-serializer",
+  "title": "درون‌کاوی DRF — Serializer",
+  "kicker": "فصل ۷۰",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 30,
+  "lead": "درک چرخه اعتبارسنجی و تبدیل در سریالایزر، کلید عیب‌یابی رفتارهای عجیب است.",
+  "sections": [
+    {
+      "id": "is-valid",
+      "title": "is_valid",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def is_valid(self, *, raise_exception=False):\n    if not hasattr(self, \"_validated_data\"):\n        try:\n            self._validated_data = self.run_validation(self.initial_data)\n        except ValidationError as exc:\n            self._validated_data = {}\n            self._errors = exc.detail\n        else:\n            self._errors = {}\n\n    if self._errors and raise_exception:\n        raise ValidationError(self.errors)\n\n    return not bool(self._errors)" }
+      ]
+    },
+    {
+      "id": "run-validation",
+      "title": "run_validation",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def run_validation(self, data=empty):\n    # اگر داده empty باشد، از default استفاده کن\n    value = self.to_internal_value(data)\n    try:\n        self.run_validators(value)\n        value = self.validate(value)\n    except (ValidationError, DjangoValidationError) as exc:\n        raise ValidationError(detail=as_serializer_error(exc))\n    return value" }
+      ]
+    },
+    {
+      "id": "order",
+      "title": "ترتیب اعتبارسنجی",
+      "blocks": [
+        { "type": "flow", "steps": ["to_internal_value", "run_validators", "validate()", "Object validators"] },
+        { "type": "code", "lang": "python", "code": "# معادل مفهومی ترتیب\n# ۱. برای هر فیلد:\n#    - Field.to_internal_value()\n#    - Field.run_validators()\n#    - validate_<field>()\n# ۲. validate() سطح شیء\n# ۳. Object-level validators (UniqueTogetherValidator)" }
+      ]
+    },
+    {
+      "id": "to-internal",
+      "title": "to_internal_value",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def to_internal_value(self, data):\n    ret = OrderedDict()\n    errors = OrderedDict()\n    fields = self._writable_fields\n\n    for field in fields:\n        validate_method = getattr(self, \"validate_\" + field.field_name, None)\n        primitive_value = field.get_value(data)\n\n        try:\n            # ۱. تبدیل نوع\n            validated_value = field.run_validation(primitive_value)\n\n            # ۲. validate_<field>\n            if validate_method is not None:\n                validated_value = validate_method(validated_value)\n        except ValidationError as exc:\n            errors[field.field_name] = exc.detail\n        except DjangoValidationError as exc:\n            errors[field.field_name] = get_error_detail(exc)\n        except SkipField:\n            pass\n        else:\n            set_value(ret, field.source_attrs, validated_value)\n\n    if errors:\n        raise ValidationError(errors)\n\n    return ret" }
+      ]
+    },
+    {
+      "id": "to-representation",
+      "title": "to_representation",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "def to_representation(self, instance):\n    ret = OrderedDict()\n    fields = self._readable_fields\n\n    for field in fields:\n        try:\n            attribute = field.get_attribute(instance)\n        except SkipField:\n            continue\n\n        # اگر attribute None باشد و فیلد nullable نباشد\n        check_for_none = attribute.pk if isinstance(attribute, PKOnlyObject) else attribute\n        if check_for_none is None:\n            ret[field.field_name] = None\n        else:\n            ret[field.field_name] = field.to_representation(attribute)\n\n    return ret" }
+      ]
+    },
+    {
+      "id": "fields",
+      "title": "Field Lifecycle",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "class Field:\n    def get_attribute(self, instance):\n        # رفتن به attribute از source_attrs\n        return get_attribute(instance, self.source_attrs)\n\n    def get_value(self, dictionary):\n        # خواندن از دیکشنری داده\n        if html.is_html_input(dictionary):\n            return dictionary.get(self.field_name, empty)\n        return dictionary.get(self.field_name, empty)\n\n    def run_validation(self, data=empty):\n        # بررسی required, read_only, default\n        (is_empty_value, data) = self.validate_empty_values(data)\n        if is_empty_value:\n            return data\n\n        # تبدیل به type صحیح\n        value = self.to_internal_value(data)\n\n        # اجرای validators\n        self.run_validators(value)\n        return value\n\n    def to_internal_value(self, data):\n        raise NotImplementedError\n\n    def to_representation(self, value):\n        return str(value)   # پیش‌فرض" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "بازنویسی is_valid", "why": "شکننده، غیرضروری.", "when": "معمولاً.", "fix": "در validate() منطق بگذارید." },
+        { "type": "anti-pattern", "title": "بازنویسی to_internal_value بدون super", "why": "کل چرخه را دور می‌زنید.", "when": "نرمال‌سازی.", "fix": "super بعد از تغییرات." },
+        { "type": "anti-pattern", "title": "run_validation را دور بزنید", "why": "اعتبارسنجی نمی‌شود.", "when": "می‌خواهید سریع‌تر.", "fix": "از API استاندارد." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-070-q1", "tag": "کوییز", "question": "کدام متد اول در run_validation اجرا می‌شود؟", "options": [
+      { "text": "`validate()`", "correct": false },
+      { "text": "`to_internal_value()`", "correct": true, "explanation": "تبدیل نوع اول." },
+      { "text": "`run_validators()`", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-070-ex1", "title": "تمرین — دیباگ اعتبارسنجی", "problem": "سریالایزری بسازید که هر مرحله اعتبارسنجی را لاگ کند.", "hints": ["override متدها.", "لاگ با logging.", "super را فراموش نکنید."], "solution": "```python\nimport logging\nfrom rest_framework import serializers\n\nlogger = logging.getLogger(__name__)\n\n\nclass DebugSerializer(serializers.ModelSerializer):\n    def to_internal_value(self, data):\n        logger.debug(f\"to_internal_value: {data}\")\n        result = super().to_internal_value(data)\n        logger.debug(f\"after to_internal_value: {result}\")\n        return result\n\n    def validate(self, attrs):\n        logger.debug(f\"validate: {attrs}\")\n        return super().validate(attrs)\n\n    def to_representation(self, instance):\n        result = super().to_representation(instance)\n        logger.debug(f\"to_representation: {result}\")\n        return result\n```", "explanation": "این تکنیک برای دیباگ اعتبارسنجی‌های پیچیده مفید است." }
+  ],
+  "summary": [
+    "`is_valid` → `run_validation` → `to_internal_value`.",
+    "ترتیب: تبدیل، validators، validate(), object validators.",
+    "`to_representation` برای خروجی.",
+    "Field lifecycle: get_value, to_internal, run_validators.",
+    "از super() استفاده کنید.",
+    "بازنویسی is_valid نکنید."
+  ],
+  "resources": [
+    { "title": "DRF Source — serializers.py", "url": "https://github.com/encode/django-rest-framework/blob/master/rest_framework/serializers.py", "official": true }
+  ]
+}

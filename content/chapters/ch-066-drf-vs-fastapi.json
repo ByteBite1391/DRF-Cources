@@ -1,0 +1,130 @@
+{
+  "id": "ch-066",
+  "slug": "drf-vs-fastapi",
+  "title": "DRF در برابر FastAPI و Django Ninja",
+  "kicker": "فصل ۶۶",
+  "level": "professional",
+  "difficulty": 3,
+  "estimatedMinutes": 30,
+  "lead": "انتخاب درست بین DRF، FastAPI و Django Ninja می‌تواند سرنوشت پروژه را تعیین کند.",
+  "sections": [
+    {
+      "id": "comparison",
+      "title": "مقایسه جامع",
+      "blocks": [
+        { "type": "table", "headers": ["معیار", "DRF", "FastAPI", "Django Ninja"], "rows": [
+          ["پایه", "Django", "Starlette", "Django"],
+          ["Async", "محدود", "بومی", "بومی"],
+          ["ORM", "Django ORM", "SQLAlchemy (انتخاب)", "Django ORM"],
+          ["یادگیری", "منحنی", "ساده", "ساده"],
+          ["اکوسیستم", "عظیم", "خوب", "متوسط"],
+          ["Admin", "Django Admin", "خیر", "Django Admin"],
+          ["Performance", "خوب", "عالی", "عالی"],
+          ["Async ORM", "محدود", "بومی", "محدود"],
+          ["Type hints", "اختیاری", "اجباری", "اجباری"],
+          ["Validation", "Serializer", "Pydantic", "Pydantic"],
+          ["Docs", "drf-spectacular", "خودکار", "خودکار"],
+          ["مناسب", "CRUD + Admin", "API سریع، ML", "Django + سرعت"]
+        ]}
+      ]
+    },
+    {
+      "id": "drf-pros",
+      "title": "نقاط قوت DRF",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**بالغ:** بیش از یک دهه، هزاران پروژه.",
+          "**اکوسیستم:** پکیج‌های آماده برای هر نیاز.",
+          "**Django Admin:** مدیریت داده بدون کد.",
+          "**ViewSet و Router:** کد کمتر.",
+          "**مستندات:** بهترین در اکوسیستم Python.",
+          "**تیم:** راحت‌تر پیدا می‌شود."
+        ]}
+      ]
+    },
+    {
+      "id": "fastapi-pros",
+      "title": "نقاط قوت FastAPI",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**Performance:** ۲-۳ برابر سریع‌تر در benchmarks.",
+          "**Async بومی:** از روز اول.",
+          "**Type hints:** Pydantic اجباری.",
+          "**Docs خودکار:** Swagger UI داخلی.",
+          "**Dependency Injection:** عالی.",
+          "**مناسب ML:** یکپارچگی با NumPy، PyTorch."
+        ]}
+      ]
+    },
+    {
+      "id": "ninja",
+      "title": "Django Ninja",
+      "blocks": [
+        { "type": "paragraph", "text": "ترکیب بهترین دنیاها: سرعت FastAPI + اکوسیستم Django." },
+        { "type": "code", "lang": "python", "code": "from ninja import NinjaAPI, Schema\nfrom typing import List\n\napi = NinjaAPI()\n\n\nclass BookSchema(Schema):\n    id: int\n    title: str\n    price: float\n\n\n@api.get(\"/books/\", response=List[BookSchema])\n def list_books(request, category: str = None):\n    qs = Book.objects.all()\n    if category:\n        qs = qs.filter(category__slug=category)\n    return qs" }
+      ]
+    },
+    {
+      "id": "when",
+      "title": "چه زمانی کدام؟",
+      "blocks": [
+        { "type": "table", "headers": ["سناریو", "انتخاب"], "rows": [
+          ["CRUD + Admin Django", "DRF"],
+          ["پروژه سازمانی بزرگ", "DRF"],
+          ["تیم مبتدی با Django", "DRF"],
+          ["API سریع با async", "FastAPI"],
+          ["ML/AI API", "FastAPI"],
+          ["Django + سرعت بیشتر", "Django Ninja"],
+          ["پروژه جدید، Django دارید، async می‌خواهید", "Django Ninja"],
+          ["API عمومی با مصرف‌کننده زیاد", "DRF یا FastAPI"]
+        ]},
+        { "type": "callout-level", "basic": "FastAPI برای همه چیز.", "better": "DRF برای Django، FastAPI برای microservices.", "production": "انتخاب بر اساس team skills + نیاز پروژه + موجودیت Django." }
+      ]
+    },
+    {
+      "id": "hybrid",
+      "title": "معماری ترکیبی",
+      "blocks": [
+        { "type": "paragraph", "text": "می‌توانید DRF و FastAPI را با هم استفاده کنید:" },
+        { "type": "list", "ordered": false, "items": [
+          "**DRF:** برای CRUD، Admin، داده‌های پیچیده.",
+          "**FastAPI:** برای Endpointهای سریع، ML، async سنگین.",
+          "**اشتراک دیتابیس:** هر دو به همان PostgreSQL.",
+          "**API Gateway:** Nginx مسیردهی می‌کند.",
+          "**مثال:** DRF برای مدیریت کاربران، FastAPI برای inference مدل."
+        ]}
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "FastAPI چون سریع‌تر است", "why": "Performance در ۹۹٪ پروژه‌ها گلوگاه نیست.", "when": "پروژه معمولی.", "fix": "DRF + optimize queries." },
+        { "type": "anti-pattern", "title": "DRF برای async سنگین", "why": "محدودیت‌های async دارد.", "when": "ML، WebSocket سنگین.", "fix": "FastAPI یا Django Ninja." },
+        { "type": "anti-pattern", "title": "مهاجرت بی‌دلیل", "why": "هزینه زیاد، سود کم.", "when": "وقتی DRF کار می‌کند.", "fix": "بهینه‌سازی قبل از مهاجرت." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-066-q1", "tag": "کوییز", "question": "برای API ML، کدام انتخاب بهتر است؟", "options": [
+      { "text": "DRF", "correct": false },
+      { "text": "FastAPI", "correct": true, "explanation": "async بومی + یکپارچگی با کتابخانه‌های ML." },
+      { "text": "Django Ninja", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-066-ex1", "title": "تمرین — تحلیل انتخاب", "problem": "برای هر سناریو انتخاب کنید و دلیل بنویسید:\n۱) استارتاپ با Django موجود و نیاز به API سریع.\n۲) پروژه ML با مدل PyTorch.\n۳) سیستم سازمانی بزرگ با Admin پیچیده.", "hints": ["به موجودیت Django نگاه کنید.", "به نیاز async.", "به Admin."], "solution": "۱) **Django Ninja** — استفاده از موجودیت Django + سرعت + async.\n۲) **FastAPI** — یکپارچگی با PyTorch، async، سریع.\n۳) **DRF** — Admin، بالغ، پکیج‌ها، تیم راحت.", "explanation": "انتخاب بر اساس شرایط پروژه، نه فناوری محبوب." }
+  ],
+  "summary": [
+    "DRF: بالغ، Admin، اکوسیستم بزرگ.",
+    "FastAPI: سریع، async بومی، ML.",
+    "Django Ninja: ترکیب Django + سرعت.",
+    "انتخاب بر اساس پروژه، نه مد.",
+    "معماری ترکیبی ممکن است.",
+    "بهینه‌سازی قبل از مهاجرت."
+  ],
+  "resources": [
+    { "title": "FastAPI", "url": "https://fastapi.tiangolo.com/", "official": true },
+    { "title": "Django Ninja", "url": "https://django-ninja.dev/", "official": true }
+  ]
+}

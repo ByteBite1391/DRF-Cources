@@ -1,0 +1,116 @@
+{
+  "id": "ch-062",
+  "slug": "channels",
+  "title": "Django Channels و WebSocket",
+  "kicker": "فصل ۶۲",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 45,
+  "lead": "WebSocket برای ارتباط real-time (چت، اعلان، داشبورد زنده). Django Channels این را ممکن می‌کند.",
+  "sections": [
+    {
+      "id": "what",
+      "title": "WebSocket چیست؟",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**اتصال دائمی:** یک بار باز می‌شود.",
+          "**دوطرفه:** سرور و کلاینت همزمان می‌توانند بفرستند.",
+          "**کم‌سربار:** بدون هدر HTTP در هر پیام.",
+          "**مناسب:** چت، اعلان، داشبورد زنده، بازی."
+        ]},
+        { "type": "flow", "steps": ["Client", "ws://", "Server", "همیشه باز"] }
+      ]
+    },
+    {
+      "id": "install",
+      "title": "نصب",
+      "blocks": [
+        { "type": "code", "lang": "bash", "code": "pip install channels channels-redis daphne" },
+        { "type": "code", "lang": "python", "filename": "settings.py", "code": "INSTALLED_APPS = [\n    \"daphne\",   # بالای همه\n    \"channels\",\n    # ...\n]\n\nASGI_APPLICATION = \"library_api.asgi.application\"\n\nCHANNEL_LAYERS = {\n    \"default\": {\n        \"BACKEND\": \"channels_redis.core.RedisChannelLayer\",\n        \"CONFIG\": {\n            \"hosts\": [(\"127.0.0.1\", 6379)],\n        },\n    },\n}" }
+      ]
+    },
+    {
+      "id": "asgi",
+      "title": "asgi.py",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "library_api/asgi.py", "code": "import os\nfrom django.core.asgi import get_asgi_application\nfrom channels.routing import ProtocolTypeRouter, URLRouter\nfrom channels.auth import AuthMiddlewareStack\nfrom channels.security.websocket import AllowedHostsOriginValidator\nfrom notifications.routing import websocket_urlpatterns\n\nos.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"library_api.settings\")\n\ndjango_asgi_app = get_asgi_application()\n\napplication = ProtocolTypeRouter({\n    \"http\": django_asgi_app,\n    \"websocket\": AllowedHostsOriginValidator(\n        AuthMiddlewareStack(\n            URLRouter(websocket_urlpatterns)\n        )\n    ),\n})" }
+      ]
+    },
+    {
+      "id": "consumer",
+      "title": "Consumer",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "notifications/consumers.py", "code": "import json\nfrom channels.generic.websocket import AsyncWebsocketConsumer\n\n\nclass NotificationConsumer(AsyncWebsocketConsumer):\n    async def connect(self):\n        user = self.scope[\"user\"]\n        if not user.is_authenticated:\n            await self.close()\n            return\n\n        self.group_name = f\"user_{user.id}\"\n        await self.channel_layer.group_add(\n            self.group_name,\n            self.channel_name,\n        )\n        await self.accept()\n\n    async def disconnect(self, close_code):\n        if hasattr(self, \"group_name\"):\n            await self.channel_layer.group_discard(\n                self.group_name,\n                self.channel_name,\n            )\n\n    async def receive(self, text_data):\n        # دریافت از کلاینت\n        data = json.loads(text_data)\n        if data.get(\"type\") == \"ping\":\n            await self.send(text_data=json.dumps({\"type\": \"pong\"}))\n\n    async def notify(self, event):\n        # ارسال از سرور به کلاینت\n        await self.send(text_data=json.dumps({\n            \"type\": \"notification\",\n            \"message\": event[\"message\"],\n            \"data\": event.get(\"data\"),\n        }))" }
+      ]
+    },
+    {
+      "id": "routing",
+      "title": "routing.py",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "notifications/routing.py", "code": "from django.urls import re_path\nfrom .consumers import NotificationConsumer\n\n\nwebsocket_urlpatterns = [\n    re_path(r\"ws/notifications/$\", NotificationConsumer.as_asgi()),\n]" }
+      ]
+    },
+    {
+      "id": "send",
+      "title": "ارسال از سرور",
+      "blocks": [
+        { "type": "code", "lang": "python", "code": "from asgiref.sync import async_to_sync\nfrom channels.layers import get_channel_layer\n\n\ndef send_notification(user, message, data=None):\n    channel_layer = get_channel_layer()\n    async_to_sync(channel_layer.group_send)(\n        f\"user_{user.id}\",\n        {\n            \"type\": \"notify\",\n            \"message\": message,\n            \"data\": data,\n        },\n    )\n\n\n# در Service\nclass OrderService:\n    @staticmethod\n    def create_order(user, items):\n        # ... منطق ساخت سفارش\n        send_notification(\n            user,\n            \"سفارش شما ثبت شد\",\n            {\"order_id\": order.id},\n        )\n        return order\n\n\n# در سیگنال\nfrom django.db.models.signals import post_save\nfrom django.dispatch import receiver\n\n\n@receiver(post_save, sender=Order)\ndef notify_order_created(sender, instance, created, **kwargs):\n    if created:\n        send_notification(\n            instance.user,\n            \"سفارش جدید ثبت شد\",\n            {\"order_id\": instance.id},\n        )" }
+      ]
+    },
+    {
+      "id": "client",
+      "title": "کلاینت جاوااسکریپت",
+      "blocks": [
+        { "type": "code", "lang": "javascript", "code": "const socket = new WebSocket(\"ws://localhost:8000/ws/notifications/\");\n\nsocket.onopen = () => {\n  console.log(\"Connected\");\n  socket.send(JSON.stringify({ type: \"ping\" }));\n};\n\nsocket.onmessage = (event) => {\n  const data = JSON.parse(event.data);\n  if (data.type === \"notification\") {\n    showNotification(data.message);\n  }\n};\n\nsocket.onclose = () => {\n  console.log(\"Disconnected. Reconnecting...\");\n  setTimeout(() => reconnect(), 3000);\n};" }
+      ]
+    },
+    {
+      "id": "when",
+      "title": "WebSocket یا HTTP؟",
+      "blocks": [
+        { "type": "table", "headers": ["نیاز", "انتخاب"], "rows": [
+          ["داده تکرارشونده از سرور", "WebSocket"],
+          ["چت", "WebSocket"],
+          ["اعلان real-time", "WebSocket"],
+          ["فرم عادی", "HTTP"],
+          ["درخواست-پاسخ", "HTTP"],
+          ["لاگ stream", "WebSocket یا SSE"]
+        ]},
+        { "type": "callout-level", "basic": "فقط HTTP.", "better": "HTTP + WebSocket برای real-time.", "production": "HTTP برای CRUD + WebSocket برای real-time + Redis channel layer + monitoring." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "WebSocket برای CRUD", "why": "پیچیدگی بی‌مورد.", "when": "برای هر Endpoint.", "fix": "HTTP برای CRUD، WebSocket فقط برای real-time." },
+        { "type": "anti-pattern", "title": "بدون احراز هویت", "why": "هر کسی می‌تواند وصل شود.", "when": "AuthMiddlewareStack نبود.", "fix": "AuthMiddlewareStack + بررسی در connect." },
+        { "type": "anti-pattern", "title": "بدون reconnect در کلاینت", "why": "اتصال قطع می‌ماند.", "when": "شبکه ناپایدار.", "fix": "Reconnect با exponential backoff." },
+        { "type": "anti-pattern", "title": "InMemory channel layer در تولید", "why": "چند سرور، پیام نمی‌رسد.", "when": "توسعه به تولید.", "fix": "Redis." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-062-q1", "tag": "کوییز", "question": "برای اعلان real-time از چه استفاده می‌کنیم؟", "options": [
+      { "text": "HTTP Polling", "correct": false },
+      { "text": "WebSocket", "correct": true, "explanation": "اتصال دائمی و دوطرفه." },
+      { "text": "SSE", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-062-ex1", "title": "تمرین — WebSocket برای کامنت زنده", "problem": "یک Consumer بسازید که به گروه پست subscribe کند و کامنت‌های جدید را broadcast کند.", "hints": ["گروه per post.", "در connect، post_id از URL.", "در signal، group_send."], "solution": "```python\n# consumers.py\nfrom channels.generic.websocket import AsyncWebsocketConsumer\nimport json\n\n\nclass PostCommentsConsumer(AsyncWebsocketConsumer):\n    async def connect(self):\n        self.post_id = self.scope[\"url_route\"][\"kwargs\"][\"post_id\"]\n        self.group_name = f\"post_{self.post_id}_comments\"\n\n        await self.channel_layer.group_add(self.group_name, self.channel_name)\n        await self.accept()\n\n    async def disconnect(self, close_code):\n        await self.channel_layer.group_discard(self.group_name, self.channel_name)\n\n    async def new_comment(self, event):\n        await self.send(text_data=json.dumps(event[\"comment\"]))\n\n\n# routing.py\nwebsocket_urlpatterns = [\n    re_path(r\"ws/posts/(?P<post_id>\\d+)/comments/$\", PostCommentsConsumer.as_asgi()),\n]\n\n\n# signals.py\nfrom channels.layers import get_channel_layer\nfrom asgiref.sync import async_to_sync\nfrom django.db.models.signals import post_save\nfrom django.dispatch import receiver\nfrom .models import Comment\n\n\n@receiver(post_save, sender=Comment)\ndef broadcast_comment(sender, instance, created, **kwargs):\n    if created:\n        channel_layer = get_channel_layer()\n        async_to_sync(channel_layer.group_send)(\n            f\"post_{instance.post_id}_comments\",\n            {\n                \"type\": \"new_comment\",\n                \"comment\": {\n                    \"id\": instance.id,\n                    \"author\": instance.author.username,\n                    \"body\": instance.body,\n                },\n            },\n        )\n```", "explanation": "این الگو برای چت، کامنت زنده، اعلان‌ها کاربرد دارد." }
+  ],
+  "summary": [
+    "WebSocket برای real-time.",
+    "Django Channels + Redis channel layer.",
+    "Consumer + routing + asgi.py.",
+    "ارسال از سرور با `group_send`.",
+    "احراز هویت با AuthMiddlewareStack.",
+    "Reconnect در کلاینت.",
+    "WebSocket برای CRUD نه."
+  ],
+  "resources": [
+    { "title": "Django Channels", "url": "https://channels.readthedocs.io/", "official": true },
+    { "title": "Channels — Deploying", "url": "https://channels.readthedocs.io/en/stable/deploying.html", "official": true }
+  ]
+}

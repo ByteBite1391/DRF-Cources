@@ -1,0 +1,128 @@
+{
+  "id": "ch-073",
+  "slug": "drf-extensions",
+  "title": "توسعه DRF — پکیج‌های شخص ثالث",
+  "kicker": "فصل ۷۳",
+  "level": "professional",
+  "difficulty": 3,
+  "estimatedMinutes": 30,
+  "lead": "اکوسیستم DRF پر از پکیج‌های عالی است. این فصل مهم‌ترین‌ها را معرفی می‌کند.",
+  "sections": [
+    {
+      "id": "auth",
+      "title": "احراز هویت",
+      "blocks": [
+        { "type": "table", "headers": ["پکیج", "کاربرد"], "rows": [
+          ["`djangorestframework-simplejwt`", "JWT کامل"],
+          ["`djoser`", "Endpointهای آماده احراز هویت"],
+          ["`dj-rest-auth`", "ثبت‌نام، بازیابی رمز"],
+          ["`django-allauth`", "ورود با Google، GitHub"],
+          ["`djangorestframework-api-key`", "API Key"]
+        ]},
+        { "type": "code", "lang": "bash", "code": "pip install djoser\npip install dj-rest-auth\npip install django-allauth" }
+      ]
+    },
+    {
+      "id": "filtering",
+      "title": "فیلتر و جستجو",
+      "blocks": [
+        { "type": "table", "headers": ["پکیج", "کاربرد"], "rows": [
+          ["`django-filter`", "فیلتر پیشرفته"],
+          ["`drf-flex-fields`", "فیلدهای پویا"],
+          ["`drf-nested-routers`", "مسیرهای تو در تو"],
+          ["`drf-writable-nested`", "نوشتن تودرتو"],
+          ["`django-rest-framework-json-api`", "استاندارد JSON:API"]
+        ]}
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "مستندسازی",
+      "blocks": [
+        { "type": "table", "headers": ["پکیج", "کاربرد"], "rows": [
+          ["`drf-spectacular`", "OpenAPI 3 (پیشنهادی)"],
+          ["`drf-yasg`", "OpenAPI 2 (قدیمی)"],
+          ["`drf-spectacular-sidecar`", "Swagger UI محلی"]
+        ]}
+      ]
+    },
+    {
+      "id": "other",
+      "title": "پکیج‌های دیگر",
+      "blocks": [
+        { "type": "table", "headers": ["پکیج", "کاربرد"], "rows": [
+          ["`drf-extensions`", "ابزارهای تکمیلی"],
+          ["`django-cors-headers`", "CORS"],
+          ["`django-rest-passwordreset`", "بازیابی رمز"],
+          ["`drf-social-oauth2`", "ورود اجتماعی"],
+          ["`django-rest-framework-simplejwt`", "JWT"],
+          ["`drf-tracking`", "ثبت درخواست‌ها"],
+          ["`django-rest-framework-cache`", "کش"],
+          ["`drf-viewset-profiler`", "پروفایلینگ ViewSet"]
+        ]}
+      ]
+    },
+    {
+      "id": "tools",
+      "title": "ابزارهای تست و دیباگ",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**pytest-django:** تست با pytest",
+          "**factory_boy:** ساخت داده تست",
+          "**drf-openapi-tester:** اعتبارسنجی schema",
+          "**django-silk:** پروفایلینگ",
+          "**django-debug-toolbar:** دیباگ کوئری",
+          "**django-extensions:** ابزارهای مدیریتی"
+        ]}
+      ]
+    },
+    {
+      "id": "when",
+      "title": "چه زمانی از پکیج استفاده کنیم؟",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**استفاده مجدد:** DRF خودش پشتیبانی نمی‌کند.",
+          "**نگهداری فعال:** آخرین commit < ۶ ماه.",
+          "**مجوز روشن:** MIT، BSD، Apache.",
+          "**محبوبیت:** GitHub stars + دانلود PyPI.",
+          "**مستندات خوب:** مثال‌های عملی.",
+          "**تست‌ها:** پکیج خودش تست دارد."
+        ]},
+        { "type": "callout-level", "basic": "پکیج برای هر چیز.", "better": "پکیج برای نیاز واقعی.", "production": "پکیج + بررسی امنیت + نسخه pin شده + برنامه نگهداری." }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern", "title": "پکیج بدون بررسی", "why": "آسیب‌پذیری یا کد رهاشده.", "when": "هنگام نیاز سریع.", "fix": "pip-audit + بررسی GitHub." },
+        { "type": "anti-pattern", "title": "پکیج برای کار ساده", "why": "وابستگی بی‌مورد.", "when": "DRF کافی است.", "fix": "DRF خودش انجام می‌دهد." },
+        { "type": "anti-pattern", "title": "بدون version pin", "why": "بروزرسانی ناخواسته می‌شکند.", "when": "requirements.txt.", "fix": "`==` یا `~=`." },
+        { "type": "anti-pattern", "title": "پکیج بدون جایگزین", "why": "vendor lock-in.", "when": "معماری.", "fix": "لایه abstraction نازک." }
+      ]
+    }
+  ],
+  "quiz": [
+    { "id": "ch-073-q1", "tag": "کوییز", "question": "پکیج پیشنهادی برای OpenAPI 3 چیست؟", "options": [
+      { "text": "`drf-yasg`", "correct": false },
+      { "text": "`drf-spectacular`", "correct": true, "explanation": "مدرن، پشتیبانی OpenAPI 3." },
+      { "text": "`drf-docs`", "correct": false }
+    ]}
+  ],
+  "exercises": [
+    { "id": "ch-073-ex1", "title": "تمرین — انتخاب پکیج", "problem": "برای هر نیاز پکیج مناسب انتخاب کنید:\n۱) Endpointهای آماده ثبت‌نام\n۲) JWT\n۳) مسیر تودرتو\n۴) CORS", "hints": ["Djoser برای Auth.", "SimpleJWT برای JWT.", "drf-nested-routers."], "solution": "۱) **djoser** یا **dj-rest-auth**\n۲) **djangorestframework-simplejwt**\n۳) **drf-nested-routers**\n۴) **django-cors-headers**", "explanation": "این‌ها استاندارد عملی هستند." }
+  ],
+  "summary": [
+    "SimpleJWT برای JWT.",
+    "djoser/dj-rest-auth برای Auth آماده.",
+    "django-filter برای فیلتر.",
+    "drf-spectacular برای OpenAPI.",
+    "drf-nested-routers برای تو در تو.",
+    "پکیج با معیار انتخاب کنید.",
+    "version pin فراموش نشود."
+  ],
+  "resources": [
+    { "title": "DRF — Third party packages", "url": "https://www.django-rest-framework.org/community/third-party-packages/", "official": true },
+    { "title": "Awesome DRF", "url": "https://github.com/nioperas06/awesome-django-rest-framework", "official": false }
+  ]
+}
