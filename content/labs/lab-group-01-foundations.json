@@ -1,0 +1,657 @@
+{
+  "id": "labs-group-01",
+  "slug": "labs-group-01-foundations",
+  "title": "آزمایشگاه‌ها — گروه ۱: مبانی و اولین APIها",
+  "kicker": "Labs Group 1",
+  "level": "beginner",
+  "difficulty": 1,
+  "estimatedMinutes": 150,
+  "lead": "پنج آزمایشگاه عملی برای تسلط بر مبانی Django، DRF، اولین Endpoint، Serializer و ModelSerializer. هر Lab مستقل است و می‌توانید جداگانه انجام دهید.",
+  "sections": [
+    {
+      "id": "lab-01",
+      "title": "LAB 01 — اولین API ساده",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 01 — هدف",
+          "text": "یک Endpoint سلامت (health check) بسازید که با متد GET پاسخ JSON برگرداند. این ساده‌ترین API ممکن است و برای تست سریع کار می‌کند."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐ مبتدی"],
+            ["زمان", "۱۵ دقیقه"],
+            ["پیش‌نیاز", "Django و DRF نصب شده"],
+            ["هدف", "آشنایی با @api_view و Response"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Endpoint در مسیر `/api/hello/` باشد",
+            "متد GET را بپذیرد",
+            "پاسخ JSON با کلیدهای `message` و `server_time` برگرداند",
+            "کد وضعیت ۲۰۰"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# ساخت پروژه (اگر ندارید)\nmkdir hello_api && cd hello_api\npython -m venv .venv\nsource .venv/bin/activate\npip install django djangorestframework\ndjango-admin startproject hello_project .\npython manage.py startapp api\n\n# اضافه کردن در settings.py\n# INSTALLED_APPS = [..., 'rest_framework', 'api']"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "در `api/views.py` یک تابع `hello` بسازید که با `@api_view([\"GET\"])` تزئین شده",
+            "از `Response` DRF استفاده کنید",
+            "پیام «سلام از DRF!» و زمان فعلی سرور را برگردانید",
+            "در `api/urls.py` مسیر `/hello/` را به آن وصل کنید",
+            "در `hello_project/urls.py` مسیر `/api/` را به اپ `api` وصل کنید",
+            "با curl تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "برای گرفتن زمان فعلی: `from django.utils import timezone` و `timezone.now().isoformat()`",
+            "در `Response` فقط یک دیکشنری بدهید",
+            "برای بازکردن مسیرهای اپ: `path(\"api/\", include(\"api.urls\"))`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "api/views.py",
+              "code": "from django.utils import timezone\nfrom rest_framework.decorators import api_view\nfrom rest_framework.response import Response\n\n\n@api_view([\"GET\"])\ndef hello(request):\n    return Response({\n        \"message\": \"سلام از DRF!\",\n        \"server_time\": timezone.now().isoformat(),\n    })"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "api/urls.py",
+              "code": "from django.urls import path\nfrom .views import hello\n\nurlpatterns = [\n    path(\"hello/\", hello, name=\"hello\"),\n]"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "hello_project/urls.py",
+              "code": "from django.contrib import admin\nfrom django.urls import path, include\n\nurlpatterns = [\n    path(\"admin/\", admin.site.urls),\n    path(\"api/\", include(\"api.urls\")),\n]"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "python manage.py runserver\n\n# در ترمینال دیگر\ncurl http://127.0.0.1:8000/api/hello/\n\n# پاسخ:\n# {\"message\": \"سلام از DRF!\", \"server_time\": \"2025-01-15T10:30:45.123456+03:30\"}"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نتیجه مورد انتظار"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "✓ با curl پاسخ JSON با کلیدهای `message` و `server_time`",
+            "✓ با مرورگر صفحه Browsable API",
+            "✓ با متد POST خطای 405"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فراموش کردن `@api_view`:** `request` یک `HttpRequest` می‌شود، نه DRF Request",
+            "**نبود `rest_framework` در INSTALLED_APPS:** Browsable API کار نمی‌کند",
+            "**استفاده از `JsonResponse` به‌جای `Response`:** Browsable API از کار می‌افتد",
+            "**URL اشتباه:** دقت کنید `hello/` در انتهای URL است یا نه"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-02",
+      "title": "LAB 02 — CRUD کتاب با Serializer دستی",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 02 — هدف",
+          "text": "یک API کتاب با چهار Endpoint (لیست، ساخت، جزئیات، حذف) بسازید که از Serializer پایه استفاده می‌کند."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐ مبتدی+"],
+            ["زمان", "۳۰ دقیقه"],
+            ["پیش‌نیاز", "LAB 01"],
+            ["هدف", "آشنایی با Serializer پایه و APIView"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل `Book` با فیلدهای `title`، `author`، `price`، `isbn`",
+            "Serializer دستی (نه ModelSerializer) برای کتاب",
+            "Endpoint لیست: `GET /api/books/`",
+            "Endpoint ساخت: `POST /api/books/`",
+            "Endpoint جزئیات: `GET /api/books/<id>/`",
+            "Endpoint حذف: `DELETE /api/books/<id>/`",
+            "کد وضعیت‌های مناسب"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/models.py",
+          "code": "from django.db import models\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    author = models.CharField(max_length=150)\n    isbn = models.CharField(max_length=13, unique=True)\n    price = models.DecimalField(max_digits=8, decimal_places=2)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    def __str__(self):\n        return self.title"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "python manage.py makemigrations\npython manage.py migrate"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Serializer پایه با فیلدهای title، author، isbn، price بسازید",
+            "متغیر `id` و `created_at` را `read_only=True` کنید",
+            "متد `create()` را پیاده کنید که یک Book بسازد",
+            "متد `update()` را پیاده کنید",
+            "دو نمای `APIView`: `BookListCreateView` و `BookDetailView`",
+            "در GET لیست، `many=True` استفاده کنید",
+            "در POST، `is_valid(raise_exception=True)` بگذارید",
+            "در DELETE، کد ۲۰۴ برگردانید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Serializer پایه از `serializers.Serializer` ارث‌بری می‌کند",
+            "در `create`، `Book.objects.create(**validated_data)`",
+            "در `update`، `for attr, value in validated_data.items(): setattr(instance, attr, value)`",
+            "برای پیدا کردن شیء: `get_object_or_404(Book, pk=pk)`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py",
+              "code": "from rest_framework import serializers\nfrom .models import Book\n\n\nclass BookSerializer(serializers.Serializer):\n    id = serializers.IntegerField(read_only=True)\n    title = serializers.CharField(max_length=250)\n    author = serializers.CharField(max_length=150)\n    isbn = serializers.CharField(max_length=13)\n    price = serializers.DecimalField(max_digits=8, decimal_places=2)\n    created_at = serializers.DateTimeField(read_only=True)\n\n    def validate_isbn(self, value):\n        if not value.isdigit() or len(value) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN باید ۱۰ یا ۱۳ رقم باشد.\")\n        return value\n\n    def create(self, validated_data):\n        return Book.objects.create(**validated_data)\n\n    def update(self, instance, validated_data):\n        for attr, value in validated_data.items():\n            setattr(instance, attr, value)\n        instance.save()\n        return instance"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from django.shortcuts import get_object_or_404\nfrom rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom rest_framework import status\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookListCreateView(APIView):\n    def get(self, request):\n        books = Book.objects.all().order_by(\"-created_at\")\n        serializer = BookSerializer(books, many=True)\n        return Response(serializer.data)\n\n    def post(self, request):\n        serializer = BookSerializer(data=request.data)\n        if not serializer.is_valid():\n            return Response(\n                serializer.errors,\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n        serializer.save()\n        return Response(serializer.data, status=status.HTTP_201_CREATED)\n\n\nclass BookDetailView(APIView):\n    def get(self, request, pk):\n        book = get_object_or_404(Book, pk=pk)\n        serializer = BookSerializer(book)\n        return Response(serializer.data)\n\n    def delete(self, request, pk):\n        book = get_object_or_404(Book, pk=pk)\n        book.delete()\n        return Response(status=status.HTTP_204_NO_CONTENT)"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/urls.py",
+              "code": "from django.urls import path\nfrom .views import BookListCreateView, BookDetailView\n\nurlpatterns = [\n    path(\"books/\", BookListCreateView.as_view(), name=\"book-list\"),\n    path(\"books/<int:pk>/\", BookDetailView.as_view(), name=\"book-detail\"),\n]"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست\ncurl http://127.0.0.1:8000/api/books/\n\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"title\": \"Clean Code\",\n    \"author\": \"Robert C. Martin\",\n    \"isbn\": \"9780132350884\",\n    \"price\": \"42.50\"\n  }'\n\ncurl http://127.0.0.1:8000/api/books/1/\n\ncurl -X DELETE http://127.0.0.1:8000/api/books/1/"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فراموش کردن `many=True`:** خطای `many=True is required`",
+            "**نبود `is_valid`:** `validated_data` وجود ندارد و خطای AttributeError",
+            "**دستی کردن `id`:** اگر `read_only` نباشد، کلاینت می‌تواند id بفرستد",
+            "**پاسخ ۲۰۰ به‌جای ۲۰۱ در POST:** استاندارد HTTP",
+            "**نبود `raise_exception`:** باید دستی `if not is_valid` بنویسید"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-03",
+      "title": "LAB 03 — ModelSerializer و کاهش کد",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 03 — هدف",
+          "text": "همان LAB 02 را با ModelSerializer بازنویسی کنید و تفاوت را ببینید. کد شما کمتر از نصف می‌شود."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐ مبتدی+"],
+            ["زمان", "۲۰ دقیقه"],
+            ["پیش‌نیاز", "LAB 02"],
+            ["هدف", "ModelSerializer و ViewSet ساده"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "BookSerializer را به ModelSerializer تبدیل کنید",
+            "فقط `Meta` با `model` و `fields`",
+            "`read_only_fields` برای id و created_at",
+            "در ViewSet، از `ModelViewSet` استفاده کنید (فقط ۴ خط)",
+            "Router برای مسیرها"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Serializer را با ModelSerializer بازنویسی کنید",
+            "یک `BookViewSet(viewsets.ModelViewSet)` بسازید",
+            "Router بسازید و ثبت کنید",
+            "تست کنید که همه Endpointها کار می‌کنند"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "ModelSerializer متدهای `create` و `update` را خودکار پیاده می‌کند",
+            "`viewsets.ModelViewSet` همه CRUD را می‌دهد",
+            "`DefaultRouter` مسیرها را خودکار می‌سازد",
+            "`router.register(r\"books\", BookViewSet, basename=\"book\")`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py",
+              "code": "from rest_framework import serializers\nfrom .models import Book\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]\n\n    def validate_isbn(self, value):\n        if not value.isdigit() or len(value) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN باید ۱۰ یا ۱۳ رقم باشد.\")\n        return value"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all().order_by(\"-created_at\")\n    serializer_class = BookSerializer"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/urls.py",
+              "code": "from rest_framework.routers import DefaultRouter\nfrom .views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = router.urls"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست\ncurl http://127.0.0.1:8000/api/books/\ncurl -X POST http://127.0.0.1:8000/api/books/ -H \"Content-Type: application/json\" -d '{...}'\ncurl http://127.0.0.1:8000/api/books/1/\ncurl -X PATCH http://127.0.0.1:8000/api/books/1/ -H \"Content-Type: application/json\" -d '{\"price\": \"39.90\"}'\ncurl -X DELETE http://127.0.0.1:8000/api/books/1/"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "مقایسه"
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "LAB 02 (دستی)", "LAB 03 (ModelSerializer)"],
+          "rows": [
+            ["Serializer", "~۳۰ خط", "~۸ خط"],
+            ["Views", "~۳۵ خط", "~۴ خط"],
+            ["URLs", "~۵ خط", "~۵ خط"],
+            ["**کل**", "**~۷۰ خط**", "**~۱۷ خط**"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`fields = \"__all__\"`:** در پروژه‌های واقعی استفاده نکنید — فیلدهای حساس را لو می‌دهد",
+            "**نبود `basename`:** اگر `queryset` ندارید، باید `basename` بدهید",
+            "**فراموش کردن `rest_framework.authtoken`:** اگر از Token استفاده می‌کنید",
+            "**URL اشتباه:** `router.urls` به‌عنوان urlpatterns"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-04",
+      "title": "LAB 04 — اعتبارسنجی کامل",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 04 — هدف",
+          "text": "سریالایزر کتاب را با اعتبارسنجی در چهار سطح: فیلد، متد، سطح شیء، و constraint پایگاه داده."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۰ دقیقه"],
+            ["پیش‌نیاز", "LAB 03"],
+            ["هدف", "اعتبارسنجی چندسطحی"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "**سطح فیلد:** `title` حداقل ۳ کاراکتر",
+            "**سطح فیلد:** `isbn` فقط رقم، ۱۰ یا ۱۳ رقم",
+            "**سطح فیلد:** `price` بزرگ‌تر از صفر",
+            "**سطح شیء:** اگر `discount_price` داده شد، باید کمتر از `price` باشد",
+            "**مدل:** `isbn` یکتا",
+            "**سطح View:** برای POST، کاربر ادمین لازم است"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "در سریالایزر، متد `validate_title` بنویسید",
+            "متد `validate_isbn` بنویسید",
+            "متد `validate_price` بنویسید",
+            "متد `validate()` برای منطق بین‌فیلدی",
+            "در مدل، `unique=True` روی isbn (از قبل)",
+            "در ViewSet، `get_permissions` برای POST",
+            "همه حالات خطا را با curl تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "نام متد دقیقاً `validate_<field>` است",
+            "برای خطای کلی، از `serializers.ValidationError` استفاده کنید",
+            "برای خطای فیلد خاص، دیکشنری بدهید",
+            "در `get_permissions`، برای POST `IsAdminUser` بدهید"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py",
+              "code": "from rest_framework import serializers\nfrom .models import Book\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]\n        extra_kwargs = {\n            \"title\": {\"error_messages\": {\"blank\": \"عنوان نمی‌تواند خالی باشد.\"}},\n            \"isbn\": {\"error_messages\": {\"unique\": \"این ISBN قبلاً ثبت شده است.\"}},\n        }\n\n    def validate_title(self, value):\n        value = value.strip()\n        if len(value) < 3:\n            raise serializers.ValidationError(\"عنوان باید حداقل ۳ کاراکتر باشد.\")\n        return value\n\n    def validate_isbn(self, value):\n        clean = value.replace(\"-\", \"\").strip()\n        if not clean.isdigit():\n            raise serializers.ValidationError(\"ISBN فقط می‌تواند رقم داشته باشد.\")\n        if len(clean) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN باید ۱۰ یا ۱۳ رقم باشد.\")\n        return clean\n\n    def validate_price(self, value):\n        if value <= 0:\n            raise serializers.ValidationError(\"قیمت باید بزرگ‌تر از صفر باشد.\")\n        return value"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets\nfrom rest_framework.permissions import AllowAny, IsAdminUser\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    def get_permissions(self):\n        if self.action in (\"list\", \"retrieve\"):\n            return [AllowAny()]\n        return [IsAdminUser()]"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست حالات مختلف خطا\n\n# ۱. عنوان کوتاه\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Token ADMIN_TOKEN\" \\\n  -d '{\"title\": \"AB\", \"author\": \"X\", \"isbn\": \"1234567890\", \"price\": \"10.00\"}'\n# پاسخ: {\"title\": [\"عنوان باید حداقل ۳ کاراکتر باشد.\"]}\n\n# ۲. ISBN اشتباه\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Token ADMIN_TOKEN\" \\\n  -d '{\"title\": \"Valid Title\", \"author\": \"X\", \"isbn\": \"ABCDEFGHIJ\", \"price\": \"10.00\"}'\n# پاسخ: {\"isbn\": [\"ISBN فقط می‌تواند رقم داشته باشد.\"]}\n\n# ۳. قیمت منفی\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Token ADMIN_TOKEN\" \\\n  -d '{\"title\": \"Valid\", \"author\": \"X\", \"isbn\": \"1234567890\", \"price\": \"-5.00\"}'\n# پاسخ: {\"price\": [\"قیمت باید بزرگ‌تر از صفر باشد.\"]}"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فراموش کردن `return value`:** `None` به جای مقدار برمی‌گردد",
+            "**خطای کلید در `validate`:** در `validate()` از `attrs[\"field\"]` استفاده کنید، نه `attrs.get`",
+            "**دسترسی به فیلدهای دیگر در `validate_<field>`:** ممکن نیست — از `validate()` استفاده کنید",
+            "**نبود `IsAdminUser`:** همه می‌توانند کتاب بسازند"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-05",
+      "title": "LAB 05 — روابط و Nested Serializer",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 05 — هدف",
+          "text": "مدل Author اضافه کنید و رابطه ForeignKey بین Book و Author بسازید. سپس در خروجی، اطلاعات نویسنده را تودرتو نمایش دهید."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۵ دقیقه"],
+            ["پیش‌نیاز", "LAB 04"],
+            ["هدف", "ForeignKey، Nested، select_related"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل `Author` با فیلدهای `full_name`، `bio`، `birth_date`",
+            "رابطه `ForeignKey` از Book به Author",
+            "Serializer کتاب با نویسنده تودرتو (خروجی)",
+            "در ورودی، `author` به‌صورت id پذیرفته شود",
+            "در ViewSet، از `select_related` استفاده شود"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل Author بسازید",
+            "ForeignKey به Book اضافه کنید",
+            "مایگریشن بسازید و migrate کنید",
+            "دو سریالایزر بسازید: AuthorSerializer (خواندنی) و BookReadSerializer (با author تودرتو)",
+            "سریالایزر نوشتن: BookWriteSerializer (با author به‌شکل id)",
+            "در ViewSet، `get_serializer_class` را بر اساس اکشن تعریف کنید",
+            "`select_related(\"author\")` در queryset",
+            "تست: بررسی N+1 نبودن"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "برای نویسنده تودرتو: `author = AuthorSerializer(read_only=True)`",
+            "برای ورودی نویسنده با id: `author = serializers.PrimaryKeyRelatedField(queryset=Author.objects.all())`",
+            "`select_related` برای ForeignKey، `prefetch_related` برای M2M و reverse",
+            "برای تست N+1: `django-debug-toolbar` یا شمارش کوئری"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/models.py",
+              "code": "from django.db import models\n\n\nclass Author(models.Model):\n    full_name = models.CharField(max_length=150)\n    bio = models.TextField(blank=True)\n    birth_date = models.DateField(null=True, blank=True)\n\n    def __str__(self):\n        return self.full_name\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    author = models.ForeignKey(\n        Author,\n        on_delete=models.PROTECT,\n        related_name=\"books\",\n    )\n    isbn = models.CharField(max_length=13, unique=True)\n    price = models.DecimalField(max_digits=8, decimal_places=2)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    def __str__(self):\n        return self.title"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py",
+              "code": "from rest_framework import serializers\nfrom .models import Book, Author\n\n\nclass AuthorSerializer(serializers.ModelSerializer):\n    books_count = serializers.IntegerField(source=\"books.count\", read_only=True)\n\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"bio\", \"birth_date\", \"books_count\"]\n\n\nclass BookReadSerializer(serializers.ModelSerializer):\n    author = AuthorSerializer(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\", \"created_at\"]\n\n\nclass BookWriteSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\"]\n        read_only_fields = [\"id\"]\n\n    def validate_isbn(self, value):\n        if not value.isdigit() or len(value) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN نامعتبر.\")\n        return value\n\n    def validate_price(self, value):\n        if value <= 0:\n            raise serializers.ValidationError(\"قیمت باید مثبت باشد.\")\n        return value"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets\nfrom .models import Book, Author\nfrom .serializers import AuthorSerializer, BookReadSerializer, BookWriteSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\").order_by(\"-created_at\")\n\n    def get_serializer_class(self):\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer\n        return BookReadSerializer\n\n\nclass AuthorViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Author.objects.prefetch_related(\"books\")\n    serializer_class = AuthorSerializer"
+            },
+            {
+              "type": "bash",
+              "code": "# تست\n\n# لیست کتاب‌ها با نویسنده تودرتو\ncurl http://127.0.0.1:8000/api/books/\n\n# ساخت کتاب (با id نویسنده)\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"title\": \"New\", \"author\": 1, \"isbn\": \"1234567890\", \"price\": \"10.00\"}'"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "تست N+1"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "بررسی تعداد کوئری",
+          "code": "from django.test.utils import CaptureQueriesContext\nfrom django.db import connection\nfrom books.models import Book\n\n# ❌ بدون select_related\nwith CaptureQueriesContext(connection) as queries:\n    list(Book.objects.all())   # هر کتاب، یک کوئری برای author\n    print(f\"Queries: {len(queries)}\")   # 101 برای ۱۰۰ کتاب\n\n# ✅ با select_related\nwith CaptureQueriesContext(connection) as queries:\n    list(Book.objects.select_related(\"author\"))\n    print(f\"Queries: {len(queries)}\")   # 1"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`on_delete=CASCADE`:** با حذف نویسنده، کتاب‌ها هم حذف می‌شوند — معمولاً `PROTECT` بهتر است",
+            "**نبود `select_related`:** N+1 Query",
+            "**read_only نبودن نویسنده تودرتو:** خطای نوشتن",
+            "**نبود `related_name`:** دسترسی معکوس سخت می‌شود"
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": [
+    "LAB 01: اولین Endpoint با @api_view.",
+    "LAB 02: CRUD دستی با Serializer پایه.",
+    "LAB 03: بازنویسی با ModelSerializer و ViewSet.",
+    "LAB 04: اعتبارسنجی چهارسطحی.",
+    "LAB 05: ForeignKey، Nested Serializer، select_related."
+  ],
+  "resources": [
+    { "title": "DRF — Tutorial", "url": "https://www.django-rest-framework.org/tutorial/quickstart/", "official": true },
+    { "title": "Django — Models", "url": "https://docs.djangoproject.com/en/stable/topics/db/models/", "official": true }
+  ]
+}

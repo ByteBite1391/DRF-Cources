@@ -1,0 +1,510 @@
+{
+  "id": "labs-group-05",
+  "slug": "labs-group-05-advanced",
+  "title": "آزمایشگاه‌ها — گروه ۵: OpenAPI، Performance، Docker",
+  "kicker": "Labs Group 5",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 200,
+  "lead": "دو آزمایشگاه پیشرفته و یک Lab جامع Docker: مستندسازی OpenAPI با drf-spectacular، بهینه‌سازی N+1 و select_related، و کانتینری‌سازی کامل با docker-compose.",
+  "sections": [
+    {
+      "id": "lab-21",
+      "title": "LAB 21 — مستندسازی OpenAPI کامل",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 21 — هدف",
+          "text": "مستندسازی کامل API با drf-spectacular: تنظیمات، توضیحات فارسی، پارامترها، نمونه‌ها و امنیت JWT."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۵۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-20"],
+            ["هدف", "مستندسازی حرفه‌ای API با OpenAPI 3"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "drf-spectacular نصب و تنظیم",
+            "مسیرهای `/api/schema/`، `/api/docs/` (Swagger)، `/api/redoc/`",
+            "تنظیمات OpenAPI با عنوان، توضیح، نسخه فارسی",
+            "امنیت JWT در مستندات",
+            "`@extend_schema` روی همه ViewSetها",
+            "پارامترهای فیلتر مستند شوند",
+            "نمونه پاسخ برای Endpointهای مهم",
+            "groups با tags",
+            "اعتبارسنجی schema در CI"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install drf-spectacular\npip install drf-spectacular[sidecar]   # برای Swagger UI محلی بدون CDN"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"drf_spectacular\",\n    \"drf_spectacular_sidecar\",   # اگر sidecar نصب کرده‌اید\n]\n\nREST_FRAMEWORK = {\n    # ...\n    \"DEFAULT_SCHEMA_CLASS\": \"drf_spectacular.openapi.AutoSchema\",\n}\n\nSPECTACULAR_SETTINGS = {\n    \"TITLE\": \"Library System API\",\n    \"DESCRIPTION\": \"API سیستم مدیریت کتابخانه دیجیتال — مستندات تعاملی\",\n    \"VERSION\": \"1.0.0\",\n    \"SERVE_INCLUDE_SCHEMA\": False,\n    \"COMPONENT_SPLIT_REQUEST\": True,\n    \"SORT_OPERATIONS\": False,\n    \"SWAGGER_UI_SETTINGS\": {\n        \"deepLinking\": True,\n        \"persistAuthorization\": True,\n        \"displayOperationId\": True,\n        \"filter\": True,\n    },\n    \"SWAGGER_UI_DIST\": \"SIDECAR\",\n    \"SWAGGER_UI_FAVICON_HREF\": \"SIDECAR\",\n    \"REDOC_DIST\": \"SIDECAR\",\n    \"SECURITY\": [{\"BearerAuth\": []}],\n    \"SECURITY_DEFINITIONS\": {\n        \"BearerAuth\": {\n            \"type\": \"http\",\n            \"scheme\": \"bearer\",\n            \"bearerFormat\": \"JWT\",\n            \"description\": \"توکن JWT را در فرمت 'Bearer <token>' وارد کنید.\",\n        },\n    },\n    \"TAGS\": [\n        {\"name\": \"Auth\", \"description\": \"احراز هویت و کاربران\"},\n        {\"name\": \"Books\", \"description\": \"مدیریت کتاب‌ها\"},\n        {\"name\": \"Authors\", \"description\": \"مدیریت نویسندگان\"},\n        {\"name\": \"Categories\", \"description\": \"دسته‌بندی‌ها\"},\n        {\"name\": \"Loans\", \"description\": \"امانت کتاب\"},\n        {\"name\": \"Reviews\", \"description\": \"نظرات\"},\n        {\"name\": \"Reports\", \"description\": \"گزارش‌ها\"},\n    ],\n}"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "drf-spectacular را نصب و تنظیم کنید",
+            "URLها را برای schema، docs، redoc اضافه کنید",
+            "روی BookViewSet `@extend_schema_view` بگذارید",
+            "پارامترهای فیلتر را با `OpenApiParameter` تعریف کنید",
+            "نمونه‌های پاسخ با `OpenApiExample`",
+            "روی اکشن‌های سفارشی `@extend_schema`",
+            "schema را validate کنید",
+            "در مرورگر `/api/docs/` را ببینید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample`",
+            "`OpenApiTypes.STR`, `OpenApiTypes.DECIMAL`, `OpenApiTypes.BOOL`",
+            "`tags=[\"Books\"]` روی اکشن‌ها",
+            "`@extend_schema_view` روی کل کلاس",
+            "`python manage.py spectacular --file schema.yml --validate`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from drf_spectacular.utils import (\n    extend_schema, extend_schema_view,\n    OpenApiParameter, OpenApiTypes, OpenApiExample, OpenApiResponse,\n)\nfrom rest_framework import viewsets\nfrom .models import Book\nfrom .serializers import BookListSerializer, BookDetailSerializer, BookWriteSerializer\n\n\n@extend_schema_view(\n    list=extend_schema(\n        summary=\"لیست کتاب‌ها\",\n        description=\"کتاب‌های منتشرشده با فیلتر، جستجو، مرتب‌سازی و صفحه‌بندی.\",\n        tags=[\"Books\"],\n        parameters=[\n            OpenApiParameter(\n                \"category\", OpenApiTypes.STR,\n                description=\"اسلاگ دسته‌بندی\",\n                required=False,\n            ),\n            OpenApiParameter(\n                \"min_price\", OpenApiTypes.DECIMAL,\n                description=\"حداقل قیمت\",\n                required=False,\n            ),\n            OpenApiParameter(\n                \"max_price\", OpenApiTypes.DECIMAL,\n                description=\"حداکثر قیمت\",\n                required=False,\n            ),\n            OpenApiParameter(\n                \"in_stock\", OpenApiTypes.BOOL,\n                description=\"فقط کتاب‌های موجود\",\n                required=False,\n            ),\n            OpenApiParameter(\n                \"search\", OpenApiTypes.STR,\n                description=\"جستجو در عنوان، ISBN و نام نویسنده\",\n                required=False,\n            ),\n            OpenApiParameter(\n                \"ordering\", OpenApiTypes.STR,\n                description=\"مرتب‌سازی بر اساس: price, -price, created_at, published_at\",\n                required=False,\n            ),\n        ],\n        examples=[\n            OpenApiExample(\n                \"پاسخ نمونه\",\n                value={\n                    \"count\": 137,\n                    \"next\": \"http://api/books/?page=2\",\n                    \"previous\": None,\n                    \"results\": [\n                        {\n                            \"id\": 1,\n                            \"title\": \"Clean Code\",\n                            \"author_name\": \"Robert C. Martin\",\n                            \"price\": \"42.50\",\n                            \"average_rating\": 4.5,\n                        }\n                    ],\n                },\n                response_only=True,\n            ),\n        ],\n    ),\n    retrieve=extend_schema(\n        summary=\"جزئیات کتاب\",\n        tags=[\"Books\"],\n        responses={\n            200: BookDetailSerializer,\n            404: OpenApiResponse(description=\"کتاب پیدا نشد\"),\n        },\n    ),\n    create=extend_schema(\n        summary=\"ساخت کتاب جدید\",\n        tags=[\"Books\"],\n        request=BookWriteSerializer,\n        responses={\n            201: OpenApiResponse(description=\"کتاب ساخته شد\"),\n            400: OpenApiResponse(description=\"داده نامعتبر\"),\n            401: OpenApiResponse(description=\"احراز هویت لازم\"),\n        },\n    ),\n    update=extend_schema(tags=[\"Books\"], summary=\"ویرایش کامل کتاب\"),\n    partial_update=extend_schema(tags=[\"Books\"], summary=\"ویرایش جزئی\"),\n    destroy=extend_schema(tags=[\"Books\"], summary=\"حذف کتاب\"),\n)\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.select_related(\"author\").all()\n\n    def get_serializer_class(self):\n        if self.action == \"list\":\n            return BookListSerializer\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer\n        return BookDetailSerializer\n\n    @extend_schema(\n        summary=\"کتاب‌های ویژه\",\n        description=\"۱۰ کتاب ویژه برای نمایش در صفحه اصلی.\",\n        tags=[\"Books\"],\n        responses={200: BookListSerializer(many=True)},\n    )\n    @action(detail=False, methods=[\"get\"])\n    def featured(self, request):\n        books = self.get_queryset().filter(is_featured=True)[:10]\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)\n\n    @extend_schema(\n        summary=\"تغییر وضعیت انتشار\",\n        tags=[\"Books\"],\n        request=None,\n        responses={\n            200: OpenApiResponse(\n                description=\"وضعیت تغییر کرد\",\n                examples=[\n                    OpenApiExample(\n                        \"پاسخ\",\n                        value={\"id\": 1, \"is_published\": True},\n                    ),\n                ],\n            ),\n        },\n    )\n    @action(detail=True, methods=[\"post\"])\n    def toggle_publish(self, request, pk=None):\n        book = self.get_object()\n        book.is_published = not book.is_published\n        book.save(update_fields=[\"is_published\"])\n        return Response({\"id\": book.id, \"is_published\": book.is_published})\n\n\nfrom rest_framework.decorators import action\nfrom rest_framework.response import Response"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "library/urls.py",
+              "code": "from django.urls import path, include\nfrom drf_spectacular.views import (\n    SpectacularAPIView,\n    SpectacularSwaggerView,\n    SpectacularRedocView,\n)\n\nurlpatterns = [\n    # ... API URLs\n\n    # Schema\n    path(\"api/schema/\", SpectacularAPIView.as_view(), name=\"schema\"),\n    path(\"api/docs/\", SpectacularSwaggerView.as_view(url_name=\"schema\"), name=\"swagger\"),\n    path(\"api/redoc/\", SpectacularRedocView.as_view(url_name=\"schema\"), name=\"redoc\"),\n]"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py — با help_text",
+              "code": "from rest_framework import serializers\nfrom .models import Book\n\n\nclass BookListSerializer(serializers.ModelSerializer):\n    author_name = serializers.CharField(source=\"author.full_name\", read_only=True)\n    average_rating = serializers.FloatField(read_only=True, help_text=\"میانگین امتیاز (۰ تا ۵)\")\n    reviews_count = serializers.IntegerField(read_only=True, help_text=\"تعداد نظرات تأییدشده\")\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author_name\", \"price\", \"average_rating\", \"reviews_count\"]\n\n\nclass BookWriteSerializer(serializers.ModelSerializer):\n    title = serializers.CharField(\n        max_length=250,\n        help_text=\"عنوان کتاب — حداکثر ۲۵۰ کاراکتر\",\n    )\n    isbn = serializers.CharField(\n        max_length=13,\n        help_text=\"ISBN ۱۰ یا ۱۳ رقمی\",\n    )\n    price = serializers.DecimalField(\n        max_digits=8,\n        decimal_places=2,\n        help_text=\"قیمت به تومان\",\n    )\n\n    class Meta:\n        model = Book\n        fields = [\"id\", \"title\", \"author\", \"isbn\", \"price\", \"published_at\"]\n        read_only_fields = [\"id\"]"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تولید schema\npython manage.py spectacular --file schema.yml\n\n# اعتبارسنجی\npython manage.py spectacular --validate\n\n# بازدید در مرورگر\n# http://127.0.0.1:8000/api/docs/    ← Swagger UI\n# http://127.0.0.1:8000/api/redoc/   ← ReDoc\n# http://127.0.0.1:8000/api/schema/  ← YAML/JSON"
+            },
+            {
+              "type": "yaml",
+              "filename": ".github/workflows/schema.yml",
+              "code": "name: Schema Validation\non: [push, pull_request]\n\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    env:\n      SECRET_KEY: ci-secret\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n      - run: pip install -r requirements.txt\n      - run: python manage.py spectacular --file /tmp/schema.yml --validate\n      - uses: actions/upload-artifact@v4\n        with:\n          name: openapi-schema\n          path: /tmp/schema.yml"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "بررسی در Swagger UI"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "روی `/api/docs/` کلیک کنید",
+            "دکمه Authorize بالای صفحه — JWT را وارد کنید",
+            "Endpointهای گروه‌بندی‌شده (Auth، Books، ...)",
+            "هر Endpoint توضیح فارسی، پارامترها و نمونه دارد",
+            "Try it out را بزنید و تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `DEFAULT_SCHEMA_CLASS`:** schema تولید نمی‌شود",
+            "**نبود `@extend_schema` روی `@action`:** مستندات ناقص",
+            "**`SERVE_INCLUDE_SCHEMA = True`:** خود schema هم در مستندات ظاهر می‌شود",
+            "**نبود `SECURITY_DEFINITIONS`:** دکمه Authorize نمایش داده نمی‌شود",
+            "**نمونه‌های غیرواقعی:** کلاینت نمی‌داند چطور استفاده کند"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-22",
+      "title": "LAB 22 — بهینه‌سازی N+1 و Performance",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 22 — هدف",
+          "text": "یک API کند را با select_related، prefetch_related، only/defer، annotate و کش بهینه کنید. تفاوت کوئری‌ها را ببینید."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۵۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-20"],
+            ["هدف", "بهینه‌سازی حرفه‌ای کوئری"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "یک ViewSet کتاب که سریالایزر تودرتو دارد (author، categories، reviews_count)",
+            "اندازه‌گیری تعداد کوئری قبل از بهینه‌سازی",
+            "افزودن `select_related` برای ForeignKey",
+            "افزودن `prefetch_related` برای ManyToMany",
+            "استفاده از `Prefetch` برای queryset سفارشی",
+            "`annotate` برای reviews_count و average_rating",
+            "`only`/`defer` برای فیلدهای ضروری",
+            "کش برای لیست‌های پرتکرار",
+            "اندازه‌گیری بعد از بهینه‌سازی — کاهش چشمگیر"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/models.py",
+          "code": "from django.db import models\n\n\nclass Author(models.Model):\n    full_name = models.CharField(max_length=150)\n\n\nclass Category(models.Model):\n    name = models.CharField(max_length=100)\n    slug = models.SlugField(unique=True)\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    author = models.ForeignKey(Author, on_delete=models.PROTECT, related_name=\"books\")\n    categories = models.ManyToManyField(Category, related_name=\"books\", blank=True)\n    price = models.DecimalField(max_digits=8, decimal_places=2)\n    is_active = models.BooleanField(default=True)\n    created_at = models.DateTimeField(auto_now_add=True)\n    description = models.TextField(blank=True)   # فیلد سنگین\n\n\nclass Review(models.Model):\n    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name=\"reviews\")\n    user = models.ForeignKey(\"auth.User\", on_delete=models.CASCADE)\n    rating = models.PositiveSmallIntegerField()\n    is_approved = models.BooleanField(default=True)"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "سریالایزر تودرتو بسازید که به author، categories و reviews_count دسترسی دارد",
+            "در shell، تعداد کوئری‌ها را با `CaptureQueriesContext` اندازه بگیرید",
+            "مشکل N+1 را ببینید — تعداد کوئری = تعداد کتاب + 1",
+            "`select_related(\"author\")` اضافه کنید",
+            "`prefetch_related(\"categories\")` اضافه کنید",
+            "`annotate(reviews_count=Count(\"reviews\", filter=Q(reviews__is_approved=True)))`",
+            "دوباره اندازه بگیرید — کاهش به ۳-۴ کوئری",
+            "`only(\"id\", \"title\", \"price\", \"author_id\")` برای لیست",
+            "کش برای لیست محبوب با TTL"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`select_related` برای FK و OneToOne (JOIN)",
+            "`prefetch_related` برای M2M و reverse (کوئری جدا)",
+            "`Prefetch(\"categories\", queryset=Category.objects.only(\"id\", \"name\"))`",
+            "`annotate` برای محاسبات در DB",
+            "`only(...)` برای کاهش ستون‌ها",
+            "کش QuerySet با `list(qs)` ارزیابی می‌شود"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py",
+              "code": "from rest_framework import serializers\nfrom .models import Book, Author, Category, Review\n\n\nclass AuthorMiniSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\"]\n\n\nclass CategoryMiniSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Category\n        fields = [\"id\", \"name\", \"slug\"]\n\n\nclass BookSerializer(serializers.ModelSerializer):\n    author = AuthorMiniSerializer(read_only=True)\n    categories = CategoryMiniSerializer(many=True, read_only=True)\n    reviews_count = serializers.IntegerField(read_only=True)\n    average_rating = serializers.FloatField(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\n            \"id\", \"title\", \"author\", \"categories\",\n            \"price\", \"reviews_count\", \"average_rating\",\n        ]"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/selectors.py",
+              "code": "from django.db.models import Avg, Count, Prefetch, Q\nfrom .models import Book, Category, Review\n\n\n# ❌ نسخه کند — N+1\ndef slow_queryset():\n    return Book.objects.filter(is_active=True)\n\n\n# ✅ نسخه بهینه\ndef optimized_queryset():\n    return (\n        Book.objects\n        .filter(is_active=True)\n        .select_related(\"author\")\n        .prefetch_related(\n            Prefetch(\n                \"categories\",\n                queryset=Category.objects.only(\"id\", \"name\", \"slug\"),\n            ),\n        )\n        .annotate(\n            reviews_count=Count(\n                \"reviews\",\n                filter=Q(reviews__is_approved=True),\n                distinct=True,\n            ),\n            average_rating=Avg(\n                \"reviews__rating\",\n                filter=Q(reviews__is_approved=True),\n            ),\n        )\n        .only(\n            \"id\", \"title\", \"price\", \"author_id\", \"created_at\",\n        )\n        .order_by(\"-created_at\")\n    )"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets\nfrom .serializers import BookSerializer\nfrom .selectors import optimized_queryset\n\n\nclass BookViewSet(viewsets.ReadOnlyModelViewSet):\n    serializer_class = BookSerializer\n\n    def get_queryset(self):\n        return optimized_queryset()"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "تست کوئری — قبل و بعد",
+              "code": "from django.test.utils import CaptureQueriesContext\nfrom django.db import connection\nfrom books.selectors import slow_queryset, optimized_queryset\nfrom books.serializers import BookSerializer\nfrom books.models import Book\n\n# ساخت داده\nfor i in range(10):\n    book = Book.objects.create(\n        title=f\"Book {i}\", author_id=1, price=\"10.00\",\n    )\n    book.categories.add(1, 2)\n\n# ❌ نسخه کند\nwith CaptureQueriesContext(connection) as queries:\n    qs = slow_queryset()\n    data = BookSerializer(qs, many=True).data\n    print(f\"SLOW: {len(queries)} queries\")\n# SLOW: 33 queries (1 list + 10 author + 10 categories + 10 reviews + ...)\n\n# ✅ نسخه بهینه\nwith CaptureQueriesContext(connection) as queries:\n    qs = optimized_queryset()\n    data = BookSerializer(qs, many=True).data\n    print(f\"FAST: {len(queries)} queries\")\n# FAST: 4 queries (1 list + 1 author + 1 categories + 1 reviews)"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "کش برای لیست محبوب",
+              "code": "from django.core.cache import cache\n\n\ndef get_popular_books():\n    \"\"\"لیست محبوب با کش.\"\"\"\n    key = \"books_popular\"\n    data = cache.get(key)\n    if data is None:\n        qs = optimized_queryset().order_by(\"-reviews_count\")[:20]\n        data = BookSerializer(qs, many=True).data\n        cache.set(key, data, timeout=600)\n    return data"
+            },
+            {
+              "type": "bash",
+              "code": "# نصب Django Debug Toolbar\npip install django-debug-toolbar\n\n# settings.py\nINSTALLED_APPS += [\"debug_toolbar\"]\nMIDDLEWARE.insert(0, \"debug_toolbar.middleware.DebugToolbarMiddleware\")\nINTERNAL_IPS = [\"127.0.0.1\"]\n\n# در مرورگر:\n# http://127.0.0.1:8000/api/books/\n# پنل سمت راست — تعداد کوئری‌ها، زمان اجرا، SQL"
+            },
+            {
+              "type": "python",
+              "filename": "Index در مدل",
+              "code": "class Book(models.Model):\n    # ...\n    class Meta:\n        indexes = [\n            models.Index(fields=[\"-created_at\"]),\n            models.Index(fields=[\"is_active\", \"-created_at\"]),\n            models.Index(fields=[\"price\"]),\n        ]"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نتیجه مورد انتظار"
+        },
+        {
+          "type": "table",
+          "headers": ["مرحله", "تعداد کوئری", "زمان", "کاهش"],
+          "rows": [
+            ["بدون بهینه‌سازی", "۳۳", "۱۵۰ms", "—"],
+            ["+ select_related", "۲۳", "۱۱۰ms", "۳۰٪"],
+            ["+ prefetch_related", "۱۴", "۸۰ms", "۴۷٪"],
+            ["+ annotate", "۵", "۳۵ms", "۷۷٪"],
+            ["+ only", "۴", "۲۸ms", "۸۱٪"],
+            ["+ کش (بار دوم)", "۰", "۲ms", "۹۸٪"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**`select_related` برای M2M:** خطا — باید `prefetch_related`",
+            "**`prefetch_related` بدون `Prefetch` سفارشی:** همه ستون‌ها بار می‌شود",
+            "**`annotate` بدون `distinct=True`:** در چند رابطه، ضرب می‌شود",
+            "**نبود index روی فیلدهای فیلتر:** Full Table Scan",
+            "**کش بدون invalidation:** کاربر داده قدیمی می‌بیند",
+            "**نبود اندازه‌گیری قبل/بعد:** نمی‌دانید چه بهبودی داشتید"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-23",
+      "title": "LAB 23 — Docker کامل",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 23 — هدف",
+          "text": "پروژه DRF را با Docker کانتینری کنید: Dockerfile چندمرحله‌ای، docker-compose با PostgreSQL، Redis، Celery، و Nginx."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۶۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-22"],
+            ["هدف", "کانتینری‌سازی کامل پروژه"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Dockerfile چندمرحله‌ای (multi-stage)",
+            "کاربر غیر-root",
+            "`.dockerignore` کامل",
+            "`docker-compose.yml` با سرویس‌های: db، redis، api، celery، celery-beat، nginx",
+            "entrypoint با انتظار برای DB و Redis",
+            "Health check",
+            "Volume برای داده‌ها",
+            "متغیرهای محیطی از `.env`",
+            "یک دستور: `docker compose up -d --build`"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Dockerfile بسازید (multi-stage با builder و runtime)",
+            "`.dockerignore` بسازید",
+            "`docker/entrypoint.sh` بسازید",
+            "`docker-compose.yml` با ۶ سرویس",
+            "`nginx/nginx.conf`",
+            "`.env.example`",
+            "با یک دستور همه را بالا بیاورید",
+            "با curl تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Multi-stage: `builder` پکیج‌ها را می‌سازد، `runtime` فقط اجرا می‌کند",
+            "`USER app` برای امنیت",
+            "`healthcheck` در Compose برای DB و Redis",
+            "`depends_on` با `condition: service_healthy`",
+            "entrypoint باید با `exec \"$@\"` تمام شود"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "dockerfile",
+              "filename": "Dockerfile",
+              "code": "# ================================\n# مرحله ۱: Builder — نصب پکیج‌ها\n# ================================\nFROM python:3.11-slim AS builder\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1 \\\n    PIP_NO_CACHE_DIR=1 \\\n    PIP_DISABLE_PIP_VERSION_CHECK=1\n\nWORKDIR /build\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    build-essential libpq-dev \\\n    && rm -rf /var/lib/apt/lists/*\n\nCOPY requirements.txt .\nRUN pip install --user -r requirements.txt\n\n# ================================\n# مرحله ۲: Runtime\n# ================================\nFROM python:3.11-slim\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1 \\\n    PATH=\"/home/app/.local/bin:$PATH\" \\\n    DJANGO_SETTINGS_MODULE=library.settings\n\nWORKDIR /app\n\n# فقط runtime deps\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    libpq5 libmagic1 curl \\\n    && rm -rf /var/lib/apt/lists/*\n\n# کاربر غیر-root\nRUN useradd --create-home --shell /bin/bash app\n\n# کپی پکیج‌های نصب‌شده از builder\nCOPY --from=builder --chown=app:app /root/.local /home/app/.local\n\n# کپی کد\nCOPY --chown=app:app . .\n\n# پوشه‌ها\nRUN mkdir -p /app/staticfiles /app/media /app/logs && \\\n    chown -R app:app /app/staticfiles /app/media /app/logs\n\nUSER app\n\nEXPOSE 8000\n\nHEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \\\n    CMD curl -f http://localhost:8000/live/ || exit 1\n\nENTRYPOINT [\"/app/docker/entrypoint.sh\"]\n\nCMD [\"gunicorn\", \"library.wsgi:application\", \\\n     \"--bind\", \"0.0.0.0:8000\", \\\n     \"--workers\", \"3\", \\\n     \"--worker-class\", \"gthread\", \\\n     \"--threads\", \"2\", \\\n     \"--access-logfile\", \"-\", \\\n     \"--error-logfile\", \"-\"]"
+            },
+            {
+              "type": "text",
+              "filename": ".dockerignore",
+              "code": "__pycache__/\n*.py[cod]\n*.pyo\n*.pyd\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n*.egg-info/\ndist/\nbuild/\n\n.venv/\nvenv/\nenv/\n\n*.sqlite3\ndb.sqlite3\nmedia/\nstaticfiles/\n\n.env\n.env.*\n!.env.example\n\n.idea/\n.vscode/\n*.swp\n\n.git/\n.gitignore\n.gitattributes\n\nDockerfile*\ndocker-compose*.yml\n.dockerignore\n\n*.md\nREADME*\nLICENSE\n\n.github/\n\n.DS_Store\nThumbs.db\n*.log"
+            },
+            {
+              "type": "bash",
+              "filename": "docker/entrypoint.sh",
+              "code": "#!/bin/bash\nset -e\n\necho \"[entrypoint] Waiting for database...\"\nuntil pg_isready -h \"${DB_HOST}\" -p \"${DB_PORT:-5432}\" -U \"${DB_USER}\" > /dev/null 2>&1; do\n    echo \"[entrypoint] DB not ready, waiting...\"\n    sleep 1\ndone\necho \"[entrypoint] Database is ready\"\n\nif [ -n \"${REDIS_URL:-}\" ]; then\n    echo \"[entrypoint] Waiting for Redis...\"\n    until redis-cli -u \"${REDIS_URL}\" ping > /dev/null 2>&1; do\n        sleep 1\n    done\n    echo \"[entrypoint] Redis is ready\"\nfi\n\ncase \"${1:-}\" in\n    gunicorn)\n        echo \"[entrypoint] Running migrations...\"\n        python manage.py migrate --noinput\n\n        echo \"[entrypoint] Collecting static...\"\n        python manage.py collectstatic --noinput --clear\n\n        echo \"[entrypoint] Starting Gunicorn...\"\n        exec \"$@\"\n        ;;\n    celery)\n        echo \"[entrypoint] Starting Celery worker...\"\n        exec \"$@\"\n        ;;\n    *)\n        exec \"$@\"\n        ;;\nesac"
+            },
+            {
+              "type": "yaml",
+              "filename": "docker-compose.yml",
+              "code": "services:\n  # ================================\n  # PostgreSQL\n  # ================================\n  db:\n    image: postgres:16-alpine\n    container_name: library_db\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    environment:\n      POSTGRES_DB: ${DB_NAME:-library_db}\n      POSTGRES_USER: ${DB_USER:-library_user}\n      POSTGRES_PASSWORD: ${DB_PASSWORD:-library_pass}\n      PGDATA: /var/lib/postgresql/data/pgdata\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U $${POSTGRES_USER}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 5\n      start_period: 10s\n    restart: unless-stopped\n\n  # ================================\n  # Redis\n  # ================================\n  redis:\n    image: redis:7-alpine\n    container_name: library_redis\n    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru\n    volumes:\n      - redis_data:/data\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"ping\"]\n      interval: 5s\n      timeout: 3s\n      retries: 5\n    restart: unless-stopped\n\n  # ================================\n  # Django API\n  # ================================\n  api:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: library_api\n    volumes:\n      - static_files:/app/staticfiles\n      - media_files:/app/media\n    ports:\n      - \"8000:8000\"\n    env_file: .env\n    environment:\n      DB_HOST: db\n      REDIS_URL: redis://redis:6379/0\n      CELERY_BROKER_URL: redis://redis:6379/1\n      CELERY_RESULT_BACKEND: redis://redis:6379/2\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\n  # ================================\n  # Celery Worker\n  # ================================\n  celery:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: library_celery\n    command: celery -A library worker -l info --concurrency=4\n    volumes:\n      - media_files:/app/media\n    env_file: .env\n    environment:\n      DB_HOST: db\n      REDIS_URL: redis://redis:6379/0\n      CELERY_BROKER_URL: redis://redis:6379/1\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\n  # ================================\n  # Celery Beat\n  # ================================\n  celery-beat:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: library_celery_beat\n    command: celery -A library beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler\n    env_file: .env\n    environment:\n      DB_HOST: db\n      REDIS_URL: redis://redis:6379/0\n      CELERY_BROKER_URL: redis://redis:6379/1\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\n  # ================================\n  # Nginx\n  # ================================\n  nginx:\n    image: nginx:alpine\n    container_name: library_nginx\n    ports:\n      - \"80:80\"\n    volumes:\n      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro\n      - static_files:/static:ro\n      - media_files:/media:ro\n    depends_on:\n      - api\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:\n  redis_data:\n  static_files:\n  media_files:"
+            },
+            {
+              "type": "text",
+              "filename": "nginx/nginx.conf",
+              "code": "upstream api_backend {\n    server api:8000;\n}\n\nserver {\n    listen 80;\n    server_name _;\n\n    client_max_body_size 20M;\n\n    location /static/ {\n        alias /static/;\n        expires 30d;\n        add_header Cache-Control \"public, immutable\";\n    }\n\n    location /media/ {\n        alias /media/;\n        expires 7d;\n    }\n\n    location / {\n        proxy_pass http://api_backend;\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Connection \"\";\n\n        proxy_connect_timeout 10s;\n        proxy_send_timeout 60s;\n        proxy_read_timeout 60s;\n    }\n}"
+            },
+            {
+              "type": "bash",
+              "filename": ".env",
+              "code": "DJANGO_SETTINGS_MODULE=library.settings\nSECRET_KEY=docker-dev-secret-key-change-me-in-production\nDEBUG=True\nALLOWED_HOSTS=localhost,127.0.0.1\n\nDB_NAME=library_db\nDB_USER=library_user\nDB_PASSWORD=library_pass\nDB_HOST=db\nDB_PORT=5432\n\nREDIS_URL=redis://redis:6379/0\nCELERY_BROKER_URL=redis://redis:6379/1\nCELERY_RESULT_BACKEND=redis://redis:6379/2\n\nCORS_ALLOWED_ORIGINS=http://localhost:3000\n\nEMAIL_BACKEND=django.core.mail.backends.console.EmailBackend\nDEFAULT_FROM_EMAIL=noreply@example.com\n\nFRONTEND_URL=http://localhost:3000"
+            },
+            {
+              "type": "bash",
+              "filename": "اجرا",
+              "code": "# ساخت و اجرا\nchmod +x docker/entrypoint.sh\ndocker compose up -d --build\n\n# لاگ‌ها\ndocker compose logs -f api\n\n# تست\ncurl http://localhost/api/health/\ncurl http://localhost/api/docs/\ncurl http://localhost/admin/\n\n# shell\ndocker compose exec api python manage.py shell\ndocker compose exec api python manage.py createsuperuser\n\n# توقف\ndocker compose down\n\n# پاک کردن کامل\ndocker compose down -v"
+            },
+            {
+              "type": "bash",
+              "filename": "پاکسازی و بهینه‌سازی",
+              "code": "# بررسی حجم تصویر\ndocker images library_api\n\n# تحلیل لایه‌ها\ndocker history library_api\n\n# پاکسازی\ndocker system prune -a\n\n# اسکن امنیتی\ndocker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\\n    aquasec/trivy:latest image library_api"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نتیجه مورد انتظار"
+        },
+        {
+          "type": "table",
+          "headers": ["معیار", "مقدار"],
+          "rows": [
+            ["تعداد سرویس‌ها", "۶ (db, redis, api, celery, celery-beat, nginx)"],
+            ["دستور راه‌اندازی", "`docker compose up -d --build`"],
+            ["زمان راه‌اندازی", "~۳۰ ثانیه"],
+            ["حجم تصویر نهایی", "~۲۲۰ MB"],
+            ["دسترسی API", "http://localhost/api/"],
+            ["دسترسی Admin", "http://localhost/admin/"],
+            ["دسترسی Docs", "http://localhost/api/docs/"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**اجرا با root:** خطر امنیتی",
+            "**نبود `.dockerignore`:** تصویر بزرگ، افشای .env",
+            "**نبود `depends_on` با condition:** API قبل از DB بالا می‌آید",
+            "**نبود healthcheck:** Compose نمی‌داند سرویس آماده است",
+            "**`COPY . .` قبل از `pip install`:** cache نمی‌شود",
+            "**حجم بدون volume:** داده با `down` از دست می‌رود",
+            "**تگ `latest` در تولید:** نمی‌دانید چه نسخه‌ای اجرا می‌شود"
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": [
+    "LAB 21: مستندسازی کامل OpenAPI با drf-spectacular.",
+    "LAB 22: بهینه‌سازی N+1 با select_related، prefetch_related، annotate.",
+    "LAB 23: Docker کامل با docker-compose چندسرویسی."
+  ],
+  "resources": [
+    { "title": "drf-spectacular", "url": "https://drf-spectacular.readthedocs.io/", "official": true },
+    { "title": "Django — QuerySet optimization", "url": "https://docs.djangoproject.com/en/stable/topics/db/optimization/", "official": true },
+    { "title": "Docker Compose", "url": "https://docs.docker.com/compose/", "official": true }
+  ]
+}

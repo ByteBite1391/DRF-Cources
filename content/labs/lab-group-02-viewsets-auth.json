@@ -1,0 +1,626 @@
+{
+  "id": "labs-group-02",
+  "slug": "labs-group-02-viewsets-auth",
+  "title": "آزمایشگاه‌ها — گروه ۲: ViewSet، احراز هویت، مجوز",
+  "kicker": "Labs Group 2",
+  "level": "intermediate",
+  "difficulty": 3,
+  "estimatedMinutes": 180,
+  "lead": "پنج آزمایشگاه عملی برای تسلط بر ViewSet پیشرفته، احراز هویت JWT، مجوزهای سفارشی و رابطه مالکیت.",
+  "sections": [
+    {
+      "id": "lab-06",
+      "title": "LAB 06 — ViewSet با اکشن سفارشی",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 06 — هدف",
+          "text": "یک ViewSet کتاب با CRUD کامل و سه اکشن سفارشی: `featured`، `latest`، `toggle_publish` بسازید."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۵ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-05"],
+            ["هدف", "تسلط بر @action و ViewSet سفارشی"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "ModelViewSet برای Book",
+            "اکشن `featured` (detail=False, GET): لیست کتاب‌های ویژه",
+            "اکشن `latest` (detail=False, GET): ۱۰ کتاب آخر",
+            "اکشن `toggle_publish` (detail=True, POST): تغییر وضعیت انتشار",
+            "فیلد `is_published` و `is_featured` در مدل"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/models.py",
+          "code": "from django.db import models\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    author = models.CharField(max_length=150)\n    isbn = models.CharField(max_length=13, unique=True)\n    price = models.DecimalField(max_digits=8, decimal_places=2)\n    is_published = models.BooleanField(default=False)\n    is_featured = models.BooleanField(default=False)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    class Meta:\n        ordering = [\"-created_at\"]"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "`is_published` و `is_featured` را به مدل اضافه کنید",
+            "سریالایزر را با این فیلدها به‌روزرسانی کنید",
+            "ViewSet را با ModelViewSet بسازید",
+            "اکشن `featured` بسازید که `is_featured=True` را فیلتر کند",
+            "اکشن `latest` بسازید که ۱۰ کتاب آخر را برگرداند",
+            "اکشن `toggle_publish` بسازید که `is_published` را toggle کند",
+            "Router را ثبت کنید",
+            "با curl تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`@action(detail=False, methods=[\"get\"])` برای اکشن روی مجموعه",
+            "`@action(detail=True, methods=[\"post\"])` برای اکشن روی یک رکورد",
+            "در اکشن، `self.get_queryset()` یا `self.get_object()` استفاده کنید",
+            "URLهای اکشن‌ها: `/books/featured/`، `/books/latest/`، `/books/1/toggle_publish/`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets, status\nfrom rest_framework.decorators import action\nfrom rest_framework.response import Response\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n\n    @action(detail=False, methods=[\"get\"])\n    def featured(self, request):\n        \"\"\"کتاب‌های ویژه.\"\"\"\n        books = self.get_queryset().filter(is_featured=True)[:10]\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)\n\n    @action(detail=False, methods=[\"get\"])\n    def latest(self, request):\n        \"\"\"۱۰ کتاب آخر.\"\"\"\n        books = self.get_queryset().order_by(\"-created_at\")[:10]\n        serializer = self.get_serializer(books, many=True)\n        return Response(serializer.data)\n\n    @action(detail=True, methods=[\"post\"])\n    def toggle_publish(self, request, pk=None):\n        \"\"\"تغییر وضعیت انتشار.\"\"\"\n        book = self.get_object()\n        book.is_published = not book.is_published\n        book.save(update_fields=[\"is_published\"])\n        return Response({\n            \"id\": book.id,\n            \"is_published\": book.is_published,\n        })"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست\n\n# کتاب‌های ویژه\ncurl http://127.0.0.1:8000/api/books/featured/\n\n# کتاب‌های جدید\ncurl http://127.0.0.1:8000/api/books/latest/\n\n# تغییر وضعیت انتشار\ncurl -X POST http://127.0.0.1:8000/api/books/1/toggle_publish/"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فراموش کردن `methods` در `@action`:** خطای AssertionError",
+            "**استفاده از `Book.objects.all()` به‌جای `self.get_queryset()`:** منطق ViewSet را دور می‌زنید",
+            "**نبود `pk=None` در امضای اکشن detail=True:** خطای TypeError",
+            "**URL اشتباه:** `/books/1/toggle_publish/` نه `/books/toggle_publish/1/`"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-07",
+      "title": "LAB 07 — احراز هویت JWT",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 07 — هدف",
+          "text": "سیستم احراز هویت JWT کامل: ثبت‌نام، ورود، رفرش توکن، خروج. با SimpleJWT."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۴۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-06"],
+            ["هدف", "احراز هویت JWT با Rotation و Blacklist"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "SimpleJWT نصب و تنظیم",
+            "Endpoint `/api/auth/register/` برای ثبت‌نام",
+            "Endpoint `/api/auth/login/` برای ورود",
+            "Endpoint `/api/auth/token/refresh/` برای رفرش",
+            "Endpoint `/api/auth/logout/` برای خروج",
+            "Endpoint `/api/auth/me/` برای اطلاعات کاربر",
+            "Rotation و Blacklist فعال",
+            "Throttle روی login و register"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install djangorestframework-simplejwt"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"rest_framework_simplejwt\",\n    \"rest_framework_simplejwt.token_blacklist\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework_simplejwt.authentication.JWTAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.ScopedRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n    },\n}\n\nfrom datetime import timedelta\nSIMPLE_JWT = {\n    \"ACCESS_TOKEN_LIFETIME\": timedelta(minutes=15),\n    \"REFRESH_TOKEN_LIFETIME\": timedelta(days=7),\n    \"ROTATE_REFRESH_TOKENS\": True,\n    \"BLACKLIST_AFTER_ROTATION\": True,\n    \"AUTH_HEADER_TYPES\": (\"Bearer\",),\n}"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "python manage.py migrate"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "`RegisterSerializer` بسازید با `validate_password`",
+            "`RegisterView` بسازید که بلافاصله توکن برگرداند",
+            "`LoginView` از `TokenObtainPairView` با throttle",
+            "`LogoutView` که refresh را blacklist کند",
+            "`MeView` با `RetrieveUpdateAPIView`",
+            "URLها را تنظیم کنید",
+            "با curl تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView`",
+            "برای ساخت توکن دستی: `RefreshToken.for_user(user)`",
+            "برای blacklist: `RefreshToken(refresh).blacklist()`",
+            "Throttle روی ویو با `throttle_classes = [ScopedRateThrottle]` و `throttle_scope = \"login\"`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/serializers.py",
+              "code": "from django.contrib.auth import get_user_model\nfrom django.contrib.auth.password_validation import validate_password\nfrom rest_framework import serializers\n\nUser = get_user_model()\n\n\nclass RegisterSerializer(serializers.ModelSerializer):\n    password = serializers.CharField(write_only=True, validators=[validate_password])\n    password_confirm = serializers.CharField(write_only=True)\n\n    class Meta:\n        model = User\n        fields = [\"username\", \"email\", \"password\", \"password_confirm\", \"first_name\", \"last_name\"]\n\n    def validate_email(self, value):\n        if User.objects.filter(email__iexact=value).exists():\n            raise serializers.ValidationError(\"این ایمیل قبلاً ثبت شده است.\")\n        return value.lower()\n\n    def validate(self, attrs):\n        if attrs[\"password\"] != attrs[\"password_confirm\"]:\n            raise serializers.ValidationError(\n                {\"password_confirm\": \"رمزها یکسان نیستند.\"}\n            )\n        return attrs\n\n    def create(self, validated_data):\n        validated_data.pop(\"password_confirm\")\n        return User.objects.create_user(**validated_data)"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/views.py",
+              "code": "from rest_framework import generics, status\nfrom rest_framework.permissions import AllowAny, IsAuthenticated\nfrom rest_framework.response import Response\nfrom rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework.views import APIView\nfrom rest_framework_simplejwt.tokens import RefreshToken\nfrom rest_framework_simplejwt.views import TokenObtainPairView\nfrom rest_framework_simplejwt.exceptions import TokenError\nfrom .serializers import RegisterSerializer\n\n\nclass RegisterView(APIView):\n    permission_classes = [AllowAny]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"register\"\n\n    def post(self, request):\n        serializer = RegisterSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        user = serializer.save()\n        refresh = RefreshToken.for_user(user)\n        return Response({\n            \"user\": {\"id\": user.id, \"username\": user.username, \"email\": user.email},\n            \"access\": str(refresh.access_token),\n            \"refresh\": str(refresh),\n        }, status=status.HTTP_201_CREATED)\n\n\nclass LoginView(TokenObtainPairView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"login\"\n\n\nclass LogoutView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        try:\n            refresh = request.data.get(\"refresh\")\n            if not refresh:\n                return Response(\n                    {\"detail\": \"فیلد refresh الزامی است.\"},\n                    status=status.HTTP_400_BAD_REQUEST,\n                )\n            RefreshToken(refresh).blacklist()\n            return Response({\"detail\": \"خروج موفق\"}, status=status.HTTP_200_OK)\n        except TokenError:\n            return Response(\n                {\"detail\": \"توکن نامعتبر.\"},\n                status=status.HTTP_400_BAD_REQUEST,\n            )\n\n\nclass MeView(generics.RetrieveUpdateAPIView):\n    permission_classes = [IsAuthenticated]\n\n    def get_object(self):\n        return self.request.user\n\n    def get_serializer_class(self):\n        from .serializers import UserSerializer\n        return UserSerializer"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/urls.py",
+              "code": "from django.urls import path\nfrom rest_framework_simplejwt.views import TokenRefreshView\nfrom .views import RegisterView, LoginView, LogoutView, MeView\n\nurlpatterns = [\n    path(\"register/\", RegisterView.as_view()),\n    path(\"login/\", LoginView.as_view()),\n    path(\"logout/\", LogoutView.as_view()),\n    path(\"token/refresh/\", TokenRefreshView.as_view()),\n    path(\"me/\", MeView.as_view()),\n]"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست\n\n# ۱. ثبت‌نام\ncurl -X POST http://127.0.0.1:8000/api/auth/register/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\":\"sara\",\"email\":\"sara@example.com\",\"password\":\"S3cret!Pass\",\"password_confirm\":\"S3cret!Pass\"}'\n\n# پاسخ:\n# {\"user\": {...}, \"access\": \"eyJ...\", \"refresh\": \"eyJ...\"}\n\n# ۲. استفاده از access\ncurl -H \"Authorization: Bearer eyJ...\" http://127.0.0.1:8000/api/auth/me/\n\n# ۳. رفرش\ncurl -X POST http://127.0.0.1:8000/api/auth/token/refresh/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"refresh\":\"eyJ...\"}'\n\n# ۴. خروج\ncurl -X POST http://127.0.0.1:8000/api/auth/logout/ \\\n  -H \"Authorization: Bearer eyJ...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"refresh\":\"eyJ...\"}'"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فراموش کردن `token_blacklist` در INSTALLED_APPS:** blacklist کار نمی‌کند",
+            "**نبود `migrate`:** جدول blacklist ساخته نمی‌شود",
+            "**فراموش کردن throttle روی login:** brute-force ممکن",
+            "**نبود `rotation`:** توکن‌های قدیمی باقی می‌مانند",
+            "**ذخیره JWT در localStorage:** XSS risk"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-08",
+      "title": "LAB 08 — مجوز سفارشی (IsOwner)",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 08 — هدف",
+          "text": "یک سیستم یادداشت بسازید که هر کاربر فقط یادداشت‌های خودش را ببیند و ویرایش کند."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۰ دقیقه"],
+            ["پیش‌نیاز", "Lab 07"],
+            ["هدف", "مجوز سطح شیء + جلوگیری از IDOR"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل `Note` با `owner` (ForeignKey به User)",
+            "کاربر وارد‌شده بتواند یادداشت بسازد",
+            "کاربر فقط یادداشت‌های خودش را ببیند",
+            "کاربر فقط یادداشت خودش را ویرایش/حذف کند",
+            "اگر بخواهد یادداشت دیگری را ببیند: 404 (نه 403)",
+            "ادمین همه را ببیند"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل Note با owner بسازید",
+            "مجوز `IsOwner` بنویسید با `has_object_permission`",
+            "در ViewSet، `get_queryset` را فیلتر کنید",
+            "`perform_create` را برای پر کردن owner",
+            "با دو کاربر مختلف تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`get_queryset` را فیلتر کنید تا 404 بدهد، نه 403",
+            "`has_object_permission` برای اجازه ویرایش/حذف",
+            "`self.request.user` دسترسی به کاربر جاری",
+            "ادمین: `if self.request.user.is_staff: return Note.objects.all()`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "notes/models.py",
+              "code": "from django.conf import settings\nfrom django.db import models\n\n\nclass Note(models.Model):\n    owner = models.ForeignKey(\n        settings.AUTH_USER_MODEL,\n        on_delete=models.CASCADE,\n        related_name=\"notes\",\n    )\n    title = models.CharField(max_length=200)\n    body = models.TextField()\n    created_at = models.DateTimeField(auto_now_add=True)\n    updated_at = models.DateTimeField(auto_now=True)\n\n    class Meta:\n        ordering = [\"-created_at\"]\n\n    def __str__(self):\n        return self.title"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "notes/permissions.py",
+              "code": "from rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\nclass IsOwner(BasePermission):\n    \"\"\"\n    فقط صاحب یادداشت می‌تواند آن را تغییر دهد.\n    \"\"\"\n    message = \"شما صاحب این یادداشت نیستید.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return obj.owner == request.user\n        return obj.owner == request.user"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "notes/views.py",
+              "code": "from rest_framework import viewsets\nfrom rest_framework.permissions import IsAuthenticated\nfrom .models import Note\nfrom .serializers import NoteSerializer\nfrom .permissions import IsOwner\n\n\nclass NoteViewSet(viewsets.ModelViewSet):\n    serializer_class = NoteSerializer\n    permission_classes = [IsAuthenticated, IsOwner]\n\n    def get_queryset(self):\n        # اگر ادمین است، همه را ببیند\n        if self.request.user.is_staff:\n            return Note.objects.all()\n        # وگرنه فقط یادداشت‌های خودش\n        # این خط باعث می‌شود به یادداشت دیگران 404 بدهد، نه 403\n        return Note.objects.filter(owner=self.request.user)\n\n    def perform_create(self, serializer):\n        serializer.save(owner=self.request.user)"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# سناریو ۱: سارا یادداشت می‌سازد\ncurl -X POST http://127.0.0.1:8000/api/notes/ \\\n  -H \"Authorization: Bearer SARA_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"title\":\"Secret\",\"body\":\"My private note\"}'\n\n# پاسخ: {\"id\":1,\"title\":\"Secret\",...}\n\n# سناریو ۲: سارا یادداشت خودش را می‌بیند\ncurl -H \"Authorization: Bearer SARA_TOKEN\" \\\n  http://127.0.0.1:8000/api/notes/1/\n# پاسخ: 200 با محتوا\n\n# سناریو ۳: علی تلاش می‌کند یادداشت سارا را ببیند\ncurl -H \"Authorization: Bearer ALI_TOKEN\" \\\n  http://127.0.0.1:8000/api/notes/1/\n# پاسخ: 404 (نه 403) — امن‌تر\n\n# سناریو ۴: علی تلاش می‌کند یادداشت سارا را حذف کند\ncurl -X DELETE -H \"Authorization: Bearer ALI_TOKEN\" \\\n  http://127.0.0.1:8000/api/notes/1/\n# پاسخ: 404"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "danger",
+          "title": "404 بهتر از 403",
+          "text": "اگر فقط `has_object_permission` بگذارید، به علی 403 می‌دهد — یعنی «وجود دارد اما اجازه نداری». با فیلتر کردن `get_queryset`، 404 می‌گیرد که امن‌تر است چون وجود شیء را افشا نمی‌کند."
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `get_queryset` filter:** همه می‌توانند یادداشت دیگران را ببینند (IDOR)",
+            "**استفاده از 403:** اطلاعات لو می‌رود",
+            "**نبود `perform_create`:** owner پر نمی‌شود",
+            "**دسترسی مستقیم با pk:** بدون فیلتر queryset، حتی با permission، لیست لو می‌رود"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-09",
+      "title": "LAB 09 — مجوز سطح ویو (نقش‌ها)",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 09 — هدف",
+          "text": "سیستم مجوز بر اساس نقش: نویسنده، ویرایشگر، ادمین. هر کدام دسترسی متفاوتی دارند."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۵ دقیقه"],
+            ["پیش‌نیاز", "Lab 08"],
+            ["هدف", "مجوز بر اساس نقش (Group)"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل `Article` با `author`، `editor`، `is_published`",
+            "نقش‌ها: `writer`, `editor`, `admin` (Group در Django)",
+            "خواندن برای همه آزاد",
+            "ساخت: فقط نویسنده یا ادمین",
+            "ویرایش: نویسنده (اگر منتشر نشده) یا ویرایشگر یا ادمین",
+            "حذف: فقط ادمین",
+            "انتشار: فقط ویرایشگر یا ادمین"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "گروه‌های `writer`، `editor` را بسازید (در admin یا shell)",
+            "مجوزهای `IsWriterOrReadOnly`، `IsEditor`، `CanEditArticle` بنویسید",
+            "`get_permissions` بر اساس action",
+            "اکشن `publish` بسازید",
+            "کاربران را به گروه‌ها اضافه کنید",
+            "با هر نقش تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "چک نقش: `user.groups.filter(name=\"editor\").exists()`",
+            "برای ساخت گروه در shell: `Group.objects.create(name=\"writer\")`",
+            "برای اضافه کردن کاربر: `user.groups.add(group)`",
+            "`get_permissions` بر اساس `self.action`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "articles/permissions.py",
+              "code": "from rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\ndef has_group(user, name):\n    if not user.is_authenticated:\n        return False\n    return user.groups.filter(name=name).exists()\n\n\nclass IsWriterOrReadOnly(BasePermission):\n    message = \"فقط نویسندگان می‌توانند مقاله بسازند.\"\n\n    def has_permission(self, request, view):\n        if request.method in SAFE_METHODS:\n            return True\n        return has_group(request.user, \"writer\") or request.user.is_staff\n\n\nclass IsEditor(BasePermission):\n    message = \"فقط ویرایشگرها مجاز هستند.\"\n\n    def has_permission(self, request, view):\n        return has_group(request.user, \"editor\") or request.user.is_staff\n\n\nclass CanEditArticle(BasePermission):\n    message = \"شما اجازه ویرایش این مقاله را ندارید.\"\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        if request.user.is_staff:\n            return True\n        if obj.is_published:\n            return has_group(request.user, \"editor\")\n        return obj.author == request.user"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "articles/views.py",
+              "code": "from rest_framework import viewsets\nfrom rest_framework.decorators import action\nfrom rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated\nfrom rest_framework.response import Response\nfrom django.utils import timezone\nfrom .models import Article\nfrom .serializers import ArticleSerializer\nfrom .permissions import IsWriterOrReadOnly, IsEditor, CanEditArticle\n\n\nclass ArticleViewSet(viewsets.ModelViewSet):\n    queryset = Article.objects.select_related(\"author\").all()\n    serializer_class = ArticleSerializer\n\n    def get_permissions(self):\n        if self.action in (\"list\", \"retrieve\"):\n            return [AllowAny()]\n        if self.action == \"create\":\n            return [IsWriterOrReadOnly()]\n        if self.action == \"destroy\":\n            return [IsAdminUser()]\n        if self.action == \"publish\":\n            return [IsEditor()]\n        if self.action in (\"update\", \"partial_update\"):\n            return [IsAuthenticated(), CanEditArticle()]\n        return [IsAuthenticated()]\n\n    def perform_create(self, serializer):\n        serializer.save(author=self.request.user)\n\n    @action(detail=True, methods=[\"post\"])\n    def publish(self, request, pk=None):\n        article = self.get_object()\n        article.is_published = True\n        article.published_at = timezone.now()\n        article.save(update_fields=[\"is_published\", \"published_at\"])\n        return Response({\"status\": \"published\"})"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# ساخت گروه‌ها در shell\npython manage.py shell\n\n>>> from django.contrib.auth.models import Group, User\n>>> Group.objects.get_or_create(name=\"writer\")\n>>> Group.objects.get_or_create(name=\"editor\")\n>>> writer = User.objects.get(username=\"sara\")\n>>> writer.groups.add(Group.objects.get(name=\"writer\"))\n\n# تست\n# writer مقاله می‌سازد: 201\n# editor مقاله منتشر می‌کند: 200\n# anonymous مقاله می‌خواند: 200\n# writer مقاله منتشرشده ویرایش می‌کند: 403\n# admin مقاله حذف می‌کند: 204"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**چک کردن `is_staff` به‌جای نقش:** همه ادمین‌ها دسترسی کامل دارند",
+            "**نبود `get_permissions`:** نمی‌توانید بر اساس action تفاوت بگذارید",
+            "**فراموش کردن `IsAuthenticated` قبل از نقش:** کاربر ناشناس خطای 500 می‌گیرد",
+            "**دسترسی مستقیم با pk:** بدون `CanEditArticle`، هر کسی می‌تواند ویرایش کند"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-10",
+      "title": "LAB 10 — پروفایل کاربر کامل",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 10 — هدف",
+          "text": "سیستم پروفایل کامل با آپلود آواتار، تغییر رمز، و آمار شخصی."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط+"],
+            ["زمان", "۴۰ دقیقه"],
+            ["پیش‌نیاز", "Lab 07 و Lab 08"],
+            ["هدف", "Profile، آپلود فایل، ویرایش کاربر"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل `Profile` با `user` (OneToOne)، `bio`، `avatar`، `phone`",
+            "Endpoint `/api/profile/` برای خواندن و ویرایش پروفایل",
+            "Endpoint `/api/profile/avatar/` برای آپلود تصویر",
+            "Endpoint `/api/profile/change-password/` برای تغییر رمز",
+            "اعتبارسنجی آواتار: حداکثر ۲ مگابایت، فرمت JPEG/PNG",
+            "تغییر رمز نیاز به رمز فعلی"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل Profile بسازید",
+            "سیگنال برای ساخت خودکار پروفایل بعد از register",
+            "ProfileSerializer بسازید",
+            "AvatarUploadSerializer با validate_avatar",
+            "ChangePasswordSerializer",
+            "ویوها با RetrieveUpdateAPIView و APIView",
+            "تست با curl"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "برای آپلود: `parser_classes = [MultiPartParser, FormParser]`",
+            "Pillow برای ImageField نصب کنید: `pip install Pillow`",
+            "برای ساخت خودکار پروفایل: `post_save` signal روی User",
+            "برای تغییر رمز: `user.check_password(old)` و `user.set_password(new)`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/models.py",
+              "code": "from django.conf import settings\nfrom django.db import models\nfrom django.db.models.signals import post_save\nfrom django.dispatch import receiver\n\n\nclass Profile(models.Model):\n    user = models.OneToOneField(\n        settings.AUTH_USER_MODEL,\n        on_delete=models.CASCADE,\n        related_name=\"profile\",\n    )\n    bio = models.TextField(blank=True)\n    phone = models.CharField(max_length=20, blank=True)\n    avatar = models.ImageField(upload_to=\"avatars/\", blank=True, null=True)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    def __str__(self):\n        return f\"Profile of {self.user.username}\"\n\n\n@receiver(post_save, sender=settings.AUTH_USER_MODEL)\ndef create_profile(sender, instance, created, **kwargs):\n    if created:\n        Profile.objects.create(user=instance)"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/serializers.py",
+              "code": "from django.contrib.auth import get_user_model\nfrom rest_framework import serializers\nfrom .models import Profile\n\nUser = get_user_model()\n\n\nclass UserSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = User\n        fields = [\"id\", \"username\", \"email\", \"first_name\", \"last_name\", \"date_joined\"]\n        read_only_fields = [\"id\", \"username\", \"email\", \"date_joined\"]\n\n\nclass ProfileSerializer(serializers.ModelSerializer):\n    user = UserSerializer(read_only=True)\n\n    class Meta:\n        model = Profile\n        fields = [\"id\", \"user\", \"bio\", \"phone\", \"avatar\", \"created_at\"]\n        read_only_fields = [\"id\", \"user\", \"created_at\"]\n\n\nclass AvatarUploadSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Profile\n        fields = [\"avatar\"]\n\n    def validate_avatar(self, value):\n        if value.size > 2 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم تصویر بیش از ۲ مگابایت است.\")\n        if value.content_type not in (\"image/jpeg\", \"image/png\", \"image/webp\"):\n            raise serializers.ValidationError(\"فرمت باید JPEG، PNG یا WebP باشد.\")\n        return value\n\n\nclass ChangePasswordSerializer(serializers.Serializer):\n    old_password = serializers.CharField()\n    new_password = serializers.CharField(validators=[validate_password])\n    new_password_confirm = serializers.CharField()\n\n    def validate_old_password(self, value):\n        if not self.context[\"request\"].user.check_password(value):\n            raise serializers.ValidationError(\"رمز فعلی نادرست است.\")\n        return value\n\n    def validate(self, attrs):\n        if attrs[\"new_password\"] != attrs[\"new_password_confirm\"]:\n            raise serializers.ValidationError(\n                {\"new_password_confirm\": \"رمزها یکسان نیستند.\"}\n            )\n        return attrs\n\n\nfrom django.contrib.auth.password_validation import validate_password"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/views.py",
+              "code": "from rest_framework import generics, status\nfrom rest_framework.parsers import MultiPartParser, FormParser\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.response import Response\nfrom rest_framework.views import APIView\nfrom rest_framework_simplejwt.tokens import RefreshToken\nfrom .models import Profile\nfrom .serializers import (\n    ProfileSerializer, AvatarUploadSerializer, ChangePasswordSerializer,\n)\n\n\nclass ProfileView(generics.RetrieveUpdateAPIView):\n    serializer_class = ProfileSerializer\n    permission_classes = [IsAuthenticated]\n\n    def get_object(self):\n        profile, _ = Profile.objects.get_or_create(user=self.request.user)\n        return profile\n\n\nclass AvatarUploadView(APIView):\n    permission_classes = [IsAuthenticated]\n    parser_classes = [MultiPartParser, FormParser]\n\n    def post(self, request):\n        profile, _ = Profile.objects.get_or_create(user=request.user)\n        serializer = AvatarUploadSerializer(profile, data=request.data, partial=True)\n        serializer.is_valid(raise_exception=True)\n        serializer.save()\n        return Response({\n            \"avatar\": request.build_absolute_uri(profile.avatar.url),\n        })\n\n\nclass ChangePasswordView(APIView):\n    permission_classes = [IsAuthenticated]\n\n    def post(self, request):\n        serializer = ChangePasswordSerializer(\n            data=request.data,\n            context={\"request\": request},\n        )\n        serializer.is_valid(raise_exception=True)\n        user = request.user\n        user.set_password(serializer.validated_data[\"new_password\"])\n        user.save(update_fields=[\"password\"])\n\n        # Blacklist همه توکن‌های قبلی\n        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken\n        OutstandingToken.objects.filter(user=user).delete()\n\n        return Response({\"detail\": \"رمز عبور تغییر کرد. لطفاً دوباره وارد شوید.\"})"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست\n\n# ۱. دیدن پروفایل\ncurl -H \"Authorization: Bearer TOKEN\" http://127.0.0.1:8000/api/profile/\n\n# ۲. ویرایش پروفایل\ncurl -X PATCH http://127.0.0.1:8000/api/profile/ \\\n  -H \"Authorization: Bearer TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"bio\": \"Backend Developer\", \"phone\": \"09123456789\"}'\n\n# ۳. آپلود آواتار\ncurl -X POST http://127.0.0.1:8000/api/profile/avatar/ \\\n  -H \"Authorization: Bearer TOKEN\" \\\n  -F \"avatar=@photo.jpg\"\n\n# ۴. تغییر رمز\ncurl -X POST http://127.0.0.1:8000/api/profile/change-password/ \\\n  -H \"Authorization: Bearer TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"old_password\":\"Old123!\",\"new_password\":\"New456!\",\"new_password_confirm\":\"New456!\"}'"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**فراموش کردن `Pillow`:** ImageField کار نمی‌کند",
+            "**نبود signal:** پروفایل خودکار ساخته نمی‌شود",
+            "**اعتماد به `content_type`:** قابل جعل است — از python-magic استفاده کنید",
+            "**نبود blacklist بعد از تغییر رمز:** توکن‌های قدیمی معتبر می‌مانند",
+            "**ذخیره نام اصلی فایل:** Path Traversal — از UUID استفاده کنید"
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": [
+    "LAB 06: اکشن‌های سفارشی @action.",
+    "LAB 07: احراز هویت JWT با Rotation.",
+    "LAB 08: مجوز سطح شیء و جلوگیری از IDOR.",
+    "LAB 09: مجوز بر اساس نقش (Group).",
+    "LAB 10: پروفایل با آپلود و تغییر رمز."
+  ],
+  "resources": [
+    { "title": "DRF — ViewSets", "url": "https://www.django-rest-framework.org/api-guide/viewsets/", "official": true },
+    { "title": "SimpleJWT", "url": "https://django-rest-framework-simplejwt.readthedocs.io/", "official": true },
+    { "title": "DRF — Permissions", "url": "https://www.django-rest-framework.org/api-guide/permissions/", "official": true }
+  ]
+}

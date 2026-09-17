@@ -1,0 +1,641 @@
+{
+  "id": "labs-group-03",
+  "slug": "labs-group-03-filter-file",
+  "title": "آزمایشگاه‌ها — گروه ۳: فیلتر، جستجو، صفحه‌بندی، آپلود فایل",
+  "kicker": "Labs Group 3",
+  "level": "intermediate",
+  "difficulty": 3,
+  "estimatedMinutes": 200,
+  "lead": "پنج آزمایشگاه عملی برای تسلط بر فیلتر پیشرفته با django-filter، جستجو، مرتب‌سازی، صفحه‌بندی و آپلود امن فایل.",
+  "sections": [
+    {
+      "id": "lab-11",
+      "title": "LAB 11 — فیلتر پیشرفته با django-filter",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 11 — هدف",
+          "text": "یک API کتاب با فیلترهای پیشرفته: بازه قیمت، دسته‌بندی، نویسنده، زبان، تاریخ انتشار، موجودی. همه با django-filter."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۴۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-06"],
+            ["هدف", "FilterSet با فیلترهای سفارشی"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "django-filter نصب و تنظیم",
+            "فیلترهای ساده: `category`, `author`, `language`",
+            "فیلتر بازه قیمت: `min_price`, `max_price`",
+            "فیلتر بازه تاریخ: `published_after`, `published_before`",
+            "فیلتر Boolean: `in_stock`, `is_featured`",
+            "فیلتر سفارشی: `has_discount` (Boolean با منطق)",
+            "جستجو: `search` (در چند فیلد)",
+            "مرتب‌سازی: `ordering`"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install django-filter"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "settings.py",
+          "code": "INSTALLED_APPS = [\n    # ...\n    \"django_filters\",\n]\n\nREST_FRAMEWORK = {\n    \"DEFAULT_FILTER_BACKENDS\": [\n        \"django_filters.rest_framework.DjangoFilterBackend\",\n        \"rest_framework.filters.SearchFilter\",\n        \"rest_framework.filters.OrderingFilter\",\n    ],\n}"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "books/models.py",
+          "code": "from django.db import models\n\n\nclass Author(models.Model):\n    full_name = models.CharField(max_length=150)\n\n    def __str__(self):\n        return self.full_name\n\n\nclass Category(models.Model):\n    name = models.CharField(max_length=100)\n    slug = models.SlugField(unique=True)\n\n    def __str__(self):\n        return self.name\n\n\nclass Book(models.Model):\n    LANGUAGE_CHOICES = [\n        (\"fa\", \"فارسی\"),\n        (\"en\", \"English\"),\n        (\"ar\", \"العربیة\"),\n    ]\n\n    title = models.CharField(max_length=250)\n    author = models.ForeignKey(Author, on_delete=models.PROTECT, related_name=\"books\")\n    categories = models.ManyToManyField(Category, related_name=\"books\", blank=True)\n    isbn = models.CharField(max_length=13, unique=True)\n    price = models.DecimalField(max_digits=8, decimal_places=2)\n    discount_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)\n    language = models.CharField(max_length=5, choices=LANGUAGE_CHOICES, default=\"fa\")\n    published_at = models.DateField()\n    stock = models.PositiveIntegerField(default=0)\n    is_active = models.BooleanField(default=True)\n    is_featured = models.BooleanField(default=False)\n    created_at = models.DateTimeField(auto_now_add=True)\n\n    class Meta:\n        ordering = [\"-created_at\"]"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "FilterSet با فیلترهای ذکرشده بسازید",
+            "`filter_has_discount` را با `method` بنویسید",
+            "`filter_search` را با Q object بنویسید (title, description, isbn, author)",
+            "ViewSet را با `filterset_class` تنظیم کنید",
+            "`search_fields` و `ordering_fields` را تعریف کنید",
+            "`select_related` و `prefetch_related` برای N+1",
+            "با curl تست‌های مختلف"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`NumberFilter(field_name=\"price\", lookup_expr=\"gte\")` برای min_price",
+            "`BooleanFilter(method=\"filter_has_discount\")` برای منطق سفارشی",
+            "`CharFilter(method=\"filter_search\")` برای جستجوی ترکیبی",
+            "`distinct()` برای ManyToMany"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/filters.py",
+              "code": "import django_filters\nfrom django.db.models import Q\nfrom .models import Book\n\n\nclass BookFilter(django_filters.FilterSet):\n    # فیلترهای ساده\n    author = django_filters.NumberFilter(field_name=\"author__id\")\n    category = django_filters.CharFilter(field_name=\"categories__slug\")\n    language = django_filters.CharFilter(lookup_expr=\"iexact\")\n    is_featured = django_filters.BooleanFilter()\n    is_active = django_filters.BooleanFilter()\n\n    # بازه قیمت\n    min_price = django_filters.NumberFilter(field_name=\"price\", lookup_expr=\"gte\")\n    max_price = django_filters.NumberFilter(field_name=\"price\", lookup_expr=\"lte\")\n\n    # بازه تاریخ\n    published_after = django_filters.DateFilter(\n        field_name=\"published_at\", lookup_expr=\"gte\",\n    )\n    published_before = django_filters.DateFilter(\n        field_name=\"published_at\", lookup_expr=\"lte\",\n    )\n\n    # فیلترهای سفارشی\n    in_stock = django_filters.BooleanFilter(method=\"filter_in_stock\")\n    has_discount = django_filters.BooleanFilter(method=\"filter_has_discount\")\n    search = django_filters.CharFilter(method=\"filter_search\")\n\n    class Meta:\n        model = Book\n        fields = []\n\n    def filter_in_stock(self, qs, name, value):\n        if value:\n            return qs.filter(stock__gt=0)\n        return qs.filter(stock=0)\n\n    def filter_has_discount(self, qs, name, value):\n        if value:\n            return qs.filter(discount_price__isnull=False)\n        return qs.filter(Q(discount_price__isnull=True) | Q(discount_price=0))\n\n    def filter_search(self, qs, name, value):\n        if not value:\n            return qs\n        return qs.filter(\n            Q(title__icontains=value)\n            | Q(isbn__icontains=value)\n            | Q(author__full_name__icontains=value)\n        ).distinct()"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets, filters\nfrom django_filters.rest_framework import DjangoFilterBackend\nfrom .models import Book\nfrom .serializers import BookSerializer\nfrom .filters import BookFilter\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = (\n        Book.objects\n        .select_related(\"author\")\n        .prefetch_related(\"categories\")\n    )\n    serializer_class = BookSerializer\n    filter_backends = [\n        DjangoFilterBackend,\n        filters.SearchFilter,\n        filters.OrderingFilter,\n    ]\n    filterset_class = BookFilter\n    search_fields = [\"title\", \"isbn\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\", \"created_at\", \"title\"]\n    ordering = [\"-created_at\"]"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست‌ها\n\n# فیلتر ساده\ncurl \"http://127.0.0.1:8000/api/books/?language=fa\"\n\n# بازه قیمت\ncurl \"http://127.0.0.1:8000/api/books/?min_price=20&max_price=50\"\n\n# فقط موجود\ncurl \"http://127.0.0.1:8000/api/books/?in_stock=true\"\n\n# فقط تخفیف‌دار\ncurl \"http://127.0.0.1:8000/api/books/?has_discount=true\"\n\n# ترکیب\ncurl \"http://127.0.0.1:8000/api/books/?category=fiction&min_price=10&in_stock=true&ordering=-price\"\n\n# جستجو\ncurl \"http://127.0.0.1:8000/api/books/?search=clean\""
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `.distinct()`:** در M2M نتایج تکراری",
+            "**نبود `select_related`:** N+1",
+            "**اجازه ordering روی همه:** `ordering_fields = \"__all__\"` خطرناک",
+            "**نبود محدودیت در min_price:** کاربر می‌تواند بازه بزرگ بدهد",
+            "**فیلتر روی فیلد بدون index:** کندی در جدول بزرگ"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-12",
+      "title": "LAB 12 — صفحه‌بندی سفارشی",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 12 — هدف",
+          "text": "سه نوع صفحه‌بندی مختلف را پیاده کنید: PageNumber، LimitOffset، Cursor. تفاوت‌ها را با curl ببینید."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۵ دقیقه"],
+            ["پیش‌نیاز", "Lab 11"],
+            ["هدف", "صفحه‌بندی در سه حالت و مقایسه"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "PageNumberPagination با صفحه پیش‌فرض ۲۰، حداکثر ۱۰۰",
+            "LimitOffsetPagination با default_limit=۲۰",
+            "CursorPagination برای فید (خبری)",
+            "کلاس صفحه‌بندی سفارشی با ساختار پاسخ دلخواه",
+            "یک Endpoint برای هر نوع صفحه‌بندی"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "`pagination.py` بسازید با سه کلاس",
+            "کلاس `StandardPagination(PageNumberPagination)`",
+            "کلاس `FlexiblePagination(LimitOffsetPagination)`",
+            "کلاس `TimelinePagination(CursorPagination)` با `ordering=\"-created_at\"`",
+            "کلاس `EnvelopePagination(PageNumberPagination)` با `get_paginated_response` override",
+            "سه ViewSet جدا یا یک ViewSet با `get_paginator` پویا",
+            "با curl تست‌های مختلف"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`page_size_query_param = \"page_size\"` برای تغییر اندازه صفحه",
+            "`max_page_size` برای محدودیت",
+            "Cursor به فیلد یکتا نیاز دارد برای ترتیب",
+            "`get_paginated_response` را override کنید برای ساختار دلخواه"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/pagination.py",
+              "code": "from rest_framework.pagination import (\n    PageNumberPagination,\n    LimitOffsetPagination,\n    CursorPagination,\n)\nfrom rest_framework.response import Response\n\n\nclass StandardPagination(PageNumberPagination):\n    page_size = 20\n    page_size_query_param = \"page_size\"\n    max_page_size = 100\n\n\nclass FlexiblePagination(LimitOffsetPagination):\n    default_limit = 20\n    max_limit = 100\n    limit_query_param = \"limit\"\n    offset_query_param = \"offset\"\n\n\nclass TimelinePagination(CursorPagination):\n    page_size = 25\n    ordering = \"-created_at\"\n    cursor_query_param = \"cursor\"\n\n\nclass EnvelopePagination(PageNumberPagination):\n    page_size = 20\n    page_size_query_param = \"page_size\"\n    max_page_size = 100\n\n    def get_paginated_response(self, data):\n        return Response({\n            \"meta\": {\n                \"total\": self.page.paginator.count,\n                \"page\": self.page.number,\n                \"pages\": self.page.paginator.num_pages,\n                \"page_size\": self.get_page_size(self.request),\n            },\n            \"links\": {\n                \"next\": self.get_next_link(),\n                \"previous\": self.get_previous_link(),\n            },\n            \"data\": data,\n        })"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets\nfrom .models import Book\nfrom .serializers import BookSerializer\nfrom .pagination import (\n    StandardPagination, FlexiblePagination,\n    TimelinePagination, EnvelopePagination,\n)\n\n\nclass BookViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Book.objects.select_related(\"author\").all()\n    serializer_class = BookSerializer\n    pagination_class = StandardPagination\n\n    def get_paginator(self):\n        mode = self.request.query_params.get(\"mode\", \"standard\")\n        return {\n            \"standard\": StandardPagination,\n            \"flexible\": FlexiblePagination,\n            \"cursor\": TimelinePagination,\n            \"envelope\": EnvelopePagination,\n        }.get(mode, StandardPagination)()"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست‌ها\n\n# PageNumber\ncurl \"http://127.0.0.1:8000/api/books/?page=2\"\ncurl \"http://127.0.0.1:8000/api/books/?page=2&page_size=50\"\n\n# Limit-Offset\ncurl \"http://127.0.0.1:8000/api/books/?mode=flexible&limit=10&offset=30\"\n\n# Cursor\ncurl \"http://127.0.0.1:8000/api/books/?mode=cursor\"\n# پاسخ شامل next با cursor\n\n# Envelope\ncurl \"http://127.0.0.1:8000/api/books/?mode=envelope\"\n# پاسخ: {\"meta\": {...}, \"links\": {...}, \"data\": [...]}"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "مقایسه سه حالت"
+        },
+        {
+          "type": "table",
+          "headers": ["ویژگی", "PageNumber", "Limit-Offset", "Cursor"],
+          "rows": [
+            ["پرش به صفحه N", "✅", "✅", "❌"],
+            ["پایدار در برابر تغییر داده", "❌", "❌", "✅"],
+            ["Count(query)", "✅", "✅", "❌"],
+            ["سرعت روی جدول بزرگ", "کند", "کند", "سریع"],
+            ["مناسب فید", "❌", "❌", "✅"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `max_page_size`:** DoS",
+            "**نبود `ordering` در Cursor:** خطا",
+            "**`ordering` غیریکتا در Cursor:** نتایج تکراری",
+            "**`count` گران در PageNumber روی جدول بزرگ:** کندی"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-13",
+      "title": "LAB 13 — آپلود امن تصویر",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 13 — هدف",
+          "text": "سیستم آپلود تصویر برای جلد کتاب با اعتبارسنجی کامل: حجم، نوع، resize، و ذخیره امن."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط+"],
+            ["زمان", "۴۵ دقیقه"],
+            ["پیش‌نیاز", "Lab 11"],
+            ["هدف", "آپلود امن با python-magic و Pillow"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل Book با فیلد `cover` (ImageField)",
+            "Endpoint `/api/books/<id>/upload_cover/`",
+            "اعتبارسنجی حجم: حداکثر ۵ مگابایت",
+            "اعتبارسنجی فرمت: JPEG، PNG، WebP",
+            "بررسی محتوای واقعی با `python-magic`",
+            "Resize خودکار به ۸۰۰x1200 حداکثر",
+            "ذخیره با UUID (نام اصلی ذخیره نشود)",
+            "حذف فایل قبلی هنگام آپلود جدید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "نقطه شروع"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "pip install Pillow python-magic\n# لینوکس:\nsudo apt install libmagic1\n# ویندوز:\npip install python-magic-bin"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "فیلد `cover` به Book اضافه کنید",
+            "تابع `book_cover_path` بنویسید که نام را UUID کند",
+            "Serializer برای آپلود بسازید",
+            "`validate_cover` با حجم، magic، ext",
+            "در `save`، resize با Pillow",
+            "ViewSet با `@action` برای upload",
+            "حذف فایل قبلی با signal",
+            "با curl تست کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`magic.from_buffer(value.read(2048), mime=True)` نوع واقعی را می‌دهد",
+            "`value.seek(0)` بعد از خواندن برای بازگشت به ابتدا",
+            "`img.thumbnail((800, 1200), Image.LANCZOS)` تغییر اندازه",
+            "`ContentFile(buffer.getvalue())` برای ذخیره از بایت"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/models.py",
+              "code": "import os\nimport uuid\nfrom django.db import models\nfrom django.db.models.signals import post_delete\nfrom django.dispatch import receiver\n\n\ndef book_cover_path(instance, filename):\n    \"\"\"مسیر ذخیره: books/covers/<uuid>.<ext>\"\"\"\n    ext = os.path.splitext(filename)[1].lower()\n    if ext not in {\".jpg\", \".jpeg\", \".png\", \".webp\"}:\n        ext = \".jpg\"\n    return f\"books/covers/{uuid.uuid4().hex}{ext}\"\n\n\nclass Book(models.Model):\n    title = models.CharField(max_length=250)\n    cover = models.ImageField(upload_to=book_cover_path, blank=True, null=True)\n    # ... بقیه فیلدها\n\n\n@receiver(post_delete, sender=Book)\ndef delete_cover_on_book_delete(sender, instance, **kwargs):\n    if instance.cover:\n        instance.cover.delete(save=False)"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/serializers.py",
+              "code": "import magic\nfrom io import BytesIO\nfrom PIL import Image\nfrom django.core.files.base import ContentFile\nfrom rest_framework import serializers\nfrom .models import Book\n\n\nclass CoverUploadSerializer(serializers.Serializer):\n    cover = serializers.ImageField()\n\n    def validate_cover(self, value):\n        # ۱. حجم\n        if value.size > 5 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم تصویر بیش از ۵ مگابایت است.\")\n\n        # ۲. نوع واقعی\n        mime = magic.from_buffer(value.read(2048), mime=True)\n        value.seek(0)\n        if mime not in (\"image/jpeg\", \"image/png\", \"image/webp\"):\n            raise serializers.ValidationError(\n                f\"فرمت {mime} پشتیبانی نمی‌شود.\"\n            )\n\n        # ۳. بررسی که واقعاً تصویر است\n        try:\n            img = Image.open(value)\n            img.verify()\n        except Exception:\n            raise serializers.ValidationError(\"فایل تصویر معتبر نیست.\")\n        value.seek(0)\n\n        return value\n\n    def save(self, **kwargs):\n        book = self.context[\"book\"]\n        cover = self.validated_data[\"cover\"]\n\n        # Resize با Pillow\n        img = Image.open(cover)\n        img = img.convert(\"RGB\")\n        img.thumbnail((800, 1200), Image.LANCZOS)\n\n        buffer = BytesIO()\n        img.save(buffer, format=\"JPEG\", quality=85, optimize=True)\n\n        # حذف cover قدیمی\n        if book.cover:\n            book.cover.delete(save=False)\n\n        # ذخیره cover جدید\n        book.cover.save(\n            name=f\"{cover.name.rsplit('.', 1)[0]}.jpg\",\n            content=ContentFile(buffer.getvalue()),\n            save=True,\n        )\n        return book"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets, status\nfrom rest_framework.decorators import action\nfrom rest_framework.parsers import MultiPartParser, FormParser\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.response import Response\nfrom .models import Book\nfrom .serializers import BookSerializer, CoverUploadSerializer\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    queryset = Book.objects.all()\n    serializer_class = BookSerializer\n    permission_classes = [IsAuthenticated]\n\n    @action(\n        detail=True,\n        methods=[\"post\"],\n        parser_classes=[MultiPartParser, FormParser],\n        url_path=\"upload_cover\",\n    )\n    def upload_cover(self, request, pk=None):\n        book = self.get_object()\n        serializer = CoverUploadSerializer(\n            data=request.data,\n            context={\"book\": book, \"request\": request},\n        )\n        serializer.is_valid(raise_exception=True)\n        book = serializer.save()\n        return Response({\n            \"id\": book.id,\n            \"cover\": request.build_absolute_uri(book.cover.url),\n        }, status=status.HTTP_200_OK)"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست\n\n# آپلود عکس\ncurl -X POST http://127.0.0.1:8000/api/books/1/upload_cover/ \\\n  -H \"Authorization: Bearer TOKEN\" \\\n  -F \"cover=@book_cover.jpg\"\n\n# پاسخ:\n# {\"id\": 1, \"cover\": \"http://127.0.0.1:8000/media/books/covers/abc123.jpg\"}\n\n# تست فایل نامعتبر\ncurl -X POST http://127.0.0.1:8000/api/books/1/upload_cover/ \\\n  -H \"Authorization: Bearer TOKEN\" \\\n  -F \"cover=@fake.txt\"\n# پاسخ 400: فرمت نامعتبر"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**اعتماد به `content_type`:** قابل جعل — از magic استفاده کنید",
+            "**ذخیره نام اصلی:** Path Traversal",
+            "**نبود resize:** فایل‌های حجیم روی سرور",
+            "**نبود حذف فایل قبلی:** دیسک پر می‌شود",
+            "**ذخیره در دیسک سرور در تولید:** از S3 استفاده کنید",
+            "**نبود محدودیت حجم:** DoS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-14",
+      "title": "LAB 14 — آپلود چند فایل (گالری)",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 14 — هدف",
+          "text": "سیستم گالری که در یک درخواست، چند فایل + داده ساختاریافته را بپذیرد."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۴۵ دقیقه"],
+            ["پیش‌نیاز", "Lab 13"],
+            ["هدف", "آپلود چند فایل با ساختار تودرتو"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل `Gallery` با `title` و `owner`",
+            "مدل `GalleryImage` با `gallery`, `image`, `caption`, `order`",
+            "Endpoint `/api/galleries/` که در یک POST، گالری + چند تصویر بسازد",
+            "اعتبارسنجی: حداقل ۱، حداکثر ۲۰ تصویر",
+            "هر تصویر حجم و نوع بررسی شود",
+            "در صورت خطا در یک تصویر، هیچ چیزی ذخیره نشود (transaction)"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "مدل‌ها را بسازید",
+            "GalleryImageSerializer",
+            "GalleryCreateSerializer با images تو در تو",
+            "`validate_images` برای تعداد",
+            "`create` با `transaction.atomic` و `bulk_create`",
+            "ViewSet با `perform_create`",
+            "تست با curl (multipart با فایل‌های تودرتو)"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "در multipart: `images[0]image=@file1.jpg`، `images[0]caption=...`",
+            "`transaction.atomic` تضمین می‌کند که در صورت خطا همه برگردند",
+            "`bulk_create` برای ساخت چندین رکورد سریع‌تر است",
+            "برای image، `validate_image` در سریالایزر تودرتو"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "galleries/models.py",
+              "code": "import uuid\nfrom django.conf import settings\nfrom django.db import models\n\n\ndef gallery_image_path(instance, filename):\n    ext = filename.rsplit(\".\", 1)[-1].lower()\n    return f\"galleries/{uuid.uuid4().hex}.{ext}\"\n\n\nclass Gallery(models.Model):\n    title = models.CharField(max_length=200)\n    owner = models.ForeignKey(\n        settings.AUTH_USER_MODEL,\n        on_delete=models.CASCADE,\n        related_name=\"galleries\",\n    )\n    created_at = models.DateTimeField(auto_now_add=True)\n\n\nclass GalleryImage(models.Model):\n    gallery = models.ForeignKey(\n        Gallery,\n        on_delete=models.CASCADE,\n        related_name=\"images\",\n    )\n    image = models.ImageField(upload_to=gallery_image_path)\n    caption = models.CharField(max_length=200, blank=True)\n    order = models.PositiveIntegerField(default=0)\n\n    class Meta:\n        ordering = [\"order\", \"id\"]"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "galleries/serializers.py",
+              "code": "from django.db import transaction\nfrom rest_framework import serializers\nfrom .models import Gallery, GalleryImage\n\n\nclass GalleryImageSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = GalleryImage\n        fields = [\"id\", \"image\", \"caption\", \"order\"]\n        read_only_fields = [\"id\"]\n\n    def validate_image(self, value):\n        if value.size > 5 * 1024 * 1024:\n            raise serializers.ValidationError(\"حجم تصویر بیش از ۵ مگابایت.\")\n        if value.content_type not in (\"image/jpeg\", \"image/png\", \"image/webp\"):\n            raise serializers.ValidationError(\"فرمت تصویر پشتیبانی نمی‌شود.\")\n        return value\n\n\nclass GalleryCreateSerializer(serializers.ModelSerializer):\n    images = GalleryImageSerializer(many=True)\n\n    class Meta:\n        model = Gallery\n        fields = [\"id\", \"title\", \"images\", \"created_at\"]\n        read_only_fields = [\"id\", \"created_at\"]\n\n    def validate_images(self, value):\n        if not value:\n            raise serializers.ValidationError(\"حداقل یک تصویر الزامی است.\")\n        if len(value) > 20:\n            raise serializers.ValidationError(\"حداکثر ۲۰ تصویر.\")\n        return value\n\n    @transaction.atomic\n    def create(self, validated_data):\n        images_data = validated_data.pop(\"images\")\n        owner = self.context[\"request\"].user\n        gallery = Gallery.objects.create(owner=owner, **validated_data)\n        GalleryImage.objects.bulk_create([\n            GalleryImage(gallery=gallery, **img_data)\n            for img_data in images_data\n        ])\n        return gallery"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "galleries/views.py",
+              "code": "from rest_framework import viewsets\nfrom rest_framework.parsers import MultiPartParser, FormParser\nfrom rest_framework.permissions import IsAuthenticated\nfrom .models import Gallery\nfrom .serializers import GalleryCreateSerializer, GalleryImageSerializer\n\n\nclass GalleryViewSet(viewsets.ModelViewSet):\n    serializer_class = GalleryCreateSerializer\n    permission_classes = [IsAuthenticated]\n    parser_classes = [MultiPartParser, FormParser]\n\n    def get_queryset(self):\n        return Gallery.objects.filter(owner=self.request.user).prefetch_related(\"images\")"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# تست با curl\ncurl -X POST http://127.0.0.1:8000/api/galleries/ \\\n  -H \"Authorization: Bearer TOKEN\" \\\n  -F \"title=My Gallery\" \\\n  -F \"images[0]image=@img1.jpg\" \\\n  -F \"images[0]caption=First\" \\\n  -F \"images[1]image=@img2.jpg\" \\\n  -F \"images[1]caption=Second\"\n\n# پاسخ: {\"id\": 1, \"title\": \"My Gallery\", \"images\": [...]}"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `transaction.atomic`:** در خطا، داده ناقص می‌ماند",
+            "**استفاده از `create` در حلقه:** کند — `bulk_create` بهتر",
+            "**نبود `many=True`:** خطا در سریالایزر",
+            "**ذخیره بدون اعتبارسنجی حجم:** DoS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-15",
+      "title": "LAB 15 — رندرر CSV سفارشی",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 15 — هدف",
+          "text": "یک رندرر CSV سفارشی بسازید که برای دانلود داده کتاب‌ها به‌شکل اکسل قابل استفاده باشد."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط"],
+            ["زمان", "۳۰ دقیقه"],
+            ["پیش‌نیاز", "Lab 11"],
+            ["هدف", "رندرر سفارشی + Content Negotiation"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "رندرر `CSVRenderer` بسازید",
+            "BOM برای Excel فارسی (`\\ufeff`)",
+            "sanitize برای CSV Injection (پیشوند `'` روی `=`, `+`, `-`, `@`)",
+            "Endpoint `/api/books/export/` با CSV",
+            "در Accept header، CSV را قبول کند",
+            "صفحه‌بندی غیرفعال برای CSV (همه رکوردها)"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "رندرر را در `renderers.py` بسازید",
+            "تابع `sanitize_csv_value`",
+            "اکشن `export` در ViewSet",
+            "در ViewSet، `pagination_class = None` برای export",
+            "با curl تست کنید",
+            "فایل CSV را در Excel باز کنید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`from rest_framework.renderers import BaseRenderer`",
+            "`media_type = \"text/csv\"`",
+            "`format = \"csv\"`",
+            "BOM باید در ابتدای فایل باشد",
+            "sanitize: `if value.startswith((\"=\", \"+\", \"-\", \"@\")): return \"'\" + value`"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "common/renderers.py",
+              "code": "import csv\nfrom io import StringIO\nfrom rest_framework.renderers import BaseRenderer\n\n\nDANGEROUS_PREFIXES = (\"=\", \"+\", \"-\", \"@\", \"\\t\", \"\\r\")\n\n\ndef sanitize_csv_value(value):\n    \"\"\"جلوگیری از CSV Injection.\"\"\"\n    if isinstance(value, str) and value.startswith(DANGEROUS_PREFIXES):\n        return \"'\" + value\n    return value\n\n\nclass CSVRenderer(BaseRenderer):\n    media_type = \"text/csv\"\n    format = \"csv\"\n    charset = \"utf-8\"\n\n    def render(self, data, accepted_media_type=None, renderer_context=None):\n        # اگر پاسخ صفحه‌بندی‌شده است، results را بگیر\n        if isinstance(data, dict) and \"results\" in data:\n            data = data[\"results\"]\n\n        if not isinstance(data, list) or not data:\n            return \"\"\n\n        buffer = StringIO()\n        buffer.write(\"\\ufeff\")   # BOM برای Excel فارسی\n\n        writer = csv.writer(buffer)\n\n        if isinstance(data[0], dict):\n            writer.writerow(data[0].keys())\n            for row in data:\n                writer.writerow([\n                    sanitize_csv_value(v) for v in row.values()\n                ])\n\n        return buffer.getvalue()"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework import viewsets, filters\nfrom rest_framework.decorators import action\nfrom rest_framework.renderers import JSONRenderer\nfrom rest_framework.response import Response\nfrom common.renderers import CSVRenderer\nfrom .models import Book\nfrom .serializers import BookSerializer\n\n\nclass BookViewSet(viewsets.ReadOnlyModelViewSet):\n    queryset = Book.objects.select_related(\"author\").all()\n    serializer_class = BookSerializer\n    renderer_classes = [JSONRenderer, CSVRenderer]\n\n    @action(detail=False, methods=[\"get\"], pagination_class=None)\n    def export(self, request):\n        \"\"\"خروجی CSV از همه کتاب‌ها.\"\"\"\n        books = self.get_queryset()\n        serializer = BookSerializer(books, many=True, context={\"request\": request})\n        return Response(serializer.data)"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# دانلود CSV\ncurl -H \"Authorization: Bearer TOKEN\" \\\n  -H \"Accept: text/csv\" \\\n  http://127.0.0.1:8000/api/books/export/ -o books.csv\n\n# تست BOM\nhead -c 10 books.csv | hexdump\n# باید ef bb bf داشته باشد\n\n# تست sanitize با داده خطرناک\n# اگر title = \"=cmd|' /C calc'!A0\"\n# در CSV باید \"'=cmd...\" ذخیره شود"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود BOM:** Excel فارسی ???? نشان می‌دهد",
+            "**نبود sanitize:** CSV Injection — Excel فرمول را اجرا می‌کند",
+            "**نبود `pagination_class=None`:** فقط صفحه اول دانلود می‌شود",
+            "**نبود `renderer_classes`:** CSV کار نمی‌کند"
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": [
+    "LAB 11: django-filter با بازه، Boolean، search ترکیبی.",
+    "LAB 12: سه نوع صفحه‌بندی + EnvelopePagination.",
+    "LAB 13: آپلود امن تصویر با magic و resize.",
+    "LAB 14: آپلود چند فایل با transaction.",
+    "LAB 15: رندرر CSV سفارشی با BOM و sanitize."
+  ],
+  "resources": [
+    { "title": "django-filter", "url": "https://django-filter.readthedocs.io/", "official": true },
+    { "title": "DRF — Pagination", "url": "https://www.django-rest-framework.org/api-guide/pagination/", "official": true },
+    { "title": "DRF — Renderers", "url": "https://www.django-rest-framework.org/api-guide/renderers/", "official": true }
+  ]
+}

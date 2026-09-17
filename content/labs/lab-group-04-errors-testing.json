@@ -1,0 +1,614 @@
+{
+  "id": "labs-group-04",
+  "slug": "labs-group-04-errors-testing",
+  "title": "آزمایشگاه‌ها — گروه ۴: مدیریت خطا، محدودیت نرخ، کش، تست",
+  "kicker": "Labs Group 4",
+  "level": "advanced",
+  "difficulty": 4,
+  "estimatedMinutes": 220,
+  "lead": "پنج آزمایشگاه عملی برای تسلط بر مدیریت خطای حرفه‌ای، Throttling چندلایه، کش با Redis، و تست کامل با pytest + factory_boy.",
+  "sections": [
+    {
+      "id": "lab-16",
+      "title": "LAB 16 — مدیریت خطای پیشرفته",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 16 — هدف",
+          "text": "یک exception handler سراسری بسازید که همه خطاها را در ساختار یکدست با code، message، incident_id و request_id برگرداند."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۴۵ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-10"],
+            ["هدف", "ساختار یکدست خطا + لاگ ساختاریافته"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Middleware برای تولید `X-Request-ID` در هر درخواست",
+            "Exception handler سراسری با ساختار یکدست",
+            "تبدیل `DjangoValidationError` و `Http404` به DRF",
+            "استثناهای دامنه سفارشی (InsufficientStock، PaymentFailed)",
+            "Incident ID برای خطاهای غیرمنتظره (500)",
+            "JSON logging ساختاریافته",
+            "تفکیک 401 (احراز هویت) از 403 (مجوز) در پاسخ"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Middleware `RequestIDMiddleware` بسازید",
+            "ContextVar برای ذخیره `request_id` و `user_id`",
+            "Logging filter برای افزودن به همه لاگ‌ها",
+            "تابع `custom_exception_handler` بسازید",
+            "استثناهای دامنه را تعریف کنید",
+            "تنظیمات `LOGGING` را با JSON formatter",
+            "با curl تست کنید و ساختار را ببینید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`from rest_framework.views import exception_handler`",
+            "`getattr(exc, \"default_code\", \"error\")` برای کد خطا",
+            "برای incident_id: `str(uuid.uuid4())`",
+            "Middleware باید در ابتدای لیست MIDDLEWARE باشد",
+            "`LOGGING[\"formatters\"][\"json\"]` با pythonjsonlogger"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "common/logging.py",
+              "code": "import logging\nfrom contextvars import ContextVar\n\n_request_id: ContextVar[str] = ContextVar(\"request_id\", default=\"-\")\n_user_id: ContextVar[str] = ContextVar(\"user_id\", default=\"-\")\n_path: ContextVar[str] = ContextVar(\"path\", default=\"-\")\n\n\ndef set_request_context(request_id, user_id=\"-\", path=\"-\"):\n    _request_id.set(request_id)\n    _user_id.set(str(user_id))\n    _path.set(path)\n\n\ndef clear_request_context():\n    _request_id.set(\"-\")\n    _user_id.set(\"-\")\n    _path.set(\"-\")\n\n\nclass RequestContextFilter(logging.Filter):\n    def filter(self, record):\n        record.request_id = _request_id.get()\n        record.user_id = _user_id.get()\n        record.path = _path.get()\n        return True"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "common/middleware.py",
+              "code": "import uuid\nfrom common.logging import set_request_context, clear_request_context\n\n\nclass RequestIDMiddleware:\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        request_id = request.headers.get(\"X-Request-ID\") or str(uuid.uuid4())\n        request.request_id = request_id\n\n        user_id = \"-\"\n        if hasattr(request, \"user\") and request.user.is_authenticated:\n            user_id = str(request.user.id)\n\n        set_request_context(request_id, user_id, request.path)\n\n        try:\n            response = self.get_response(request)\n        finally:\n            clear_request_context()\n\n        response[\"X-Request-ID\"] = request_id\n        return response"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "common/exceptions.py",
+              "code": "import logging\nimport uuid\nfrom django.core.exceptions import ValidationError as DjangoValidationError\nfrom django.http import Http404\nfrom rest_framework.exceptions import APIException, ValidationError\nfrom rest_framework.response import Response\nfrom rest_framework.views import exception_handler\n\nlogger = logging.getLogger(\"api.errors\")\n\n\nclass DomainError(APIException):\n    status_code = 400\n    default_code = \"domain_error\"\n\n\nclass InsufficientStock(DomainError):\n    status_code = 409\n    default_code = \"insufficient_stock\"\n    default_detail = \"موجودی انبار کافی نیست.\"\n\n\nclass PaymentFailed(APIException):\n    status_code = 402\n    default_code = \"payment_failed\"\n    default_detail = \"پرداخت انجام نشد.\"\n\n\ndef custom_exception_handler(exc, context):\n    # تبدیل استثناهای Django به DRF\n    if isinstance(exc, DjangoValidationError):\n        exc = ValidationError(detail=exc.messages)\n    if isinstance(exc, Http404):\n        from rest_framework.exceptions import NotFound\n        exc = NotFound()\n\n    response = exception_handler(exc, context)\n    request = context.get(\"request\")\n    request_id = getattr(request, \"request_id\", None) if request else None\n\n    # خطای مدیریت‌نشده (500)\n    if response is None:\n        incident_id = str(uuid.uuid4())\n        logger.exception(\n            f\"Unhandled error [{incident_id}]\",\n            extra={\"incident_id\": incident_id},\n        )\n        return Response({\n            \"success\": False,\n            \"error\": {\n                \"code\": \"INTERNAL_ERROR\",\n                \"message\": \"خطای غیرمنتظره رخ داد. لطفاً بعداً تلاش کنید.\",\n            },\n            \"incident_id\": incident_id,\n            \"request_id\": request_id,\n        }, status=500)\n\n    # ساختار یکدست\n    code = getattr(exc, \"default_code\", \"error\")\n    if isinstance(response.data, dict) and \"detail\" in response.data:\n        message = str(response.data[\"detail\"])\n        details = None\n    else:\n        message = \"خطا در پردازش درخواست.\"\n        details = response.data\n\n    response.data = {\n        \"success\": False,\n        \"error\": {\n            \"code\": code.upper(),\n            \"message\": message,\n            \"details\": details,\n        },\n        \"request_id\": request_id,\n    }\n    return response"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "settings.py",
+              "code": "import os\n\nMIDDLEWARE = [\n    \"common.middleware.RequestIDMiddleware\",\n    \"django.middleware.security.SecurityMiddleware\",\n    \"django.contrib.sessions.middleware.SessionMiddleware\",\n    \"django.middleware.common.CommonMiddleware\",\n    \"django.middleware.csrf.CsrfViewMiddleware\",\n    \"django.contrib.auth.middleware.AuthenticationMiddleware\",\n    \"django.contrib.messages.middleware.MessageMiddleware\",\n]\n\nREST_FRAMEWORK = {\n    # ...\n    \"EXCEPTION_HANDLER\": \"common.exceptions.custom_exception_handler\",\n}\n\nLOGGING = {\n    \"version\": 1,\n    \"disable_existing_loggers\": False,\n    \"formatters\": {\n        \"json\": {\n            \"()\": \"pythonjsonlogger.jsonlogger.JsonFormatter\",\n            \"format\": \"%(asctime)s %(levelname)s %(name)s %(message)s %(request_id)s %(user_id)s %(path)s\",\n        },\n    },\n    \"filters\": {\n        \"request_context\": {\"()\": \"common.logging.RequestContextFilter\"},\n    },\n    \"handlers\": {\n        \"console\": {\n            \"class\": \"logging.StreamHandler\",\n            \"formatter\": \"json\",\n            \"filters\": [\"request_context\"],\n        },\n    },\n    \"root\": {\"handlers\": [\"console\"], \"level\": \"INFO\"},\n    \"loggers\": {\n        \"api.errors\": {\"handlers\": [\"console\"], \"level\": \"WARNING\", \"propagate\": False},\n    },\n}"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# نصب\npip install python-json-logger\n\n# تست\n\n# ۱. خطای اعتبارسنجی\ncurl -X POST http://127.0.0.1:8000/api/books/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"title\": \"\"}'\n# پاسخ:\n# {\n#   \"success\": false,\n#   \"error\": {\"code\": \"INVALID\", \"message\": \"...\", \"details\": {\"title\": [...]}},\n#   \"request_id\": \"abc-123\"\n# }\n\n# ۲. خطای دامنه\ncurl -X POST http://127.0.0.1:8000/api/orders/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"items\": [{\"product\": 1, \"quantity\": 100}]}'\n# پاسخ 409:\n# {\n#   \"success\": false,\n#   \"error\": {\"code\": \"INSUFFICIENT_STOCK\", \"message\": \"موجودی کافی نیست.\"},\n#   \"request_id\": \"abc-123\"\n# }\n\n# ۳. خطای 500\n# در یک ویو، عمداً خطا پرتاب کنید\n# پاسخ:\n# {\n#   \"success\": false,\n#   \"error\": {\"code\": \"INTERNAL_ERROR\", \"message\": \"...\"},\n#   \"incident_id\": \"uuid-...\",\n#   \"request_id\": \"abc-123\"\n# }"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `RequestIDMiddleware`:** ردیابی سخت",
+            "**استفاده از `HttpResponse` در exception handler:** باید `Response` بدهید",
+            "**نبود `logger.exception`:** خطاهای 500 ثبت نمی‌شوند",
+            "**فرستادن جزئیات داخلی در 500:** افشای اطلاعات",
+            "**نبود تفکیک 401/403:** کلاینت نمی‌داند چه کار کند"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-17",
+      "title": "LAB 17 — Throttling چندلایه",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 17 — هدف",
+          "text": "سه لایه Throttle: AnonRateThrottle، UserRateThrottle و ScopedRateThrottle. محدودیت متفاوت برای هر Endpoint."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐ متوسط+"],
+            ["زمان", "۴۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-10"],
+            ["هدف", "Throttling در سه لایه"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "AnonRateThrottle: ۳۰/min",
+            "UserRateThrottle: ۱۰۰۰/day",
+            "Login: ۵/min (ScopeRateThrottle)",
+            "Register: ۳/hour",
+            "Password reset: ۳/hour",
+            "Search: ۶۰/min",
+            "Export: ۲/hour",
+            "Redis به‌عنوان Cache backend"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "در `settings.py`، `DEFAULT_THROTTLE_CLASSES` و `RATES` تعریف کنید",
+            "`RedisCache` را در CACHES تنظیم کنید",
+            "روی LoginView، RegisterView، PasswordResetView: `ScopedRateThrottle`",
+            "روی SearchView: `throttle_scope = \"search\"`",
+            "روی ExportView: `throttle_scope = \"export\"`",
+            "با curl چند بار پشت‌سرهم بزنید و 429 بگیرید"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "نرخ‌ها در `DEFAULT_THROTTLE_RATES` با کلید `scope`",
+            "Throttle از cache استفاده می‌کند — حتماً Redis",
+            "پاسخ 429 شامل هدر `Retry-After`",
+            "LocMemCache در چند سرور کار نمی‌کند"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "settings.py",
+              "code": "REST_FRAMEWORK = {\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"1000/day\",\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n        \"password_reset\": \"3/hour\",\n        \"search\": \"60/min\",\n        \"export\": \"2/hour\",\n    },\n}\n\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.redis.RedisCache\",\n        \"LOCATION\": \"redis://127.0.0.1:6379/1\",\n    },\n}"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "accounts/views.py",
+              "code": "from rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework_simplejwt.views import TokenObtainPairView\nfrom rest_framework.views import APIView\nfrom rest_framework.permissions import AllowAny\n\n\nclass LoginView(TokenObtainPairView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"login\"\n\n\nclass RegisterView(APIView):\n    permission_classes = [AllowAny]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"register\"\n\n    def post(self, request):\n        ...\n\n\nclass PasswordResetRequestView(APIView):\n    permission_classes = [AllowAny]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"password_reset\"\n\n    def post(self, request):\n        ..."
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework.views import APIView\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.throttling import ScopedRateThrottle\nfrom rest_framework.response import Response\n\n\nclass SearchView(APIView):\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"search\"\n\n    def get(self, request):\n        query = request.query_params.get(\"q\", \"\")\n        # ... انجام جستجو\n        return Response({\"results\": [], \"query\": query})\n\n\nclass ExportView(APIView):\n    permission_classes = [IsAuthenticated]\n    throttle_classes = [ScopedRateThrottle]\n    throttle_scope = \"export\"\n\n    def get(self, request):\n        # ... ساخت CSV\n        return Response({\"status\": \"exporting\"})"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# نصب Redis\n# لینوکس: sudo apt install redis\n# مک: brew install redis\n# ویندوز: Docker\n\n# اجرا\nredis-server\n\n# تست\n\n# ۱. Login - ۵ بار در دقیقه\nfor i in {1..7}; do\n  echo \"Attempt $i\"\n  curl -X POST http://127.0.0.1:8000/api/auth/login/ \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"username\":\"test\",\"password\":\"wrong\"}'\n  echo \"\"\ndone\n\n# بار ۶ و ۷ باید 429 برگردانند\n\n# ۲. بررسی Retry-After\ncurl -I -X POST http://127.0.0.1:8000/api/auth/login/ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\":\"test\",\"password\":\"wrong\"}'\n# HTTP/1.1 429 Too Many Requests\n# Retry-After: 45"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**LocMemCache در تولید:** محدودیت دور می‌خورد",
+            "**نبود Throttle روی login:** brute-force",
+            "**نرخ یکسان برای همه:** کاربران پرمصرف = کاربران عادی",
+            "**فراموش کردن `scope`:** Throttle فعال نمی‌شود",
+            "**نبود Redis:** در چند سرور، شمارش مستقل"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-18",
+      "title": "LAB 18 — کش با Redis",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 18 — هدف",
+          "text": "کش در سه لایه: کش QuerySet، کش تابع، و invalidation خودکار با signal."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۴۵ دقیقه"],
+            ["پیش‌نیاز", "Lab 17"],
+            ["هدف", "کش و invalidation حرفه‌ای"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "کش لیست کتاب‌های محبوب (TTL ۱۰ دقیقه)",
+            "کش آمار داشبورد (TTL ۵ دقیقه)",
+            "Invalidation با `post_save` signal",
+            "جلوگیری از Cache Stampede با lock",
+            "کش تابع با `cache.get_or_set`",
+            "تست N+1 با cache"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "تابع `get_popular_books` با cache",
+            "تابع `get_dashboard_stats` با cache",
+            "signal `post_save` روی Book برای invalidation",
+            "تابع `get_or_compute` با lock برای stampede",
+            "تست: زمان اجرا با و بدون cache",
+            "تست: پس از save، کش باطل می‌شود"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`cache.get_or_set(key, callable, timeout)` — بهترین شروع",
+            "`cache.delete(key)` در signal",
+            "برای lock: `cache.add(lock_key, \"1\", timeout=10)` — atomic",
+            "`list(qs)` ارزیابی QuerySet قبل از کش"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/cache.py",
+              "code": "import time\nfrom django.core.cache import cache\nfrom django.db.models import Avg, Count\nfrom .models import Book\n\n\nPOPULAR_CACHE_KEY = \"books_popular\"\nSTATS_CACHE_KEY = \"books_stats\"\n\n\ndef get_popular_books():\n    \"\"\"لیست کتاب‌های محبوب با cache.\"\"\"\n    def compute():\n        return list(\n            Book.objects.filter(is_active=True)\n            .annotate(reviews_count=Count(\"reviews\"))\n            .order_by(\"-reviews_count\", \"-created_at\")[:20]\n            .values(\"id\", \"title\", \"price\", \"reviews_count\")\n        )\n    return cache.get_or_set(POPULAR_CACHE_KEY, compute, timeout=600)\n\n\ndef get_dashboard_stats():\n    \"\"\"آمار داشبورد با cache کوتاه.\"\"\"\n    def compute():\n        return {\n            \"total_books\": Book.objects.filter(is_active=True).count(),\n            \"avg_price\": float(\n                Book.objects.aggregate(avg=Avg(\"price\"))[\"avg\"] or 0\n            ),\n        }\n    return cache.get_or_set(STATS_CACHE_KEY, compute, timeout=300)\n\n\ndef invalidate_book_caches():\n    \"\"\"باطل کردن همه کش‌های مرتبط با کتاب.\"\"\"\n    cache.delete(POPULAR_CACHE_KEY)\n    cache.delete(STATS_CACHE_KEY)\n\n\ndef get_or_compute(key, compute_fn, timeout=300, lock_timeout=10):\n    \"\"\"جلوگیری از Cache Stampede با lock.\"\"\"\n    data = cache.get(key)\n    if data is not None:\n        return data\n\n    lock_key = f\"{key}:lock\"\n    if cache.add(lock_key, \"1\", timeout=lock_timeout):\n        try:\n            data = compute_fn()\n            cache.set(key, data, timeout=timeout)\n            return data\n        finally:\n            cache.delete(lock_key)\n\n    # یکی دیگر مشغول محاسبه است\n    for _ in range(50):\n        time.sleep(0.1)\n        data = cache.get(key)\n        if data is not None:\n            return data\n    return compute_fn()"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/signals.py",
+              "code": "from django.db.models.signals import post_save, post_delete\nfrom django.dispatch import receiver\nfrom .models import Book\nfrom .cache import invalidate_book_caches\n\n\n@receiver([post_save, post_delete], sender=Book)\ndef invalidate_on_book_change(sender, instance, **kwargs):\n    invalidate_book_caches()"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/apps.py",
+              "code": "from django.apps import AppConfig\n\n\nclass BooksConfig(AppConfig):\n    default_auto_field = \"django.db.models.BigAutoField\"\n    name = \"books\"\n\n    def ready(self):\n        from . import signals   # noqa"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "books/views.py",
+              "code": "from rest_framework.views import APIView\nfrom rest_framework.response import Response\nfrom .cache import get_popular_books, get_dashboard_stats\n\n\nclass PopularBooksView(APIView):\n    def get(self, request):\n        return Response(get_popular_books())\n\n\nclass DashboardStatsView(APIView):\n    def get(self, request):\n        return Response(get_dashboard_stats())"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "تست cache",
+              "code": "import time\nfrom books.cache import get_popular_books, invalidate_book_caches\nfrom books.models import Book\n\n# بار اول — کند\nstart = time.time()\nget_popular_books()\nprint(f\"First: {time.time() - start:.3f}s\")   # 0.150s\n\n# بار دوم — سریع\nstart = time.time()\nget_popular_books()\nprint(f\"Second: {time.time() - start:.3f}s\")   # 0.005s\n\n# حالا یک کتاب بساز\nBook.objects.create(title=\"New\", ...)\n\n# cache باید باطل شده باشد\nstart = time.time()\nget_popular_books()\nprint(f\"After save: {time.time() - start:.3f}s\")   # 0.150s"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود invalidation:** کاربر داده قدیمی می‌بیند",
+            "**کش QuerySet بدون `list()`:** ارزیابی نمی‌شود",
+            "**TTL طولانی روی داده سریع‌التغییر:** کهنگی",
+            "**نبود lock:** Cache Stampede",
+            "**LocMem در تولید:** در چند سرور متفاوت"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-19",
+      "title": "LAB 19 — تست با pytest + factory_boy",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 19 — هدف",
+          "text": "تست کامل API با pytest، factory_boy، fixtureها و coverage."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۵۰ دقیقه"],
+            ["پیش‌نیاز", "Labs 01-15"],
+            ["هدف", "تست حرفه‌ای با pytest"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "pytest و pytest-django نصب و تنظیم",
+            "factory_boy برای داده تست",
+            "conftest با fixtureهای مشترک",
+            "تست مجوزها، اعتبارسنجی، پاسخ",
+            "پارامترسازی تست‌ها",
+            "Coverage بالای ۸۰٪"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "pytest.ini یا pyproject.toml تنظیم کنید",
+            "Factory برای User، Book، Author",
+            "conftest با api_client، user، authenticated_client",
+            "تست‌های List، Create، Update، Delete",
+            "تست مجوز سطح شیء",
+            "تست اعتبارسنجی",
+            "اجرای coverage"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`DJANGO_SETTINGS_MODULE` در `pyproject.toml`",
+            "`--reuse-db` برای سریع‌تر شدن",
+            "factory_boy با `SubFactory` برای روابط",
+            "`@pytest.mark.parametrize` برای چند حالت"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "toml",
+              "filename": "pyproject.toml",
+              "code": "[tool.pytest.ini_options]\nDJANGO_SETTINGS_MODULE = \"library.settings\"\npython_files = [\"test_*.py\"]\naddopts = [\n    \"--reuse-db\",\n    \"--strict-markers\",\n    \"--cov=.\",\n    \"--cov-report=term-missing\",\n    \"--cov-report=html\",\n    \"--cov-fail-under=80\",\n    \"-q\",\n]"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "tests/factories.py",
+              "code": "import factory\nfrom decimal import Decimal\nfrom datetime import date\nfrom django.contrib.auth import get_user_model\nfrom factory.django import DjangoModelFactory\nfrom books.models import Author, Book\n\nUser = get_user_model()\n\n\nclass UserFactory(DjangoModelFactory):\n    class Meta:\n        model = User\n        django_get_or_create = (\"username\",)\n\n    username = factory.Sequence(lambda n: f\"user{n}\")\n    email = factory.LazyAttribute(lambda o: f\"{o.username}@example.com\")\n\n    @factory.post_generation\n    def password(obj, create, extracted, **kwargs):\n        obj.set_password(extracted or \"TestPass123!\")\n        if create:\n            obj.save()\n\n\nclass AuthorFactory(DjangoModelFactory):\n    class Meta:\n        model = Author\n\n    full_name = factory.Sequence(lambda n: f\"Author {n}\")\n\n\nclass BookFactory(DjangoModelFactory):\n    class Meta:\n        model = Book\n\n    title = factory.Sequence(lambda n: f\"Book {n}\")\n    author = factory.SubFactory(AuthorFactory)\n    isbn = factory.Sequence(lambda n: f\"978{n:010d}\")\n    price = Decimal(\"42.50\")\n    published_at = date(2020, 1, 1)"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "tests/conftest.py",
+              "code": "import pytest\nfrom rest_framework.test import APIClient\nfrom .factories import UserFactory, AuthorFactory, BookFactory\n\n\n@pytest.fixture\ndef api_client():\n    return APIClient()\n\n\n@pytest.fixture\ndef user(db):\n    return UserFactory()\n\n\n@pytest.fixture\ndef staff(db):\n    return UserFactory(is_staff=True)\n\n\n@pytest.fixture\ndef auth_client(api_client, user):\n    api_client.force_authenticate(user=user)\n    return api_client\n\n\n@pytest.fixture\ndef staff_client(api_client, staff):\n    api_client.force_authenticate(user=staff)\n    return api_client\n\n\n@pytest.fixture\ndef book(db):\n    return BookFactory()"
+            },
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "tests/test_books.py",
+              "code": "import pytest\nfrom rest_framework import status\nfrom .factories import BookFactory, UserFactory\n\n\n@pytest.mark.django_db\nclass TestBookList:\n    url = \"/api/books/\"\n\n    def test_list_public(self, api_client):\n        BookFactory.create_batch(3)\n        response = api_client.get(self.url)\n        assert response.status_code == status.HTTP_200_OK\n        assert response.data[\"count\"] == 3\n\n    def test_list_empty(self, api_client):\n        response = api_client.get(self.url)\n        assert response.status_code == 200\n        assert response.data[\"count\"] == 0\n\n\n@pytest.mark.django_db\nclass TestBookCreate:\n    url = \"/api/books/\"\n\n    def test_anonymous_401(self, api_client):\n        response = api_client.post(self.url, {\"title\": \"X\"})\n        assert response.status_code == status.HTTP_401_UNAUTHORIZED\n\n    def test_user_can_create(self, auth_client):\n        payload = {\n            \"title\": \"Clean Code\",\n            \"author\": 1,\n            \"isbn\": \"9780132350884\",\n            \"price\": \"42.50\",\n            \"published_at\": \"2008-08-01\",\n        }\n        response = auth_client.post(self.url, payload, format=\"json\")\n        assert response.status_code in (201, 400)   # بسته به منطق\n\n    @pytest.mark.parametrize(\"isbn,expected\", [\n        (\"1234567890\", 201),\n        (\"1234567890123\", 201),\n        (\"ABC\", 400),\n        (\"123\", 400),\n        (\"\", 400),\n    ])\n    def test_isbn_validation(self, staff_client, book, isbn, expected):\n        payload = {\n            \"title\": \"Test\",\n            \"author\": book.author.id,\n            \"isbn\": isbn,\n            \"price\": \"10.00\",\n            \"published_at\": \"2020-01-01\",\n        }\n        response = staff_client.post(self.url, payload, format=\"json\")\n        assert response.status_code == expected\n\n\n@pytest.mark.django_db\nclass TestBookPermissions:\n    def test_owner_can_edit(self, auth_client, book):\n        response = auth_client.patch(\n            f\"/api/books/{book.id}/\",\n            {\"title\": \"New\"},\n            format=\"json\",\n        )\n        assert response.status_code in (200, 403)\n\n    def test_other_cannot_edit(self, api_client, book):\n        other = UserFactory()\n        api_client.force_authenticate(user=other)\n        response = api_client.patch(\n            f\"/api/books/{book.id}/\",\n            {\"title\": \"Hacked\"},\n            format=\"json\",\n        )\n        assert response.status_code in (403, 404)"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# نصب\npip install pytest pytest-django pytest-cov factory_boy faker\n\n# اجرا\npytest\n\n# فقط یک تست\npytest tests/test_books.py::TestBookList::test_list_public -v\n\n# coverage\npytest --cov=. --cov-report=html\nopen htmlcov/index.html"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `@pytest.mark.django_db`:** خطای دسترسی به DB",
+            "**Fixture بدون `db`:** داده‌ها ذخیره نمی‌شوند",
+            "**تست‌های وابسته به هم:** failهای ناپایدار",
+            "**نبود assert:** تست همیشه pass می‌شود",
+            "**Coverage پایین:** بخش‌های مهم تست نشده"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-20",
+      "title": "LAB 20 — تست یکپارچگی و N+1",
+      "blocks": [
+        {
+          "type": "note",
+          "variant": "info",
+          "title": "LAB 20 — هدف",
+          "text": "تست‌های یکپارچگی برای جریان کامل کاربر + تست تعداد کوئری‌ها برای کشف N+1."
+        },
+        {
+          "type": "table",
+          "headers": ["مورد", "مقدار"],
+          "rows": [
+            ["سطح", "⭐⭐⭐⭐ پیشرفته"],
+            ["زمان", "۴۰ دقیقه"],
+            ["پیش‌نیاز", "Lab 19"],
+            ["هدف", "Integration tests + Query count"]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "الزامات"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "تست کامل: ثبت‌نام → ساخت کتاب → امانت → بازگشت",
+            "تست N+1 با `django_assert_num_queries`",
+            "تست کش (بار دوم سریع‌تر)",
+            "تست invalidation (پس از save)"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "وظایف"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "نصب `pytest-django` با fixture `django_assert_num_queries`",
+            "تست کامل جریان کاربر",
+            "تست N+1 روی لیست کتاب‌ها",
+            "تست cache",
+            "mark integration برای جداسازی"
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "راهنما"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "`django_assert_num_queries` fixture از `pytest-django`",
+            "با `with django_assert_num_queries(N):` تعداد را بررسی کنید",
+            "mark `@pytest.mark.integration` برای جداسازی",
+            "برای cache: `cache.clear()` در setUp"
+          ]
+        },
+        {
+          "type": "details",
+          "summary": "پاسخ نمونه (راه‌حل)",
+          "blocks": [
+            {
+              "type": "code",
+              "lang": "python",
+              "filename": "tests/test_integration.py",
+              "code": "import pytest\nfrom django.core.cache import cache\nfrom rest_framework import status\nfrom rest_framework.test import APIClient\nfrom .factories import BookFactory, UserFactory\n\n\n@pytest.mark.django_db\n@pytest.mark.integration\nclass TestUserJourney:\n    \"\"\"جریان کامل کاربر.\"\"\"\n\n    def test_full_flow(self):\n        client = APIClient()\n\n        # ۱. ثبت‌نام\n        register = client.post(\"/api/auth/register/\", {\n            \"username\": \"sara\",\n            \"email\": \"sara@example.com\",\n            \"password\": \"S3cret!Pass\",\n            \"password_confirm\": \"S3cret!Pass\",\n        }, format=\"json\")\n        assert register.status_code == status.HTTP_201_CREATED\n        client.credentials(HTTP_AUTHORIZATION=f\"Bearer {register.data['access']}\")\n\n        # ۲. ساخت داده اولیه توسط factory\n        book = BookFactory()\n\n        # ۳. دیدن لیست کتاب‌ها\n        books = client.get(\"/api/books/\")\n        assert books.status_code == status.HTTP_200_OK\n        assert books.data[\"count\"] >= 1\n\n        # ۴. جزئیات کتاب\n        detail = client.get(f\"/api/books/{book.id}/\")\n        assert detail.status_code == status.HTTP_200_OK\n        assert detail.data[\"id\"] == book.id\n\n\n@pytest.mark.django_db\nclass TestQueryCount:\n    \"\"\"بررسی N+1.\"\"\"\n\n    def test_book_list_queries(self, api_client, django_assert_num_queries):\n        BookFactory.create_batch(10)\n\n        # حداکثر ۵ کوئری (auth + count + list + author prefetch)\n        with django_assert_num_queries(5):\n            response = api_client.get(\"/api/books/\")\n            assert response.status_code == status.HTTP_200_OK\n\n    def test_book_detail_queries(self, api_client, book, django_assert_num_queries):\n        with django_assert_num_queries(3):\n            response = api_client.get(f\"/api/books/{book.id}/\")\n            assert response.status_code == status.HTTP_200_OK\n\n\n@pytest.mark.django_db\nclass TestCaching:\n    \"\"\"تست کش.\"\"\"\n\n    def setup_method(self):\n        cache.clear()\n\n    def test_cache_speeds_up_second_request(self, api_client):\n        BookFactory.create_batch(5)\n\n        # بار اول\n        with self.assertNumQueries(2):   # یا بیشتر\n            response1 = api_client.get(\"/api/books/popular/\")\n\n        # بار دوم — از cache\n        with self.assertNumQueries(0):\n            response2 = api_client.get(\"/api/books/popular/\")\n\n        assert response1.data == response2.data\n\n    def test_cache_invalidated_on_save(self, api_client):\n        BookFactory.create_batch(3)\n        api_client.get(\"/api/books/popular/\")   # پر کردن cache\n\n        BookFactory()   # save جدید → cache باطل\n\n        # کوئری دوباره اجرا می‌شود\n        response = api_client.get(\"/api/books/popular/\")\n        assert response.status_code == 200\n\n    def assertNumQueries(self, n):\n        from django.test.utils import CaptureQueriesContext\n        from django.db import connection\n        return CaptureQueriesContext(connection)\n\n\n@pytest.mark.django_db\nclass TestErrorHandling:\n    \"\"\"تست مدیریت خطا.\"\"\"\n\n    def test_validation_error_structure(self, api_client):\n        response = api_client.post(\"/api/books/\", {\"title\": \"\"}, format=\"json\")\n        assert response.status_code == status.HTTP_400_BAD_REQUEST\n        assert \"success\" in response.data\n        assert response.data[\"success\"] is False\n        assert \"error\" in response.data\n\n    def test_500_has_incident_id(self, api_client):\n        # Endpoint که عمداً خطا پرتاب می‌کند\n        # (در تست واقعی، mock می‌کنیم)\n        pass"
+            },
+            {
+              "type": "code",
+              "lang": "bash",
+              "code": "# اجرای تست‌ها\n\n# فقط تست‌های سریع\npytest -m \"not integration\"\n\n# فقط integration\npytest -m integration\n\n# همه با coverage\npytest --cov=. --cov-report=html\n\n# گزارش\n# Name                      Stmts   Miss  Cover\n# -------------------------------------------\n# books/views.py               45      3    93%\n# books/serializers.py         32      2    94%\n# books/models.py              28      1    96%\n# -------------------------------------------\n# TOTAL                       245     22    91%"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "اشتباهات رایج"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**نبود `cache.clear()` در setup:** تست‌های وابسته",
+            "**`django_assert_num_queries` بدون `django_db`:** خطا",
+            "**تست‌های همزمان با cache:** race condition",
+            "**نبود mark integration:** تست‌های کند در CI"
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": [
+    "LAB 16: مدیریت خطای پیشرفته با incident_id.",
+    "LAB 17: Throttling در سه لایه با Redis.",
+    "LAB 18: کش و invalidation با signal.",
+    "LAB 19: pytest + factory_boy.",
+    "LAB 20: تست یکپارچگی و N+1."
+  ],
+  "resources": [
+    { "title": "DRF — Exceptions", "url": "https://www.django-rest-framework.org/api-guide/exceptions/", "official": true },
+    { "title": "DRF — Throttling", "url": "https://www.django-rest-framework.org/api-guide/throttling/", "official": true },
+    { "title": "Django — Caching", "url": "https://docs.djangoproject.com/en/stable/topics/cache/", "official": true },
+    { "title": "pytest-django", "url": "https://pytest-django.readthedocs.io/", "official": true }
+  ]
+}
