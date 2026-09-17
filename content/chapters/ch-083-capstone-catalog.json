@@ -1,0 +1,176 @@
+{
+  "id": "ch-083",
+  "slug": "capstone-catalog",
+  "title": "پروژه نهایی — فاز ۴: Catalog (کتاب و نویسنده)",
+  "kicker": "فصل ۸۳",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 70,
+  "lead": "CRUD کامل برای کتاب، نویسنده و دسته‌بندی با فیلتر، جستجو، مرتب‌سازی و صفحه‌بندی. این فصل قلب سیستم است.",
+  "sections": [
+    {
+      "id": "serializers",
+      "title": "catalog/serializers.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/serializers.py",
+          "code": "from rest_framework import serializers\nfrom .models import Author, Category, Book\n\n\nclass AuthorListSerializer(serializers.ModelSerializer):\n    books_count = serializers.IntegerField(read_only=True)\n    photo_url = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Author\n        fields = [\"id\", \"full_name\", \"slug\", \"photo_url\", \"nationality\", \"books_count\"]\n\n    def get_photo_url(self, obj):\n        if obj.photo:\n            request = self.context.get(\"request\")\n            if request:\n                return request.build_absolute_uri(obj.photo.url)\n            return obj.photo.url\n        return None\n\n\nclass AuthorDetailSerializer(serializers.ModelSerializer):\n    books_count = serializers.IntegerField(read_only=True)\n    photo_url = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Author\n        fields = [\n            \"id\", \"full_name\", \"slug\", \"bio\",\n            \"birth_date\", \"death_date\", \"nationality\",\n            \"photo_url\", \"website\", \"books_count\",\n            \"created_at\", \"updated_at\",\n        ]\n        read_only_fields = [\"id\", \"slug\", \"created_at\", \"updated_at\"]\n\n    def get_photo_url(self, obj):\n        if obj.photo:\n            request = self.context.get(\"request\")\n            if request:\n                return request.build_absolute_uri(obj.photo.url)\n            return obj.photo.url\n        return None\n\n\nclass CategoryListSerializer(serializers.ModelSerializer):\n    books_count = serializers.IntegerField(read_only=True)\n\n    class Meta:\n        model = Category\n        fields = [\"id\", \"name\", \"slug\", \"icon\", \"order\", \"parent\", \"books_count\"]\n\n\nclass CategoryDetailSerializer(serializers.ModelSerializer):\n    books_count = serializers.IntegerField(read_only=True)\n    children = serializers.SerializerMethodField()\n\n    class Meta:\n        model = Category\n        fields = [\n            \"id\", \"name\", \"slug\", \"description\", \"icon\",\n            \"order\", \"parent\", \"children\", \"books_count\",\n            \"created_at\", \"updated_at\",\n        ]\n        read_only_fields = [\"id\", \"slug\", \"created_at\", \"updated_at\"]\n\n    def get_children(self, obj):\n        return CategoryListSerializer(obj.children.all(), many=True).data\n\n\nclass BookListSerializer(serializers.ModelSerializer):\n    \"\"\"سریالایزر سبک برای لیست کتاب‌ها.\"\"\"\n    author_name = serializers.CharField(source=\"author.full_name\", read_only=True)\n    cover_url = serializers.SerializerMethodField()\n    average_rating = serializers.FloatField(read_only=True)\n    reviews_count = serializers.IntegerField(read_only=True)\n    final_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)\n    has_discount = serializers.BooleanField(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\n            \"id\", \"title\", \"slug\", \"author_name\",\n            \"cover_url\", \"price\", \"discount_price\", \"final_price\", \"has_discount\",\n            \"average_rating\", \"reviews_count\",\n            \"is_featured\", \"stock\", \"language\",\n        ]\n\n    def get_cover_url(self, obj):\n        if obj.cover:\n            request = self.context.get(\"request\")\n            if request:\n                return request.build_absolute_uri(obj.cover.url)\n            return obj.cover.url\n        return None\n\n\nclass BookDetailSerializer(serializers.ModelSerializer):\n    \"\"\"سریالایزر کامل برای جزئیات کتاب.\"\"\"\n    author = AuthorListSerializer(read_only=True)\n    categories = CategoryListSerializer(many=True, read_only=True)\n    cover_url = serializers.SerializerMethodField()\n    document_url = serializers.SerializerMethodField()\n    average_rating = serializers.FloatField(read_only=True)\n    reviews_count = serializers.IntegerField(read_only=True)\n    final_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)\n    has_discount = serializers.BooleanField(read_only=True)\n    is_available = serializers.BooleanField(read_only=True)\n\n    class Meta:\n        model = Book\n        fields = [\n            \"id\", \"title\", \"slug\", \"subtitle\", \"description\",\n            \"author\", \"categories\",\n            \"isbn\", \"cover_url\", \"document_url\",\n            \"price\", \"discount_price\", \"final_price\", \"has_discount\",\n            \"published_at\", \"pages\", \"language\", \"publisher\",\n            \"stock\", \"total_copies\", \"is_available\",\n            \"is_published\", \"is_featured\",\n            \"views_count\", \"loans_count\",\n            \"average_rating\", \"reviews_count\",\n            \"created_at\", \"updated_at\",\n        ]\n        read_only_fields = [\n            \"id\", \"slug\", \"views_count\", \"loans_count\",\n            \"created_at\", \"updated_at\",\n        ]\n\n    def get_cover_url(self, obj):\n        if obj.cover:\n            request = self.context.get(\"request\")\n            if request:\n                return request.build_absolute_uri(obj.cover.url)\n            return obj.cover.url\n        return None\n\n    def get_document_url(self, obj):\n        if obj.document:\n            request = self.context.get(\"request\")\n            if request:\n                return request.build_absolute_uri(obj.document.url)\n            return obj.document.url\n        return None\n\n\nclass BookWriteSerializer(serializers.ModelSerializer):\n    \"\"\"سریالایزر نوشتن — ورودی ساده.\"\"\"\n    categories = serializers.SlugRelatedField(\n        many=True,\n        slug_field=\"slug\",\n        queryset=Category.objects.all(),\n        required=False,\n    )\n\n    class Meta:\n        model = Book\n        fields = [\n            \"id\", \"title\", \"subtitle\", \"description\",\n            \"author\", \"categories\",\n            \"isbn\", \"cover\", \"document\",\n            \"price\", \"discount_price\",\n            \"published_at\", \"pages\", \"language\", \"publisher\",\n            \"stock\", \"total_copies\",\n            \"is_published\", \"is_featured\",\n        ]\n        read_only_fields = [\"id\"]\n\n    def validate_isbn(self, value):\n        clean = value.replace(\"-\", \"\").strip()\n        if not clean.isdigit() or len(clean) not in (10, 13):\n            raise serializers.ValidationError(\"ISBN باید ۱۰ یا ۱۳ رقم عددی باشد.\")\n        return clean\n\n    def validate_price(self, value):\n        if value < 0:\n            raise serializers.ValidationError(\"قیمت نمی‌تواند منفی باشد.\")\n        return value\n\n    def validate(self, attrs):\n        price = attrs.get(\"price\")\n        discount = attrs.get(\"discount_price\")\n        if discount is not None and price is not None and discount >= price:\n            raise serializers.ValidationError(\n                {\"discount_price\": \"قیمت تخفیف باید کمتر از قیمت اصلی باشد.\"}\n            )\n        if \"stock\" in attrs and \"total_copies\" in attrs:\n            if attrs[\"stock\"] > attrs[\"total_copies\"]:\n                raise serializers.ValidationError(\n                    {\"stock\": \"موجودی نمی‌تواند بیشتر از کل نسخه‌ها باشد.\"}\n                )\n        return attrs\n\n    def to_internal_value(self, data):\n        # نرمال‌سازی ISBN\n        data = data.copy() if hasattr(data, \"copy\") else data\n        return super().to_internal_value(data)"
+        }
+      ]
+    },
+    {
+      "id": "filters",
+      "title": "catalog/filters.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/filters.py",
+          "code": "import django_filters\nfrom django.db.models import Q\nfrom .models import Book, Author\n\n\nclass BookFilter(django_filters.FilterSet):\n    # فیلترهای ساده\n    author = django_filters.UUIDFilter(field_name=\"author__id\")\n    author_slug = django_filters.CharFilter(field_name=\"author__slug\")\n    category = django_filters.CharFilter(field_name=\"categories__slug\")\n    language = django_filters.CharFilter(lookup_expr=\"iexact\")\n    is_featured = django_filters.BooleanFilter()\n    is_published = django_filters.BooleanFilter()\n    publisher = django_filters.CharFilter(lookup_expr=\"icontains\")\n\n    # بازه قیمت\n    min_price = django_filters.NumberFilter(field_name=\"price\", lookup_expr=\"gte\")\n    max_price = django_filters.NumberFilter(field_name=\"price\", lookup_expr=\"lte\")\n\n    # بازه تاریخ\n    published_after = django_filters.DateFilter(field_name=\"published_at\", lookup_expr=\"gte\")\n    published_before = django_filters.DateFilter(field_name=\"published_at\", lookup_expr=\"lte\")\n\n    # فیلترهای سفارشی\n    min_rating = django_filters.NumberFilter(method=\"filter_min_rating\")\n    in_stock = django_filters.BooleanFilter(method=\"filter_in_stock\")\n    has_discount = django_filters.BooleanFilter(method=\"filter_has_discount\")\n    search = django_filters.CharFilter(method=\"filter_search\")\n\n    class Meta:\n        model = Book\n        fields = []\n\n    def filter_min_rating(self, qs, name, value):\n        if value:\n            return qs.filter(average_rating__gte=value)\n        return qs\n\n    def filter_in_stock(self, qs, name, value):\n        if value:\n            return qs.filter(stock__gt=0)\n        return qs.filter(stock=0)\n\n    def filter_has_discount(self, qs, name, value):\n        if value:\n            return qs.filter(discount_price__isnull=False)\n        return qs.filter(Q(discount_price__isnull=True) | Q(discount_price=0))\n\n    def filter_search(self, qs, name, value):\n        if not value:\n            return qs\n        return qs.filter(\n            Q(title__icontains=value)\n            | Q(subtitle__icontains=value)\n            | Q(description__icontains=value)\n            | Q(isbn__icontains=value)\n            | Q(author__full_name__icontains=value)\n        ).distinct()\n\n\nclass AuthorFilter(django_filters.FilterSet):\n    nationality = django_filters.CharFilter(lookup_expr=\"iexact\")\n    search = django_filters.CharFilter(method=\"filter_search\")\n\n    class Meta:\n        model = Author\n        fields = []\n\n    def filter_search(self, qs, name, value):\n        if not value:\n            return qs\n        return qs.filter(\n            Q(full_name__icontains=value) | Q(bio__icontains=value)\n        )"
+        }
+      ]
+    },
+    {
+      "id": "selectors",
+      "title": "catalog/selectors.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/selectors.py",
+          "code": "from django.db.models import Avg, Count, Q, Prefetch\nfrom .models import Book, Author, Category\n\n\ndef book_list_queryset():\n    \"\"\"QuerySet بهینه برای لیست کتاب‌ها.\"\"\"\n    return (\n        Book.objects.filter(is_published=True, is_deleted=False)\n        .select_related(\"author\")\n        .prefetch_related(\"categories\")\n        .annotate(\n            average_rating=Avg(\"reviews__rating\", filter=Q(reviews__is_approved=True)),\n            reviews_count=Count(\"reviews\", filter=Q(reviews__is_approved=True), distinct=True),\n        )\n    )\n\n\ndef book_detail_queryset():\n    \"\"\"QuerySet بهینه برای جزئیات کتاب.\"\"\"\n    return (\n        Book.objects\n        .select_related(\"author\", \"owner\")\n        .prefetch_related(\"categories\")\n        .annotate(\n            average_rating=Avg(\"reviews__rating\", filter=Q(reviews__is_approved=True)),\n            reviews_count=Count(\"reviews\", filter=Q(reviews__is_approved=True), distinct=True),\n        )\n    )\n\n\ndef author_list_queryset():\n    return (\n        Author.objects.filter(is_deleted=False)\n        .annotate(books_count=Count(\"books\", filter=Q(books__is_published=True, books__is_deleted=False), distinct=True))\n    )\n\n\ndef category_list_queryset():\n    return (\n        Category.objects.filter(is_deleted=False)\n        .select_related(\"parent\")\n        .annotate(books_count=Count(\"books\", filter=Q(books__is_published=True, books__is_deleted=False), distinct=True))\n    )"
+        }
+      ]
+    },
+    {
+      "id": "permissions",
+      "title": "catalog/permissions.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/permissions.py",
+          "code": "from rest_framework.permissions import BasePermission, SAFE_METHODS\n\n\nclass IsAuthorOrStaffOrReadOnly(BasePermission):\n    \"\"\"\n    خواندن برای همه.\n    نوشتن فقط برای نویسنده کتاب یا کارمند.\n    \"\"\"\n    message = \"فقط نویسنده یا کارمند می‌تواند این کتاب را تغییر دهد.\"\n\n    def has_permission(self, request, view):\n        if request.method in SAFE_METHODS:\n            return True\n        return request.user.is_authenticated\n\n    def has_object_permission(self, request, view, obj):\n        if request.method in SAFE_METHODS:\n            return True\n        if request.user.is_staff:\n            return True\n        return obj.owner == request.user"
+        }
+      ]
+    },
+    {
+      "id": "views",
+      "title": "catalog/views.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py",
+          "code": "from rest_framework import viewsets, filters, status\nfrom rest_framework.decorators import action\nfrom rest_framework.permissions import IsAuthenticatedOrReadOnly\nfrom rest_framework.response import Response\nfrom django_filters.rest_framework import DjangoFilterBackend\nfrom django.db.models import Count\n\nfrom common.pagination import StandardPagination\nfrom common.permissions import IsAdminOrReadOnly\nfrom .models import Author, Category, Book\nfrom .serializers import (\n    AuthorListSerializer, AuthorDetailSerializer,\n    CategoryListSerializer, CategoryDetailSerializer,\n    BookListSerializer, BookDetailSerializer, BookWriteSerializer,\n)\nfrom .filters import BookFilter, AuthorFilter\nfrom .selectors import (\n    book_list_queryset, book_detail_queryset,\n    author_list_queryset, category_list_queryset,\n)\nfrom .permissions import IsAuthorOrStaffOrReadOnly\n\n\nclass AuthorViewSet(viewsets.ModelViewSet):\n    permission_classes = [IsAdminOrReadOnly]\n    pagination_class = StandardPagination\n    lookup_field = \"slug\"\n    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]\n    filterset_class = AuthorFilter\n    search_fields = [\"full_name\", \"bio\"]\n    ordering_fields = [\"full_name\", \"created_at\"]\n    ordering = [\"full_name\"]\n\n    def get_queryset(self):\n        return author_list_queryset()\n\n    def get_serializer_class(self):\n        if self.action == \"list\":\n            return AuthorListSerializer\n        return AuthorDetailSerializer\n\n    @action(detail=True, methods=[\"get\"])\n    def books(self, request, slug=None):\n        \"\"\"کتاب‌های این نویسنده.\"\"\"\n        author = self.get_object()\n        qs = author.books.filter(is_published=True, is_deleted=False).select_related(\"author\")\n        page = self.paginate_queryset(qs)\n        if page is not None:\n            serializer = BookListSerializer(page, many=True, context={\"request\": request})\n            return self.get_paginated_response(serializer.data)\n        serializer = BookListSerializer(qs, many=True, context={\"request\": request})\n        return Response(serializer.data)\n\n\nclass CategoryViewSet(viewsets.ModelViewSet):\n    permission_classes = [IsAdminOrReadOnly]\n    lookup_field = \"slug\"\n    filter_backends = [filters.SearchFilter, filters.OrderingFilter]\n    search_fields = [\"name\", \"description\"]\n    ordering_fields = [\"name\", \"order\", \"created_at\"]\n    ordering = [\"order\", \"name\"]\n\n    def get_queryset(self):\n        return category_list_queryset()\n\n    def get_serializer_class(self):\n        if self.action == \"list\":\n            return CategoryListSerializer\n        return CategoryDetailSerializer\n\n    @action(detail=True, methods=[\"get\"])\n    def books(self, request, slug=None):\n        \"\"\"کتاب‌های این دسته.\"\"\"\n        category = self.get_object()\n        qs = (\n            category.books\n            .filter(is_published=True, is_deleted=False)\n            .select_related(\"author\")\n            .annotate(\n                average_rating=models.Avg(\"reviews__rating\"),\n                reviews_count=models.Count(\"reviews\", distinct=True),\n            )\n        )\n        page = self.paginate_queryset(qs)\n        if page is not None:\n            serializer = BookListSerializer(page, many=True, context={\"request\": request})\n            return self.get_paginated_response(serializer.data)\n        serializer = BookListSerializer(qs, many=True, context={\"request\": request})\n        return Response(serializer.data)\n\n\nclass BookViewSet(viewsets.ModelViewSet):\n    \"\"\"ViewSet کتاب با فیلتر، جستجو، مرتب‌سازی، آمار و آپلود.\"\"\"\n    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrStaffOrReadOnly]\n    pagination_class = StandardPagination\n    lookup_field = \"slug\"\n    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]\n    filterset_class = BookFilter\n    search_fields = [\"title\", \"subtitle\", \"description\", \"isbn\", \"author__full_name\"]\n    ordering_fields = [\"price\", \"published_at\", \"created_at\", \"views_count\", \"loans_count\"]\n    ordering = [\"-created_at\"]\n\n    def get_queryset(self):\n        if self.action == \"list\":\n            return book_list_queryset()\n        return book_detail_queryset()\n\n    def get_serializer_class(self):\n        if self.action == \"list\":\n            return BookListSerializer\n        if self.action in (\"create\", \"update\", \"partial_update\"):\n            return BookWriteSerializer\n        return BookDetailSerializer\n\n    def perform_create(self, serializer):\n        serializer.save(owner=self.request.user)\n\n    def retrieve(self, request, *args, **kwargs):\n        \"\"\"دریافت جزئیات + افزایش views_count.\"\"\"\n        instance = self.get_object()\n        # افزایش views_count با F برای جلوگیری از race condition\n        from django.db.models import F\n        Book.objects.filter(pk=instance.pk).update(views_count=F(\"views_count\") + 1)\n        serializer = self.get_serializer(instance)\n        return Response(serializer.data)\n\n    @action(detail=False, methods=[\"get\"])\n    def featured(self, request):\n        \"\"\"کتاب‌های ویژه.\"\"\"\n        qs = book_list_queryset().filter(is_featured=True)[:10]\n        serializer = BookListSerializer(qs, many=True, context={\"request\": request})\n        return Response(serializer.data)\n\n    @action(detail=False, methods=[\"get\"])\n    def newest(self, request):\n        \"\"\"جدیدترین کتاب‌ها.\"\"\"\n        qs = book_list_queryset().order_by(\"-created_at\")[:10]\n        serializer = BookListSerializer(qs, many=True, context={\"request\": request})\n        return Response(serializer.data)\n\n    @action(detail=False, methods=[\"get\"])\n    def popular(self, request):\n        \"\"\"محبوب‌ترین کتاب‌ها بر اساس loans_count.\"\"\"\n        qs = book_list_queryset().order_by(\"-loans_count\")[:10]\n        serializer = BookListSerializer(qs, many=True, context={\"request\": request})\n        return Response(serializer.data)\n\n    @action(detail=True, methods=[\"post\"], permission_classes=[IsAuthenticatedOrReadOnly])\n    def increment_view(self, request, slug=None):\n        \"\"\"افزایش views_count.\"\"\"\n        from django.db.models import F\n        Book.objects.filter(slug=slug).update(views_count=F(\"views_count\") + 1)\n        return Response({\"detail\": \"ok\"})"
+        }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "catalog/urls.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/urls.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom .views import AuthorViewSet, CategoryViewSet, BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"authors\", AuthorViewSet, basename=\"author\")\nrouter.register(r\"categories\", CategoryViewSet, basename=\"category\")\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\n\nurlpatterns = router.urls"
+        }
+      ]
+    },
+    {
+      "id": "tests",
+      "title": "catalog/tests/test_catalog.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/tests/test_catalog.py",
+          "code": "import pytest\nfrom datetime import date\nfrom django.contrib.auth import get_user_model\nfrom rest_framework.test import APIClient\n\nfrom catalog.models import Author, Category, Book\n\nUser = get_user_model()\n\n\n@pytest.fixture\ndef api_client():\n    return APIClient()\n\n\n@pytest.fixture\ndef user(db):\n    return User.objects.create_user(username=\"sara\", password=\"S3cret!Pass\")\n\n\n@pytest.fixture\ndef staff(db):\n    return User.objects.create_user(username=\"admin\", password=\"Admin123!\", is_staff=True)\n\n\n@pytest.fixture\ndef author(db):\n    return Author.objects.create(full_name=\"Test Author\")\n\n\n@pytest.fixture\ndef category(db):\n    return Category.objects.create(name=\"Fiction\")\n\n\n@pytest.fixture\ndef book(db, author, category):\n    book = Book.objects.create(\n        title=\"Test Book\",\n        author=author,\n        isbn=\"9780000000001\",\n        price=\"42.50\",\n        published_at=date(2020, 1, 1),\n        is_published=True,\n    )\n    book.categories.add(category)\n    return book\n\n\n@pytest.mark.django_db\nclass TestBookList:\n    url = \"/api/books/\"\n\n    def test_list_public(self, api_client, book):\n        response = api_client.get(self.url)\n        assert response.status_code == 200\n        assert response.data[\"count\"] == 1\n\n    def test_filter_by_category(self, api_client, book, category):\n        response = api_client.get(f\"{self.url}?category={category.slug}\")\n        assert response.status_code == 200\n        assert response.data[\"count\"] == 1\n\n    def test_search(self, api_client, book):\n        response = api_client.get(f\"{self.url}?search=Test\")\n        assert response.status_code == 200\n        assert response.data[\"count\"] == 1\n\n    def test_ordering(self, api_client, book):\n        response = api_client.get(f\"{self.url}?ordering=-price\")\n        assert response.status_code == 200\n\n\n@pytest.mark.django_db\nclass TestBookCreate:\n    url = \"/api/books/\"\n\n    def test_anonymous_cannot_create(self, api_client):\n        response = api_client.post(self.url, {}, format=\"json\")\n        assert response.status_code == 401\n\n    def test_authenticated_can_create(self, api_client, user, author):\n        api_client.force_authenticate(user=user)\n        payload = {\n            \"title\": \"New Book\",\n            \"author\": str(author.id),\n            \"isbn\": \"9780000000002\",\n            \"price\": \"29.99\",\n            \"published_at\": \"2021-01-01\",\n        }\n        response = api_client.post(self.url, payload, format=\"json\")\n        assert response.status_code == 201\n        assert Book.objects.filter(isbn=\"9780000000002\").exists()\n\n    def test_invalid_isbn(self, api_client, user, author):\n        api_client.force_authenticate(user=user)\n        payload = {\n            \"title\": \"New Book\",\n            \"author\": str(author.id),\n            \"isbn\": \"invalid\",\n            \"price\": \"10.00\",\n            \"published_at\": \"2021-01-01\",\n        }\n        response = api_client.post(self.url, payload, format=\"json\")\n        assert response.status_code == 400\n\n\n@pytest.mark.django_db\nclass TestBookDetail:\n    def test_detail_public(self, api_client, book):\n        response = api_client.get(f\"/api/books/{book.slug}/\")\n        assert response.status_code == 200\n        assert response.data[\"title\"] == \"Test Book\"\n\n    def test_not_found(self, api_client):\n        response = api_client.get(\"/api/books/nonexistent/\")\n        assert response.status_code == 404"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-083-q1",
+      "tag": "کوییز",
+      "question": "چرا در retrieve، views_count را با F() افزایش می‌دهیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون جلوگیری از race condition — اگر دو کاربر همزمان بازدید کنند، هر دو درست حساب می‌شوند.", "correct": true, "explanation": "F() در دیتابیس اجرا می‌شود، نه در پایتون." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-083-q2",
+      "tag": "کوییز",
+      "question": "چرا در BookViewSet دو سریالایزر جدا برای read و write داریم؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون خروجی (با روابط تودرتو و آمار) با ورودی (با slug دسته‌ها) متفاوت است.", "correct": true, "explanation": "الگوی read/write جدا — استاندارد حرفه‌ای." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-083-q3",
+      "tag": "کوییز",
+      "question": "چرا در selectors، select_related و prefetch_related داریم؟",
+      "options": [
+        { "text": "چون اجباری است.", "correct": false },
+        { "text": "چون جلوگیری از N+1 در سریالایزر تودرتو — Author و Categories.", "correct": true, "explanation": "select_related برای FK، prefetch_related برای M2M." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-083-q4",
+      "tag": "کوییز",
+      "question": "چرا فیلتر `search` در FilterSet جداگانه است؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون می‌خواهیم جستجو در چند فیلد (title، subtitle، description، isbn، author) و با OR باشد.", "correct": true, "explanation": "SearchFilter تنها icontains می‌کند؛ اینجا Q object لازم است." },
+        { "text": "چون سریع‌تر است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-083-q5",
+      "tag": "کوییز",
+      "question": "چرا اکشن `featured` از `pagination_class = None` استفاده نمی‌کند؟",
+      "options": [
+        { "text": "چون اجباری نیست.", "correct": false },
+        { "text": "چون محدود به ۱۰ آیتم است و نیازی به صفحه‌بندی ندارد.", "correct": true, "explanation": "برای محدود به عدد کوچک، page noneset." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-083-ex1",
+      "title": "تمرین — CRUD کامل Catalog",
+      "problem": "همه endpointها را پیاده کنید و با curl تست کنید:\n- لیست و CRUD کتاب با فیلتر، جستجو، مرتب‌سازی\n- لیست و CRUD نویسنده\n- لیست و CRUD دسته‌بندی\n- اکشن‌های featured، newest، popular\n- اکشن books برای Author و Category",
+      "hints": [
+        "از ViewSet + Router استفاده کنید.",
+        "selectors برای بهینه‌سازی.",
+        "filterset_class برای فیلتر پیشرفته."
+      ],
+      "solution": "همه کدها در این فصل آمده است. سپس تست:\n\nbash\n# لیست کتاب‌ها\ncurl \"http://127.0.0.1:8000/api/books/?search=clean&ordering=-price\"\n\n# فیلتر\ncurl \"http://127.0.0.1:8000/api/books/?category=fiction&min_price=10\"\n\n# اکشن سفارشی\ncurl http://127.0.0.1:8000/api/books/featured/\n\n# ساخت کتاب (با توکن)\ncurl -X POST http://127.0.0.1:8000/api/books/ -H \"Authorization: Bearer TOKEN\" -H \"Content-Type: application/json\" -d '{...}'",
+      "explanation": "پس از این، یک Catalog کامل با همه ویژگی‌ها دارید."
+    }
+  ],
+  "summary": [
+    "Author، Category، Book با روابط کامل.",
+    "read/write serializer جدا.",
+    "FilterSet با search ترکیبی، بازه قیمت، فیلتر سفارشی.",
+    "Selectors برای بهینه‌سازی N+1.",
+    "اکشن‌های featured، newest، popular.",
+    "افزایش views_count با F().",
+    "اکشن books زیر Author و Category.",
+    "تست کامل برای لیست، ساخت، فیلتر، جستجو."
+  ],
+  "resources": [
+    { "title": "django-filter — Documentation", "url": "https://django-filter.readthedocs.io/", "official": true },
+    { "title": "DRF — ViewSets", "url": "https://www.django-rest-framework.org/api-guide/viewsets/", "official": true }
+  ]
+}

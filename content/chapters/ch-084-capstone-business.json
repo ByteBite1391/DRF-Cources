@@ -1,0 +1,227 @@
+{
+  "id": "ch-084",
+  "slug": "capstone-business",
+  "title": "پروژه نهایی — فاز ۵: منطق کسب‌وکار (نظرات، امانت، پرداخت)",
+  "kicker": "فصل ۸۴",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 75,
+  "lead": "در این فاز، منطق کسب‌وکار سیستم را پیاده می‌کنیم: نظرات، علاقه‌مندی، امانت، رزرو، پرداخت و اعلان. اینجا Service Layer وارد می‌شود.",
+  "sections": [
+    {
+      "id": "reviews",
+      "title": "reviews — نظرات",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reviews/serializers.py",
+          "code": "from rest_framework import serializers\nfrom .models import Review, ReviewHelpful\n\n\nclass ReviewSerializer(serializers.ModelSerializer):\n    user = serializers.StringRelatedField(read_only=True)\n    user_id = serializers.UUIDField(source=\"user.id\", read_only=True)\n\n    class Meta:\n        model = Review\n        fields = [\n            \"id\", \"user\", \"user_id\", \"book\",\n            \"rating\", \"title\", \"comment\",\n            \"helpful_count\", \"is_approved\",\n            \"created_at\", \"updated_at\",\n        ]\n        read_only_fields = [\n            \"id\", \"user\", \"helpful_count\", \"is_approved\",\n            \"created_at\", \"updated_at\",\n        ]\n\n    def validate_rating(self, value):\n        if not 1 <= value <= 5:\n            raise serializers.ValidationError(\"امتیاز باید بین ۱ تا ۵ باشد.\")\n        return value\n\n    def validate(self, attrs):\n        user = self.context[\"request\"].user\n        book = attrs.get(\"book\")\n        if self.instance is None and book and Review.objects.filter(user=user, book=book).exists():\n            raise serializers.ValidationError(\"شما قبلاً برای این کتاب نظر داده‌اید.\")\n        return attrs\n\n\nclass ReviewApprovalSerializer(serializers.ModelSerializer):\n    class Meta:\n        model = Review\n        fields = [\"is_approved\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reviews/services.py",
+          "code": "from django.db import transaction\nfrom django.utils import timezone\nfrom common.exceptions import BusinessRuleViolation\nfrom .models import Review, ReviewHelpful\n\n\ndef create_review(*, user, book, rating, title, comment):\n    \"\"\"ساخت نظر جدید.\"\"\"\n    if Review.objects.filter(user=user, book=book).exists():\n        raise BusinessRuleViolation(\"شما قبلاً برای این کتاب نظر داده‌اید.\")\n\n    with transaction.atomic():\n        review = Review.objects.create(\n            user=user, book=book,\n            rating=rating, title=title, comment=comment,\n        )\n        # آمار پروفایل\n        profile = getattr(user, \"profile\", None)\n        if profile:\n            profile.total_reviews = (profile.total_reviews or 0) + 1\n            profile.save(update_fields=[\"total_reviews\"])\n\n    return review\n\n\ndef approve_review(*, review, approver):\n    \"\"\"تأیید نظر.\"\"\"\n    if not approver.is_staff:\n        raise BusinessRuleViolation(\"فقط کارمندان می‌توانند نظر تأیید کنند.\")\n    review.is_approved = True\n    review.approved_at = timezone.now()\n    review.approved_by = approver\n    review.save(update_fields=[\"is_approved\", \"approved_at\", \"approved_by\"])\n\n    # اعلان به کاربر\n    from notifications.services import send_notification\n    send_notification(\n        user=review.user,\n        type=\"review_approved\",\n        title=\"نظر شما تأیید شد\",\n        message=f\"نظر شما روی کتاب «{review.book.title}» تأیید شد.\",\n    )\n    return review\n\n\ndef mark_helpful(*, review, user):\n    \"\"\"رأی مفید بود.\"\"\"\n    _, created = ReviewHelpful.objects.get_or_create(review=review, user=user)\n    if not created:\n        raise BusinessRuleViolation(\"شما قبلاً این نظر را مفید علامت‌گذاری کرده‌اید.\")\n\n    from django.db.models import F\n    Review.objects.filter(pk=review.pk).update(helpful_count=F(\"helpful_count\") + 1)\n    review.refresh_from_db()\n    return review"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reviews/views.py",
+          "code": "from rest_framework import viewsets, mixins\nfrom rest_framework.decorators import action\nfrom rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly\nfrom rest_framework.response import Response\n\nfrom common.permissions import IsOwnerOrReadOnly\nfrom .models import Review\nfrom .serializers import ReviewSerializer, ReviewApprovalSerializer\nfrom .services import create_review, mark_helpful\n\n\nclass ReviewViewSet(\n    mixins.ListModelMixin,\n    mixins.CreateModelMixin,\n    mixins.RetrieveModelMixin,\n    mixins.UpdateModelMixin,\n    mixins.DestroyModelMixin,\n    viewsets.GenericViewSet,\n):\n    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]\n\n    def get_queryset(self):\n        qs = Review.objects.select_related(\"user\", \"book\").filter(is_approved=True)\n        book_id = self.kwargs.get(\"book_pk\")\n        if book_id:\n            qs = qs.filter(book_id=book_id)\n        return qs\n\n    def get_serializer_class(self):\n        if self.action == \"approve\":\n            return ReviewApprovalSerializer\n        return ReviewSerializer\n\n    def perform_create(self, serializer):\n        book_id = self.kwargs.get(\"book_pk\") or self.request.data.get(\"book\")\n        from catalog.models import Book\n        book = Book.objects.get(pk=book_id)\n        review = create_review(\n            user=self.request.user,\n            book=book,\n            rating=serializer.validated_data[\"rating\"],\n            title=serializer.validated_data.get(\"title\", \"\"),\n            comment=serializer.validated_data[\"comment\"],\n        )\n        serializer.instance = review\n\n    @action(detail=True, methods=[\"post\"], permission_classes=[IsAuthenticated])\n    def helpful(self, request, pk=None):\n        review = self.get_object()\n        review = mark_helpful(review=review, user=request.user)\n        return Response({\"helpful_count\": review.helpful_count})\n\n    @action(detail=True, methods=[\"post\"], permission_classes=[IsAuthenticated])\n    def approve(self, request, pk=None):\n        from .services import approve_review\n        review = self.get_object()\n        review = approve_review(review=review, approver=request.user)\n        return Response(ReviewSerializer(review).data)"
+        }
+      ]
+    },
+    {
+      "id": "loans",
+      "title": "loans — امانت و رزرو",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "loans/services.py",
+          "code": "from datetime import timedelta\nfrom django.db import transaction\nfrom django.utils import timezone\nfrom common.exceptions import BusinessRuleViolation, ResourceConflict\nfrom .models import Loan, Reservation\n\n\nMAX_ACTIVE_LOANS = 5\n\n\ndef create_loan(*, user, book):\n    \"\"\"ساخت امانت جدید.\"\"\"\n    if book.stock <= 0:\n        raise ResourceConflict(\"این کتاب موجود نیست. می‌توانید رزرو کنید.\")\n\n    active_loans = Loan.objects.filter(user=user, status=\"active\").count()\n    if active_loans >= MAX_ACTIVE_LOANS:\n        raise BusinessRuleViolation(f\"حداکثر {MAX_ACTIVE_LOANS} امانت فعال مجاز است.\")\n\n    if Loan.objects.filter(user=user, book=book, status=\"active\").exists():\n        raise BusinessRuleViolation(\"شما این کتاب را در امانت دارید.\")\n\n    with transaction.atomic():\n        from catalog.models import Book\n        Book.objects.filter(pk=book.pk).update(\n            stock=models.F(\"stock\") - 1,\n            loans_count=models.F(\"loans_count\") + 1,\n        )\n        loan = Loan.objects.create(\n            user=user, book=book,\n            status=\"active\",\n            borrowed_at=timezone.now(),\n            due_date=timezone.now() + timedelta(days=Loan.LOAN_DURATION_DAYS),\n        )\n\n    # اعلان\n    from notifications.services import send_notification\n    send_notification(\n        user=user,\n        type=\"loan_created\",\n        title=\"امانت ثبت شد\",\n        message=f\"کتاب «{book.title}» تا {loan.due_date.date()} در امانت شماست.\",\n        payload={\"loan_id\": str(loan.id), \"book_id\": str(book.id)},\n    )\n    return loan\n\n\ndef return_loan(*, loan, handler=None):\n    \"\"\"بازگشت امانت.\"\"\"\n    if loan.status not in (\"active\", \"overdue\"):\n        raise BusinessRuleViolation(\"این امانت در وضعیت قابل بازگشت نیست.\")\n\n    with transaction.atomic():\n        from catalog.models import Book\n        from django.db.models import F\n        Book.objects.filter(pk=loan.book_id).update(stock=F(\"stock\") + 1)\n        loan.status = \"returned\"\n        loan.returned_at = timezone.now()\n        loan.handled_by = handler\n        loan.save(update_fields=[\"status\", \"returned_at\", \"handled_by\"])\n\n    return loan\n\n\ndef extend_loan(*, loan):\n    \"\"\"تمدید امانت.\"\"\"\n    if not loan.can_extend:\n        raise BusinessRuleViolation(\"این امانت قابل تمدید نیست.\")\n\n    loan.due_date = loan.due_date + timedelta(days=7)\n    loan.extended_count += 1\n    loan.save(update_fields=[\"due_date\", \"extended_count\"])\n    return loan\n\n\ndef create_reservation(*, user, book):\n    \"\"\"رزرو کتابی که موجود نیست.\"\"\"\n    if book.stock > 0:\n        raise BusinessRuleViolation(\"این کتاب موجود است، می‌توانید امانت بگیرید.\")\n\n    if Reservation.objects.filter(user=user, book=book, status__in=[\"waiting\", \"ready\"]).exists():\n        raise BusinessRuleViolation(\"شما قبلاً این کتاب را رزرو کرده‌اید.\")\n\n    # موقعیت در صف\n    last = Reservation.objects.filter(book=book, status=\"waiting\").order_by(\"-position\").first()\n    position = (last.position + 1) if last else 1\n\n    reservation = Reservation.objects.create(\n        user=user, book=book,\n        status=\"waiting\", position=position,\n    )\n    return reservation\n\n\ndef notify_reservation_ready(*, reservation):\n    \"\"\"کتاب بازگشت داده شده، نفر اول صف مطلع شود.\"\"\"\n    reservation.status = \"ready\"\n    reservation.notified_at = timezone.now()\n    reservation.expires_at = timezone.now() + timedelta(days=Reservation.RESERVATION_HOLD_DAYS)\n    reservation.save(update_fields=[\"status\", \"notified_at\", \"expires_at\"])\n\n    from notifications.services import send_notification\n    send_notification(\n        user=reservation.user,\n        type=\"reservation_ready\",\n        title=\"رزرو شما آماده است\",\n        message=f\"کتاب «{reservation.book.title}» برای شما آماده است. تا {reservation.expires_at.date()} فرصت دارید.\",\n    )\n    return reservation"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "loans/tasks.py",
+          "code": "from celery import shared_task\nfrom django.utils import timezone\nfrom .models import Loan, Reservation\n\n\n@shared_task\ndef check_overdue_loans():\n    \"\"\"بررسی امانت‌های دیرکرد.\"\"\"\n    from datetime import timedelta\n    now = timezone.now()\n    threshold = now - timedelta(days=1)\n\n    overdue_loans = Loan.objects.filter(\n        status=\"active\",\n        due_date__lt=now,\n    )\n\n    count = overdue_loans.count()\n    for loan in overdue_loans:\n        loan.status = \"overdue\"\n        loan.save(update_fields=[\"status\"])\n\n        from notifications.services import send_notification\n        send_notification(\n            user=loan.user,\n            type=\"loan_overdue\",\n            title=\"کتاب شما دیرکرد دارد\",\n            message=f\"کتاب «{loan.book.title}» باید تا {loan.due_date.date()} بازگردانده می‌شد.\",\n            priority=\"high\",\n        )\n    return count\n\n\n@shared_task\ndef send_due_reminders():\n    \"\"\"یادآوری ۳ روز قبل از موعد.\"\"\"\n    from datetime import timedelta\n    now = timezone.now()\n    target = now + timedelta(days=3)\n\n    loans = Loan.objects.filter(\n        status=\"active\",\n        due_date__date=target.date(),\n    ).select_related(\"user\", \"book\")\n\n    from notifications.services import send_notification\n    for loan in loans:\n        send_notification(\n            user=loan.user,\n            type=\"loan_due_soon\",\n            title=\"یادآوری بازگشت کتاب\",\n            message=f\"کتاب «{loan.book.title}» تا {loan.due_date.date()} فرصت دارد.\",\n        )\n    return loans.count()\n\n\n@shared_task\ndef cleanup_expired_reservations():\n    \"\"\"پاکسازی رزروهای منقضی.\"\"\"\n    now = timezone.now()\n    expired = Reservation.objects.filter(\n        status=\"ready\",\n        expires_at__lt=now,\n    )\n\n    for res in expired:\n        res.status = \"expired\"\n        res.save(update_fields=[\"status\"])\n\n        # نفر بعدی صف\n        next_res = Reservation.objects.filter(\n            book=res.book, status=\"waiting\"\n        ).order_by(\"position\").first()\n        if next_res:\n            from .services import notify_reservation_ready\n            notify_reservation_ready(reservation=next_res)\n\n    return expired.count()"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "loans/views.py",
+          "code": "from rest_framework import viewsets, mixins\nfrom rest_framework.decorators import action\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.response import Response\n\nfrom common.permissions import IsOwnerOrReadOnly\nfrom .models import Loan, Reservation\nfrom .serializers import LoanSerializer, ReservationSerializer\nfrom .services import create_loan, return_loan, extend_loan, create_reservation\n\n\nclass LoanViewSet(\n    mixins.ListModelMixin,\n    mixins.RetrieveModelMixin,\n    mixins.CreateModelMixin,\n    viewsets.GenericViewSet,\n):\n    serializer_class = LoanSerializer\n    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]\n\n    def get_queryset(self):\n        return (\n            Loan.objects.filter(user=self.request.user)\n            .select_related(\"book\", \"book__author\")\n        )\n\n    def perform_create(self, serializer):\n        from catalog.models import Book\n        book_id = self.request.data.get(\"book\")\n        book = Book.objects.get(pk=book_id)\n        loan = create_loan(user=self.request.user, book=book)\n        serializer.instance = loan\n\n    @action(detail=True, methods=[\"post\"])\n    def return_book(self, request, pk=None):\n        loan = self.get_object()\n        loan = return_loan(loan=loan)\n        return Response(LoanSerializer(loan).data)\n\n    @action(detail=True, methods=[\"post\"])\n    def extend(self, request, pk=None):\n        loan = self.get_object()\n        loan = extend_loan(loan=loan)\n        return Response(LoanSerializer(loan).data)\n\n\nclass ReservationViewSet(\n    mixins.ListModelMixin,\n    mixins.RetrieveModelMixin,\n    mixins.CreateModelMixin,\n    mixins.DestroyModelMixin,\n    viewsets.GenericViewSet,\n):\n    serializer_class = ReservationSerializer\n    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]\n\n    def get_queryset(self):\n        return Reservation.objects.filter(user=self.request.user).select_related(\"book\")\n\n    def perform_create(self, serializer):\n        from catalog.models import Book\n        book_id = self.request.data.get(\"book\")\n        book = Book.objects.get(pk=book_id)\n        res = create_reservation(user=self.request.user, book=book)\n        serializer.instance = res\n\n    def perform_destroy(self, instance):\n        if instance.status not in (\"waiting\",):\n            from common.exceptions import BusinessRuleViolation\n            raise BusinessRuleViolation(\"فقط رزروهای در انتظار قابل لغو هستند.\")\n        instance.status = \"cancelled\"\n        instance.save(update_fields=[\"status\"])"
+        }
+      ]
+    },
+    {
+      "id": "payments",
+      "title": "payments — اشتراک و پرداخت",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "payments/services.py",
+          "code": "from datetime import timedelta\nfrom decimal import Decimal\nimport secrets\nfrom django.db import transaction\nfrom django.utils import timezone\nfrom common.exceptions import BusinessRuleViolation\nfrom .models import Subscription, Payment\n\n\nSUBSCRIPTION_PRICES = {\n    \"basic\": Decimal(\"100000\"),   # ۱۰۰ هزار تومان ماهانه\n    \"pro\": Decimal(\"300000\"),     # ۳۰۰ هزار تومان ماهانه\n}\n\n\n@transaction.atomic\ndef initiate_payment(*, user, tier, gateway):\n    \"\"\"شروع فرآیند پرداخت.\"\"\"\n    if tier not in SUBSCRIPTION_PRICES:\n        raise BusinessRuleViolation(\"پلن انتخاب‌شده نامعتبر است.\")\n\n    amount = SUBSCRIPTION_PRICES[tier]\n    payment = Payment.objects.create(\n        user=user,\n        amount=amount,\n        currency=\"IRR\",\n        gateway=gateway,\n        status=\"pending\",\n        gateway_authority=secrets.token_urlsafe(32),\n    )\n    return payment, f\"https://gateway.example.com/pay/{payment.gateway_authority}\"\n\n\n@transaction.atomic\ndef verify_payment(*, payment, gateway_response):\n    \"\"\"تأیید پرداخت و فعال‌سازی اشتراک.\"\"\"\n    if payment.status != \"pending\":\n        raise BusinessRuleViolation(\"این پرداخت قابل تأیید نیست.\")\n\n    success = gateway_response.get(\"status\") == \"success\"\n    payment.gateway_response = gateway_response\n    payment.transaction_id = gateway_response.get(\"transaction_id\", \"\")\n\n    if success:\n        payment.status = \"success\"\n        payment.paid_at = timezone.now()\n        payment.save()\n\n        # فعال‌سازی اشتراک\n        tier = _detect_tier(payment.amount)\n        subscription = Subscription.objects.create(\n            user=payment.user,\n            tier=tier,\n            status=\"active\",\n            started_at=timezone.now(),\n            expires_at=timezone.now() + timedelta(days=30),\n        )\n        payment.subscription = subscription\n        payment.save(update_fields=[\"subscription\"])\n\n        # به‌روزرسانی پروفایل\n        profile = getattr(payment.user, \"profile\", None)\n        if profile:\n            profile.subscription_tier = tier\n            profile.subscription_started = subscription.started_at\n            profile.subscription_expires = subscription.expires_at\n            profile.save(update_fields=[\"subscription_tier\", \"subscription_started\", \"subscription_expires\"])\n\n        # اعلان\n        from notifications.services import send_notification\n        send_notification(\n            user=payment.user,\n            type=\"payment_success\",\n            title=\"پرداخت موفق\",\n            message=f\"اشتراک {tier} شما فعال شد.\",\n        )\n    else:\n        payment.status = \"failed\"\n        payment.save()\n\n        from notifications.services import send_notification\n        send_notification(\n            user=payment.user,\n            type=\"payment_failed\",\n            title=\"پرداخت ناموفق\",\n            message=\"پرداخت شما انجام نشد. لطفاً دوباره تلاش کنید.\",\n        )\n\n    return payment\n\n\ndef _detect_tier(amount):\n    for tier, price in SUBSCRIPTION_PRICES.items():\n        if price == amount:\n            return tier\n    return \"basic\""
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "payments/views.py",
+          "code": "from rest_framework import viewsets, mixins\nfrom rest_framework.decorators import action\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.response import Response\nfrom rest_framework import status\n\nfrom .models import Subscription, Payment\nfrom .serializers import SubscriptionSerializer, PaymentSerializer, PaymentInitSerializer\nfrom .services import initiate_payment, verify_payment\n\n\nclass SubscriptionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):\n    serializer_class = SubscriptionSerializer\n    permission_classes = [IsAuthenticated]\n\n    def get_queryset(self):\n        return Subscription.objects.filter(user=self.request.user)\n\n\nclass PaymentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):\n    serializer_class = PaymentSerializer\n    permission_classes = [IsAuthenticated]\n\n    def get_queryset(self):\n        return Payment.objects.filter(user=self.request.user)\n\n    @action(detail=False, methods=[\"post\"])\n    def initiate(self, request):\n        serializer = PaymentInitSerializer(data=request.data)\n        serializer.is_valid(raise_exception=True)\n        payment, payment_url = initiate_payment(\n            user=request.user,\n            tier=serializer.validated_data[\"tier\"],\n            gateway=serializer.validated_data[\"gateway\"],\n        )\n        return Response({\n            \"payment\": PaymentSerializer(payment).data,\n            \"payment_url\": payment_url,\n        }, status=status.HTTP_201_CREATED)\n\n    @action(detail=True, methods=[\"post\"], permission_classes=[])\n    def verify(self, request, pk=None):\n        \"\"\"Callback از درگاه پرداخت.\"\"\"\n        from django.shortcuts import get_object_or_404\n        payment = get_object_or_404(Payment, pk=pk)\n        payment = verify_payment(payment=payment, gateway_response=request.data)\n        return Response(PaymentSerializer(payment).data)"
+        }
+      ]
+    },
+    {
+      "id": "notifications",
+      "title": "notifications — اعلان‌ها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notifications/services.py",
+          "code": "import logging\nfrom django.utils import timezone\nfrom .models import Notification\n\nlogger = logging.getLogger(\"api.notifications\")\n\n\ndef send_notification(*, user, type, title, message, payload=None, priority=\"normal\"):\n    \"\"\"ساخت اعلان و ارسال ایمیل/پوش در پس‌زمینه.\"\"\"\n    notification = Notification.objects.create(\n        user=user,\n        type=type,\n        title=title,\n        message=message,\n        payload=payload or {},\n        priority=priority,\n    )\n\n    # ارسال ایمیل اگر کاربر فعال کرده باشد\n    profile = getattr(user, \"profile\", None)\n    if profile and profile.notification_email:\n        try:\n            from .tasks import send_notification_email\n            send_notification_email.delay(str(notification.id))\n        except Exception as e:\n            logger.warning(f\"Failed to queue notification email: {e}\")\n\n    return notification\n\n\ndef mark_as_read(*, notification):\n    if not notification.is_read:\n        notification.is_read = True\n        notification.read_at = timezone.now()\n        notification.save(update_fields=[\"is_read\", \"read_at\"])\n    return notification\n\n\ndef mark_all_as_read(*, user):\n    return Notification.objects.filter(user=user, is_read=False).update(\n        is_read=True, read_at=timezone.now()\n    )"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notifications/views.py",
+          "code": "from rest_framework import viewsets, mixins\nfrom rest_framework.decorators import action\nfrom rest_framework.permissions import IsAuthenticated\nfrom rest_framework.response import Response\nfrom .models import Notification\nfrom .serializers import NotificationSerializer\nfrom .services import mark_as_read, mark_all_as_read\n\n\nclass NotificationViewSet(\n    mixins.ListModelMixin,\n    mixins.RetrieveModelMixin,\n    viewsets.GenericViewSet,\n):\n    serializer_class = NotificationSerializer\n    permission_classes = [IsAuthenticated]\n\n    def get_queryset(self):\n        qs = Notification.objects.filter(user=self.request.user)\n        is_read = self.request.query_params.get(\"is_read\")\n        if is_read is not None:\n            qs = qs.filter(is_read=is_read.lower() == \"true\")\n        return qs\n\n    @action(detail=True, methods=[\"post\"])\n    def mark_read(self, request, pk=None):\n        notification = self.get_object()\n        mark_as_read(notification=notification)\n        return Response(NotificationSerializer(notification).data)\n\n    @action(detail=False, methods=[\"post\"])\n    def mark_all_read(self, request):\n        count = mark_all_as_read(user=request.user)\n        return Response({\"marked\": count})\n\n    @action(detail=False, methods=[\"get\"])\n    def unread_count(self, request):\n        count = Notification.objects.filter(user=request.user, is_read=False).count()\n        return Response({\"count\": count})"
+        }
+      ]
+    },
+    {
+      "id": "reports",
+      "title": "reports — گزارش‌ها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reports/views.py",
+          "code": "from rest_framework.decorators import api_view, permission_classes\nfrom rest_framework.permissions import IsAuthenticated, IsAdminUser\nfrom rest_framework.response import Response\nfrom django.db.models import Count, Sum, Avg, Q\nfrom django.utils import timezone\nfrom datetime import timedelta\n\n\n@api_view([\"GET\"])\n@permission_classes([IsAuthenticated])\ndef dashboard(request):\n    \"\"\"داشبورد کاربر.\"\"\"\n    from loans.models import Loan\n    from reviews.models import Review\n    from favorites.models import Favorite\n    from notifications.models import Notification\n\n    user = request.user\n    return Response({\n        \"active_loans\": Loan.objects.filter(user=user, status=\"active\").count(),\n        \"overdue_loans\": Loan.objects.filter(user=user, status=\"overdue\").count(),\n        \"total_loans\": Loan.objects.filter(user=user).count(),\n        \"my_reviews\": Review.objects.filter(user=user).count(),\n        \"my_favorites\": Favorite.objects.filter(user=user).count(),\n        \"unread_notifications\": Notification.objects.filter(user=user, is_read=False).count(),\n    })\n\n\n@api_view([\"GET\"])\n@permission_classes([IsAdminUser])\ndef admin_stats(request):\n    \"\"\"آمار کلی سیستم.\"\"\"\n    from catalog.models import Book\n    from loans.models import Loan\n    from payments.models import Payment\n    from django.contrib.auth import get_user_model\n\n    User = get_user_model()\n    last_30d = timezone.now() - timedelta(days=30)\n\n    return Response({\n        \"users\": {\n            \"total\": User.objects.count(),\n            \"new_30d\": User.objects.filter(date_joined__gte=last_30d).count(),\n            \"verified\": User.objects.filter(is_email_verified=True).count(),\n        },\n        \"books\": {\n            \"total\": Book.objects.filter(is_deleted=False).count(),\n            \"published\": Book.objects.filter(is_published=True, is_deleted=False).count(),\n            \"featured\": Book.objects.filter(is_featured=True, is_deleted=False).count(),\n        },\n        \"loans\": {\n            \"total\": Loan.objects.count(),\n            \"active\": Loan.objects.filter(status=\"active\").count(),\n            \"overdue\": Loan.objects.filter(status=\"overdue\").count(),\n            \"last_30d\": Loan.objects.filter(created_at__gte=last_30d).count(),\n        },\n        \"revenue\": {\n            \"total\": Payment.objects.filter(status=\"success\").aggregate(Sum(\"amount\"))[\"amount__sum\"] or 0,\n            \"last_30d\": Payment.objects.filter(status=\"success\", paid_at__gte=last_30d).aggregate(Sum(\"amount\"))[\"amount__sum\"] or 0,\n            \"count_30d\": Payment.objects.filter(status=\"success\", paid_at__gte=last_30d).count(),\n        },\n    })\n\n\n@api_view([\"GET\"])\n@permission_classes([IsAdminUser])\ndef top_books(request):\n    \"\"\"کتاب‌های برتر.\"\"\"\n    from catalog.models import Book\n    from django.db.models import Avg, Count\n\n    top_by_loans = list(\n        Book.objects.filter(is_published=True, is_deleted=False)\n        .order_by(\"-loans_count\")\n        .values(\"id\", \"title\", \"loans_count\", \"views_count\")[:10]\n    )\n    top_by_rating = list(\n        Book.objects.filter(is_published=True, is_deleted=False)\n        .annotate(avg_rating=Avg(\"reviews__rating\", filter=Q(reviews__is_approved=True)))\n        .filter(avg_rating__gte=4)\n        .order_by(\"-avg_rating\")[:10]\n        .values(\"id\", \"title\", \"avg_rating\")\n    )\n    return Response({\n        \"top_by_loans\": top_by_loans,\n        \"top_by_rating\": top_by_rating,\n    })"
+        }
+      ]
+    },
+    {
+      "id": "urls",
+      "title": "URLs نهایی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reviews/urls.py",
+          "code": "from rest_framework_nested import routers\nfrom rest_framework.routers import DefaultRouter\nfrom .views import ReviewViewSet\nfrom catalog.views import BookViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"books\", BookViewSet, basename=\"book\")\nrouter.register(r\"reviews\", ReviewViewSet, basename=\"review\")\n\nbooks_router = routers.NestedDefaultRouter(router, r\"books\", lookup=\"book\")\nbooks_router.register(r\"reviews\", ReviewViewSet, basename=\"book-reviews\")\n\nurlpatterns = router.urls + books_router.urls"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "loans/urls.py",
+          "code": "from rest_framework.routers import DefaultRouter\nfrom .views import LoanViewSet, ReservationViewSet\n\nrouter = DefaultRouter()\nrouter.register(r\"loans\", LoanViewSet, basename=\"loan\")\nrouter.register(r\"reservations\", ReservationViewSet, basename=\"reservation\")\n\nurlpatterns = router.urls"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reports/urls.py",
+          "code": "from django.urls import path\nfrom .views import dashboard, admin_stats, top_books\n\nurlpatterns = [\n    path(\"dashboard/\", dashboard, name=\"dashboard\"),\n    path(\"admin/stats/\", admin_stats, name=\"admin-stats\"),\n    path(\"admin/top-books/\", top_books, name=\"top-books\"),\n]"
+        }
+      ]
+    },
+    {
+      "id": "tests",
+      "title": "تست یکپارچگی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "tests/integration/test_full_flow.py",
+          "code": "import pytest\nfrom datetime import date\nfrom django.contrib.auth import get_user_model\nfrom rest_framework.test import APIClient\n\nfrom catalog.models import Author, Category, Book\nfrom loans.models import Loan\n\nUser = get_user_model()\n\n\n@pytest.mark.django_db\n@pytest.mark.integration\ndef test_full_user_flow():\n    \"\"\"جریان کامل: ثبت‌نام → ساخت کتاب → امانت → بازگشت.\"\"\"\n    client = APIClient()\n\n    # ۱. ثبت‌نام\n    register = client.post(\"/api/auth/register/\", {\n        \"username\": \"sara\",\n        \"email\": \"sara@example.com\",\n        \"password\": \"S3cret!Pass\",\n        \"password_confirm\": \"S3cret!Pass\",\n    }, format=\"json\")\n    assert register.status_code == 201\n    client.credentials(HTTP_AUTHORIZATION=f\"Bearer {register.data['access']}\")\n\n    # ۲. ساخت داده اولیه (admin)\n    admin = User.objects.create_user(\n        username=\"admin\", password=\"Admin123!\", is_staff=True,\n    )\n    author = Author.objects.create(full_name=\"Test Author\")\n    book = Book.objects.create(\n        title=\"Test Book\", author=author,\n        isbn=\"9780000000001\", price=\"42.50\",\n        published_at=date(2020, 1, 1),\n        is_published=True, stock=1,\n    )\n\n    # ۳. مشاهده کتاب\n    books = client.get(\"/api/books/\")\n    assert books.status_code == 200\n    assert books.data[\"count\"] == 1\n\n    # ۴. امانت کتاب\n    loan = client.post(\"/api/loans/\", {\"book\": str(book.id)}, format=\"json\")\n    assert loan.status_code == 201\n    book.refresh_from_db()\n    assert book.stock == 0\n\n    # ۵. بازگشت کتاب\n    loan_id = loan.data[\"id\"]\n    returned = client.post(f\"/api/loans/{loan_id}/return_book/\", format=\"json\")\n    assert returned.status_code == 200\n    book.refresh_from_db()\n    assert book.stock == 1"
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-084-q1",
+      "tag": "کوییز",
+      "question": "چرا منطق کسب‌وکار در Service قرار می‌گیرد نه در View؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون قابل تست، قابل استفاده مجدد (از View، Celery، ادمین)، و View را نازک نگه می‌دارد.", "correct": true, "explanation": "الگوی Service Layer." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-084-q2",
+      "tag": "کوییز",
+      "question": "چرا در create_loan از transaction.atomic استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون کاهش stock و ساخت Loan باید اتمیک باشند — اگر یکی خطا داد، هر دو برگردند.", "correct": true, "explanation": "جلوگیری از داده ناقص." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-084-q3",
+      "tag": "کوییز",
+      "question": "چرا از F() برای کاهش stock استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون جلوگیری از race condition — عملیات در دیتابیس انجام می‌شود، نه در پایتون.", "correct": true, "explanation": "با ۱۰ کاربر همزمان، بدون F() ممکن است stock اشتباه شود." },
+        { "text": "چون سریع‌تر است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-084-q4",
+      "tag": "کوییز",
+      "question": "چرا در verify_payment از transaction.atomic استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون ساخت Subscription و به‌روزرسانی Payment و Profile باید اتمیک باشند.", "correct": true, "explanation": "اگر یکی خطا داد، همه برگردند." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-084-q5",
+      "tag": "کوییز",
+      "question": "چرا در check_overdue_loans از Celery Beat استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون اجباری است.", "correct": false },
+        { "text": "چون باید روزانه (یا هر بازه) بررسی شود که کدام امانت‌ها دیرکرد دارند.", "correct": true, "explanation": "taskهای زمان‌بندی‌شده با Celery Beat." },
+        { "text": "چون سریع‌تر است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-084-ex1",
+      "title": "تمرین — پیاده‌سازی منطق کسب‌وکار",
+      "problem": "همه منطق‌های این فصل را پیاده کنید:\n- نظرات با تأیید ادمین و رأی مفید\n- امانت با محدودیت ۵ کتاب فعال\n- رزرو با صف انتظار\n- پرداخت با تأیید و فعال‌سازی اشتراک\n- اعلان‌ها با ارسال ایمیل\n- taskهای زمان‌بندی برای overdue، reminders، cleanup",
+      "hints": [
+        "Service Layer جدا از View.",
+        "transaction.atomic برای عملیات چندمرحله‌ای.",
+        "F() برای جلوگیری از race.",
+        "Celery Beat برای taskهای زمان‌بندی."
+      ],
+      "solution": "همه کدها در این فصل آمده است. برای تست:\n\nbash\n# فعال‌سازی Celery Beat\ncelery -A library_system beat -l info\ncelery -A library_system worker -l info\n\n# در Django shell:\nfrom loans.tasks import check_overdue_loans\ncheck_overdue_loans.delay()\n\n# یا صبر کن تا زمان‌بندی اجرا شود (8 صبح روزانه)",
+      "explanation": "پس از این، سیستم شما منطق کسب‌وکار کامل دارد."
+    }
+  ],
+  "summary": [
+    "Service Layer برای منطق کسب‌وکار.",
+    "transaction.atomic برای عملیات چندمرحله‌ای.",
+    "F() برای جلوگیری از race condition.",
+    "نظرات با تأیید + رأی مفید.",
+    "امانت با محدودیت ۵ کتاب فعال.",
+    "رزرو با صف انتظار و تخصیص خودکار.",
+    "پرداخت با تأیید و فعال‌سازی اشتراک.",
+    "اعلان با email پس‌زمینه.",
+    "Celery Beat برای taskهای روزانه.",
+    "تست یکپارچگی برای جریان کامل."
+  ],
+  "resources": [
+    { "title": "Django — Database transactions", "url": "https://docs.djangoproject.com/en/stable/topics/db/transactions/", "official": true },
+    { "title": "Celery — Periodic Tasks", "url": "https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html", "official": true }
+  ]
+}

@@ -1,0 +1,272 @@
+{
+  "id": "ch-085",
+  "slug": "capstone-final",
+  "title": "پروژه نهایی — فاز ۶: Testing، مستندسازی و استقرار",
+  "kicker": "فصل ۸۵",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 60,
+  "lead": "این فصل پایانی پروژه است: تست کامل، مستندسازی OpenAPI، Docker و استقرار. در پایان، شما یک API تولیدی دارید.",
+  "sections": [
+    {
+      "id": "factories",
+      "title": "Factoryهای تست",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "tests/factories.py",
+          "code": "import factory\nfrom decimal import Decimal\nfrom datetime import date, timedelta\nfrom django.contrib.auth import get_user_model\nfrom factory.django import DjangoModelFactory\nfrom faker import Faker\n\nfrom catalog.models import Author, Category, Book\nfrom reviews.models import Review\nfrom loans.models import Loan\n\nUser = get_user_model()\nfake = Faker(\"fa_IR\")\n\n\nclass UserFactory(DjangoModelFactory):\n    class Meta:\n        model = User\n        django_get_or_create = (\"username\",)\n\n    username = factory.Sequence(lambda n: f\"user{n}\")\n    email = factory.LazyAttribute(lambda o: f\"{o.username}@example.com\")\n    first_name = factory.LazyFunction(lambda: fake.first_name())\n    last_name = factory.LazyFunction(lambda: fake.last_name())\n\n    @factory.post_generation\n    def password(obj, create, extracted, **kwargs):\n        obj.set_password(extracted or \"TestPass123!\")\n        if create:\n            obj.save()\n\n    @factory.post_generation\n    def profile(obj, create, extracted, **kwargs):\n        if create:\n            from users.models import UserProfile\n            UserProfile.objects.get_or_create(user=obj)\n\n\nclass AdminFactory(UserFactory):\n    is_staff = True\n    is_superuser = True\n\n\nclass AuthorFactory(DjangoModelFactory):\n    class Meta:\n        model = Author\n\n    full_name = factory.LazyFunction(lambda: fake.name())\n    bio = factory.LazyFunction(lambda: fake.text(max_nb_chars=300))\n    nationality = \"IR\"\n\n\nclass CategoryFactory(DjangoModelFactory):\n    class Meta:\n        model = Category\n\n    name = factory.Sequence(lambda n: f\"Category {n}\")\n    description = factory.LazyFunction(lambda: fake.sentence())\n\n\nclass BookFactory(DjangoModelFactory):\n    class Meta:\n        model = Book\n\n    title = factory.LazyFunction(lambda: fake.sentence(nb_words=4))\n    subtitle = \"\"\n    description = factory.LazyFunction(lambda: fake.text(max_nb_chars=500))\n    author = factory.SubFactory(AuthorFactory)\n    isbn = factory.Sequence(lambda n: f\"978{n:010d}\")\n    price = factory.LazyFunction(lambda: Decimal(fake.pydecimal(left_digits=4, right_digits=2, positive=True)))\n    published_at = factory.LazyFunction(lambda: fake.date_between(start_date=\"-10y\", end_date=\"today\"))\n    pages = factory.LazyFunction(lambda: fake.random_int(100, 1000))\n    language = \"fa\"\n    stock = 10\n    total_copies = 10\n    is_published = True\n    owner = None\n\n\nclass ReviewFactory(DjangoModelFactory):\n    class Meta:\n        model = Review\n\n    book = factory.SubFactory(BookFactory)\n    user = factory.SubFactory(UserFactory)\n    rating = factory.LazyFunction(lambda: fake.random_int(1, 5))\n    title = factory.LazyFunction(lambda: fake.sentence())\n    comment = factory.LazyFunction(lambda: fake.text(max_nb_chars=300))\n    is_approved = True\n\n\nclass LoanFactory(DjangoModelFactory):\n    class Meta:\n        model = Loan\n\n    user = factory.SubFactory(UserFactory)\n    book = factory.SubFactory(BookFactory)\n    status = \"active\"\n    borrowed_at = factory.LazyFunction(lambda: timezone.now())\n    due_date = factory.LazyFunction(lambda: timezone.now() + timedelta(days=14))\n\n\nfrom django.utils import timezone"
+        }
+      ]
+    },
+    {
+      "id": "conftest",
+      "title": "conftest.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "tests/conftest.py",
+          "code": "import pytest\nfrom rest_framework.test import APIClient\n\nfrom tests.factories import UserFactory, AdminFactory, BookFactory, AuthorFactory, CategoryFactory\n\n\n@pytest.fixture\ndef api_client():\n    return APIClient()\n\n\n@pytest.fixture\ndef user(db):\n    return UserFactory()\n\n\n@pytest.fixture\ndef admin(db):\n    return AdminFactory()\n\n\n@pytest.fixture\ndef authenticated_client(api_client, user):\n    api_client.force_authenticate(user=user)\n    return api_client\n\n\n@pytest.fixture\ndef admin_client(api_client, admin):\n    api_client.force_authenticate(user=admin)\n    return api_client\n\n\n@pytest.fixture\ndef author(db):\n    return AuthorFactory()\n\n\n@pytest.fixture\ndef category(db):\n    return CategoryFactory()\n\n\n@pytest.fixture\ndef book(db, author):\n    return BookFactory(author=author)"
+        }
+      ]
+    },
+    {
+      "id": "integration-tests",
+      "title": "تست‌های یکپارچگی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "tests/test_integration.py",
+          "code": "import pytest\nfrom decimal import Decimal\nfrom rest_framework import status\n\nfrom tests.factories import (\n    UserFactory, AdminFactory, AuthorFactory, BookFactory, ReviewFactory,\n)\n\n\n@pytest.mark.django_db\n@pytest.mark.integration\nclass TestUserJourney:\n    \"\"\"جریان کامل کاربر از ثبت‌نام تا امانت.\"\"\"\n\n    def test_register_and_browse(self, api_client):\n        # ثبت‌نام\n        register = api_client.post(\"/api/auth/register/\", {\n            \"username\": \"sara\",\n            \"email\": \"sara@example.com\",\n            \"password\": \"S3cret!Pass\",\n            \"password_confirm\": \"S3cret!Pass\",\n        }, format=\"json\")\n        assert register.status_code == status.HTTP_201_CREATED\n\n        # تنظیم توکن\n        api_client.credentials(HTTP_AUTHORIZATION=f\"Bearer {register.data['access']}\")\n\n        # ساخت کتاب توسط ادمین\n        admin = AdminFactory()\n        book = BookFactory(author=AuthorFactory())\n\n        # دیدن کتاب\n        response = api_client.get(\"/api/books/\")\n        assert response.status_code == status.HTTP_200_OK\n        assert response.data[\"count\"] >= 1\n\n    def test_loan_flow(self, authenticated_client, book):\n        initial_stock = book.stock\n\n        # امانت\n        loan = authenticated_client.post(\n            \"/api/loans/\", {\"book\": str(book.id)}, format=\"json\",\n        )\n        assert loan.status_code == status.HTTP_201_CREATED\n\n        book.refresh_from_db()\n        assert book.stock == initial_stock - 1\n\n        # بازگشت\n        loan_id = loan.data[\"id\"]\n        returned = authenticated_client.post(\n            f\"/api/loans/{loan_id}/return_book/\", format=\"json\",\n        )\n        assert returned.status_code == status.HTTP_200_OK\n\n        book.refresh_from_db()\n        assert book.stock == initial_stock\n\n\n@pytest.mark.django_db\nclass TestReviewFlow:\n    def test_create_and_approve_review(self, authenticated_client, admin_client, book):\n        # ساخت نظر\n        response = authenticated_client.post(\n            f\"/api/books/{book.slug}/reviews/\",\n            {\n                \"book\": str(book.id),\n                \"rating\": 5,\n                \"comment\": \"کتاب عالی بود، حتماً بخوانید.\",\n            },\n            format=\"json\",\n        )\n        assert response.status_code == status.HTTP_201_CREATED\n        review_id = response.data[\"id\"]\n\n        # تأیید توسط ادمین\n        approve = admin_client.post(\n            f\"/api/reviews/{review_id}/approve/\", format=\"json\",\n        )\n        assert approve.status_code == status.HTTP_200_OK\n\n\n@pytest.mark.django_db\nclass TestPaymentFlow:\n    def test_initiate_payment(self, authenticated_client):\n        response = authenticated_client.post(\n            \"/api/payments/initiate/\",\n            {\"tier\": \"basic\", \"gateway\": \"zarinpal\"},\n            format=\"json\",\n        )\n        assert response.status_code == status.HTTP_201_CREATED\n        assert \"payment_url\" in response.data\n\n    def test_verify_payment(self, api_client, user, authenticated_client):\n        # شروع\n        init = authenticated_client.post(\n            \"/api/payments/initiate/\",\n            {\"tier\": \"basic\", \"gateway\": \"zarinpal\"},\n            format=\"json\",\n        )\n        payment_id = init.data[\"payment\"][\"id\"]\n\n        # تأیید (callback بدون auth)\n        api_client.credentials()\n        verify = api_client.post(\n            f\"/api/payments/{payment_id}/verify/\",\n            {\"status\": \"success\", \"transaction_id\": \"tx_123\"},\n            format=\"json\",\n        )\n        assert verify.status_code == status.HTTP_200_OK\n        assert verify.data[\"status\"] == \"success\"\n\n        # بررسی اشتراک\n        user.refresh_from_db()\n        profile = user.profile\n        profile.refresh_from_db()\n        assert profile.subscription_tier == \"basic\"\n\n\n@pytest.mark.django_db\nclass TestQueryPerformance:\n    \"\"\"بررسی N+1.\"\"\"\n\n    def test_book_list_query_count(self, api_client, django_assert_num_queries):\n        BookFactory.create_batch(10)\n\n        with django_assert_num_queries(3):   # حداکثر ۳ کوئری\n            response = api_client.get(\"/api/books/\")\n            assert response.status_code == status.HTTP_200_OK"
+        }
+      ]
+    },
+    {
+      "id": "openapi",
+      "title": "مستندسازی OpenAPI",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "library_system/urls.py",
+          "code": "from drf_spectacular.views import (\n    SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView,\n)\n\nurlpatterns += [\n    path(\"api/schema/\", SpectacularAPIView.as_view(), name=\"schema\"),\n    path(\"api/docs/\", SpectacularSwaggerView.as_view(url_name=\"schema\"), name=\"swagger\"),\n    path(\"api/redoc/\", SpectacularRedocView.as_view(url_name=\"schema\"), name=\"redoc\"),\n]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/views.py — با extend_schema",
+          "code": "from drf_spectacular.utils import (\n    extend_schema, extend_schema_view,\n    OpenApiParameter, OpenApiTypes, OpenApiExample, OpenApiResponse,\n)\n\n\n@extend_schema_view(\n    list=extend_schema(\n        summary=\"لیست کتاب‌ها\",\n        description=\"لیست کتاب‌های منتشرشده با فیلتر، جستجو و صفحه‌بندی.\",\n        parameters=[\n            OpenApiParameter(\"category\", OpenApiTypes.STR, description=\"اسلاگ دسته\"),\n            OpenApiParameter(\"min_price\", OpenApiTypes.DECIMAL, description=\"حداقل قیمت\"),\n            OpenApiParameter(\"max_price\", OpenApiTypes.DECIMAL, description=\"حداکثر قیمت\"),\n            OpenApiParameter(\"search\", OpenApiTypes.STR, description=\"جستجو\"),\n            OpenApiParameter(\"ordering\", OpenApiTypes.STR, description=\"مرتب‌سازی\"),\n        ],\n        tags=[\"Books\"],\n        examples=[\n            OpenApiExample(\n                \"نمونه پاسخ\",\n                value={\n                    \"id\": \"...\",\n                    \"title\": \"Clean Code\",\n                    \"author_name\": \"Robert C. Martin\",\n                    \"price\": \"42.50\",\n                    \"average_rating\": 4.5,\n                },\n                response_only=True,\n            ),\n        ],\n    ),\n    retrieve=extend_schema(tags=[\"Books\"]),\n    create=extend_schema(\n        tags=[\"Books\"],\n        responses={\n            201: OpenApiResponse(description=\"کتاب ساخته شد\"),\n            400: OpenApiResponse(description=\"داده نامعتبر\"),\n            401: OpenApiResponse(description=\"احراز هویت لازم\"),\n        },\n    ),\n    update=extend_schema(tags=[\"Books\"]),\n    partial_update=extend_schema(tags=[\"Books\"]),\n    destroy=extend_schema(tags=[\"Books\"]),\n    featured=extend_schema(\n        tags=[\"Books\"],\n        summary=\"کتاب‌های ویژه\",\n        description=\"۱۰ کتاب ویژه برای نمایش در صفحه اصلی.\",\n    ),\n    newest=extend_schema(tags=[\"Books\"], summary=\"جدیدترین کتاب‌ها\"),\n    popular=extend_schema(tags=[\"Books\"], summary=\"محبوب‌ترین کتاب‌ها\"),\n)\nclass BookViewSet(viewsets.ModelViewSet):\n    # ... بقیه کد\n    pass"
+        },
+        {
+          "type": "bash",
+          "code": "# تولید schema\npython manage.py spectacular --file schema.yml --validate\n\n# در CI، validate\npython manage.py spectacular --validate"
+        }
+      ]
+    },
+    {
+      "id": "docker",
+      "title": "Docker نهایی",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "dockerfile",
+          "filename": "Dockerfile",
+          "code": "FROM python:3.11-slim AS builder\n\nENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1\n\nWORKDIR /build\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    build-essential libpq-dev \\\n    && rm -rf /var/lib/apt/lists/*\n\nCOPY requirements.txt .\nRUN pip install --user -r requirements.txt\n\nFROM python:3.11-slim\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1 \\\n    PATH=\"/home/app/.local/bin:$PATH\"\n\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    libpq5 libmagic1 curl \\\n    && rm -rf /var/lib/apt/lists/*\n\nRUN useradd --create-home --shell /bin/bash app\nCOPY --from=builder --chown=app:app /root/.local /home/app/.local\nCOPY --chown=app:app . .\n\nRUN mkdir -p /app/staticfiles /app/media /app/logs && chown -R app:app /app\n\nUSER app\n\nEXPOSE 8000\n\nHEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \\\n    CMD curl -f http://localhost:8000/live/ || exit 1\n\nENTRYPOINT [\"/app/docker/entrypoint.sh\"]\nCMD [\"gunicorn\", \"library_system.wsgi:application\", \\\n     \"--bind\", \"0.0.0.0:8000\", \\\n     \"--workers\", \"3\", \\\n     \"--worker-class\", \"gthread\", \\\n     \"--threads\", \"2\", \\\n     \"--access-logfile\", \"-\", \\\n     \"--error-logfile\", \"-\"]"
+        },
+        {
+          "type": "bash",
+          "filename": "docker/entrypoint.sh",
+          "code": "#!/bin/bash\nset -e\n\necho \"Waiting for database...\"\nuntil pg_isready -h \"${DB_HOST}\" -p \"${DB_PORT:-5432}\" -U \"${DB_USER}\" > /dev/null 2>&1; do\n    sleep 1\ndone\n\necho \"Waiting for Redis...\"\nuntil redis-cli -u \"${REDIS_URL}\" ping > /dev/null 2>&1; do\n    sleep 1\ndone\n\nif [ \"$1\" = \"gunicorn\" ]; then\n    echo \"Running migrations...\"\n    python manage.py migrate --noinput\n\n    echo \"Collecting static...\"\n    python manage.py collectstatic --noinput --clear\nfi\n\nexec \"$@\""
+        }
+      ]
+    },
+    {
+      "id": "ci-cd",
+      "title": "CI/CD نهایی",
+      "blocks": [
+        {
+          "type": "yaml",
+          "filename": ".github/workflows/ci.yml",
+          "code": "name: CI\n\non:\n  push:\n    branches: [main, develop]\n  pull_request:\n\nconcurrency:\n  group: ci-${{ github.ref }}\n  cancel-in-progress: true\n\nenv:\n  DJANGO_SETTINGS_MODULE: library_system.settings.dev\n  SECRET_KEY: test-secret-key\n\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n          cache: 'pip'\n      - run: pip install ruff black\n      - run: ruff check .\n      - run: black --check .\n\n  test:\n    runs-on: ubuntu-latest\n    services:\n      postgres:\n        image: postgres:16-alpine\n        env:\n          POSTGRES_DB: test_db\n          POSTGRES_USER: test_user\n          POSTGRES_PASSWORD: test_pass\n        ports: [5432:5432]\n        options: --health-cmd pg_isready --health-interval 5s --health-retries 5\n      redis:\n        image: redis:7-alpine\n        ports: [6379:6379]\n    env:\n      DB_NAME: test_db\n      DB_USER: test_user\n      DB_PASSWORD: test_pass\n      DB_HOST: localhost\n      REDIS_URL: redis://localhost:6379/0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n          cache: 'pip'\n      - run: pip install -r requirements.txt -r requirements-dev.txt\n      - run: python manage.py migrate\n      - run: pytest --cov=. --cov-report=xml --cov-fail-under=75\n      - uses: codecov/codecov-action@v4\n        if: always()\n\n  security:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n      - run: pip install pip-audit\n      - run: pip-audit --fail-on high\n\n  schema:\n    runs-on: ubuntu-latest\n    env:\n      SECRET_KEY: schema-test\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.11'\n          cache: 'pip'\n      - run: pip install -r requirements.txt\n      - run: python manage.py spectacular --file /tmp/schema.yml --validate"
+        },
+        {
+          "type": "yaml",
+          "filename": ".github/workflows/cd.yml",
+          "code": "name: CD\n\non:\n  push:\n    tags: ['v*']\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      packages: write\n    steps:\n      - uses: actions/checkout@v4\n      - uses: docker/setup-buildx-action@v3\n      - uses: docker/login-action@v3\n        with:\n          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.GITHUB_TOKEN }}\n      - uses: docker/build-push-action@v5\n        with:\n          push: true\n          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}\n          cache-from: type=gha\n          cache-to: type=gha,mode=max\n\n  deploy:\n    needs: build\n    runs-on: ubuntu-latest\n    environment: production\n    steps:\n      - uses: appleboy/ssh-action@v1\n        with:\n          host: ${{ secrets.DEPLOY_HOST }}\n          username: ${{ secrets.DEPLOY_USER }}\n          key: ${{ secrets.DEPLOY_KEY }}\n          script: |\n            cd /var/www/library_system\n            export TAG=${{ github.ref_name }}\n            docker compose pull\n            docker compose up -d --no-deps api celery celery-beat\n            docker compose exec -T api python manage.py migrate --noinput\n\n      - name: Health check\n        run: |\n          sleep 10\n          curl -f https://api.example.com/health/ || exit 1"
+        }
+      ]
+    },
+    {
+      "id": "readme",
+      "title": "README نهایی",
+      "blocks": [
+        {
+          "type": "text",
+          "filename": "README.md",
+          "code": "# Library System API\n\nسیستم مدیریت کتابخانه دیجیتال با Django REST Framework.\n\n## ویژگی‌ها\n\n- احراز هویت JWT با Rotation و Blacklist\n- مدیریت کاربران و اشتراک‌ها\n- CRUD کتاب، نویسنده، دسته‌بندی\n- نظرات، امتیازات و تأیید\n- امانت و رزرو با صف انتظار\n- پرداخت و اشتراک\n- اعلان‌ها با ایمیل\n- گزارش‌ها و آمار\n- مستندات OpenAPI\n- Docker + CI/CD\n- Sentry + Prometheus\n\n## پیش‌نیازها\n\n- Python 3.11+\n- PostgreSQL 16+\n- Redis 7+\n- Docker & Docker Compose\n\n## راه‌اندازی سریع\n\n```bash\n# کلون\ngit clone <repo>\ncd library_system\n\n# کپی env\ncp .env.example .env\n# ویرایش .env\n\n# Docker\ndocker compose up -d --build\n\n# Migrations\ndocker compose exec api python manage.py migrate\ndocker compose exec api python manage.py createsuperuser\n```\n\n## دسترسی\n\n- API: http://localhost:8000/api/\n- Admin: http://localhost:8000/admin/\n- Docs: http://localhost:8000/api/docs/\n- Health: http://localhost:8000/health/\n\n## تست\n\n```bash\npytest --cov=. --cov-report=html\n```\n\n## ساختار\n\n- `common/` — ابزارهای مشترک\n- `users/` — احراز هویت\n- `catalog/` — کتاب و نویسنده\n- `reviews/` — نظرات\n- `favorites/` — علاقه‌مندی\n- `loans/` — امانت و رزرو\n- `payments/` — اشتراک و پرداخت\n- `notifications/` — اعلان‌ها\n- `reports/` — گزارش‌ها\n\n## مجوز\n\nMIT"
+        }
+      ]
+    },
+    {
+      "id": "final-checklist",
+      "title": "چک‌لیست نهایی پروژه",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پس از تکمیل همه فازها، این چک‌لیست را بررسی کنید. اگر همه موارد ✓ باشند، شما یک API تولیدی کامل دارید."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "✓ همه Endpointها با curl/Postman کار می‌کنند",
+            "✓ JWT روی همه Endpointهای محافظت‌شده",
+            "✓ مجوز سطح شیء (مالکیت)",
+            "✓ تست‌ها با coverage بالای ۸۰٪",
+            "✓ OpenAPI در /api/docs/",
+            "✓ Docker Compose با یک دستور",
+            "✓ CI در GitHub Actions",
+            "✓ Sentry فعال",
+            "✓ Prometheus metrics",
+            "✓ Backup خودکار به S3",
+            "✓ Health check",
+            "✓ مستندات README",
+            "✓ Deployment Zero-Downtime",
+            "✓ HTTPS + HSTS",
+            "✓ همه Secrets در env",
+            "✓ Logging ساختاریافته JSON",
+            "✓ Celery taskها زمان‌بندی‌شده",
+            "✓ Audit Logging",
+            "✓ Rate Limiting چندلایه",
+            "✓ N+1 نداشتن (select_related)"
+          ]
+        },
+        {
+          "type": "callout-level",
+          "basic": "پروژه کار می‌کند.",
+          "better": "پروژه تست، مستند، امن است.",
+          "production": "همه موارد بالا + مانیتورینگ + Backup + DR Plan + Pentest."
+        }
+      ]
+    },
+    {
+      "id": "next-steps",
+      "title": "گام‌های بعدی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "شما یک API تولیدی کامل ساخته‌اید. برای ادامه:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "**افزودن WebSocket** برای اعلان real-time (Channels)",
+            "**افزودن ElasticSearch** برای جستجوی پیشرفته",
+            "**افزودن ML** برای توصیه‌گر کتاب",
+            "**افزودن i18n کامل** برای چندزبانه",
+            "**میکروسرویس‌سازی** اگر واقعاً نیاز شد",
+            "**مهاجرت به Kubernetes** برای مقیاس بالا",
+            "**CI/CD پیشرفته** با Blue-Green deployment",
+            "**Load testing** با Locust یا k6"
+          ]
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "تبریک",
+          "text": "شما از صفر شروع کردید و به یک API تولیدی با Django REST Framework رسیدید. این همان سفر حرفه‌ای است که هر توسعه‌دهنده بک‌اند باید طی کند."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-085-q1",
+      "tag": "کوییز",
+      "question": "چرا در تست‌ها از factory_boy استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون داده تست را بدون تکرار و با مقادیر معنادار می‌سازد.", "correct": true, "explanation": "کاهش کد تکراری، تغییر آسان." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-085-q2",
+      "tag": "کوییز",
+      "question": "چرا از django_assert_num_queries در تست استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون اجباری است.", "correct": false },
+        { "text": "چون N+1 را کشف می‌کند — اگر تعداد کوئری بیشتر از حد باشد، تست fail می‌شود.", "correct": true, "explanation": "جلوگیری از regression در بهینه‌سازی." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-085-q3",
+      "tag": "کوییز",
+      "question": "چرا schema را در CI validate می‌کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون تغییرات شکستنی در API را زود کشف می‌کند.", "correct": true, "explanation": "OpenAPI را در CI بررسی کنید." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-085-q4",
+      "tag": "کوییز",
+      "question": "چرا entrypoint منتظر PostgreSQL و Redis می‌ماند؟",
+      "options": [
+        { "text": "چون اجباری است.", "correct": false },
+        { "text": "چون در اولین اجرا، DB و Redis آماده نیستند و migration خطا می‌دهد.", "correct": true, "explanation": "pg_isready و redis-cli ping." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-085-q5",
+      "tag": "کوییز",
+      "question": "چرا deploy در CD با tag نسخه انجام می‌شود؟",
+      "options": [
+        { "text": "چون GitHub اجبار می‌کند.", "correct": false },
+        { "text": "چون تأیید دستی می‌دهد و rollback آسان است.", "correct": true, "explanation": "بدون tag، هر push مستقیم به production." },
+        { "text": "چون سریع‌تر است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-085-ex1",
+      "title": "تمرین — تست، مستندسازی و استقرار",
+      "problem": "پروژه را کامل کنید:\n۱. تست‌های یکپارچگی بنویسید (ثبت‌نام → امانت → بازگشت).\n۲. OpenAPI را با extend_schema غنی کنید.\n۳. Docker Compose با همه سرویس‌ها.\n۴. CI با lint، test، security، schema.\n۵. CD با tag و health check.\n۶. README کامل.",
+      "hints": [
+        "از factories و conftest استفاده کنید.",
+        "extend_schema برای همه ViewSetها.",
+        "Dockerfile چندمرحله‌ای.",
+        "GitHub Actions."
+      ],
+      "solution": "همه کدها در این فصل آمده است. مراحل:\n1. factories و conftest\n2. تست‌های یکپارچگی در tests/test_integration.py\n3. extend_schema_view روی BookViewSet\n4. Dockerfile + entrypoint.sh + docker-compose.yml\n5. .github/workflows/ci.yml + cd.yml\n6. README.md\n7. اجرا: docker compose up -d --build\n8. دسترسی: http://localhost:8000/api/docs/",
+      "explanation": "شما اکنون یک API تولیدی کامل دارید که می‌تواند ترافیک واقعی را مدیریت کند."
+    }
+  ],
+  "summary": [
+    "Factoryها با factory_boy برای داده تست.",
+    "conftest با fixtureهای مشترک.",
+    "تست‌های یکپارچگی برای جریان کامل.",
+    "django_assert_num_queries برای کشف N+1.",
+    "OpenAPI با extend_schema.",
+    "Dockerfile چندمرحله‌ای + entrypoint.",
+    "CI: lint، test، security، schema.",
+    "CD با tag و health check.",
+    "README با راهنمای کامل.",
+    "چک‌لیست نهایی ۲۰ موردی."
+  ],
+  "resources": [
+    { "title": "pytest-django", "url": "https://pytest-django.readthedocs.io/", "official": true },
+    { "title": "factory_boy", "url": "https://factoryboy.readthedocs.io/", "official": true },
+    { "title": "drf-spectacular", "url": "https://drf-spectacular.readthedocs.io/", "official": true },
+    { "title": "Docker", "url": "https://docs.docker.com/", "official": true },
+    { "title": "GitHub Actions", "url": "https://docs.github.com/en/actions", "official": true }
+  ]
+}

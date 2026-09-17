@@ -1,0 +1,395 @@
+{
+  "id": "ch-078",
+  "slug": "system-design",
+  "title": "طراحی سیستم (System Design)",
+  "kicker": "فصل ۷۸",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 60,
+  "lead": "این فصل معماری کامل یک سیستم API واقعی را نشان می‌دهد: از CDN تا دیتابیس، صف، کش و مانیتورینگ. هدف این است که بدانید هر قطعه چرا وجود دارد.",
+  "sections": [
+    {
+      "id": "evolution",
+      "title": "تکامل معماری با رشد",
+      "blocks": [
+        { "type": "paragraph", "text": "هیچ سیستمی از روز اول microservices نمی‌شود. معماری همراه با رشد ترافیک و پیچیدگی تکامل می‌یابد. هر مرحله محدودیت‌های خودش را دارد و باید فقط وقتی به مرحله بعد رفت که نیاز واقعی باشد." },
+        { "type": "table", "headers": ["مرحله", "ترافیک", "معماری", "محدودیت"], "rows": [
+          ["۱ — Prototype", "۰-۱۰۰ کاربر", "تک سرور، SQLite، runserver", "بدون concurrent، بدون scale"],
+          ["۲ — MVP", "۱۰۰-۱۰K کاربر", "PostgreSQL، Gunicorn، Nginx", "تک سرور، SPOF"],
+          ["۳ — Growth", "۱۰K-۱۰۰K کاربر", "چند سرور، Load Balancer، Redis", "دیتابیس bottleneck"],
+          ["۴ — Scale", "۱۰۰K-۱M کاربر", "Read Replica، Celery، CDN", "پیچیدگی عملیاتی"],
+          ["۵ — Large Scale", "۱M+ کاربر", "Microservices، Event Bus، Cache چندلایه", "دیباگ سخت، هزینه بالا"]
+        ]},
+        { "type": "note", "variant": "tip", "title": "قاعده طلایی", "text": "به‌اندازه نیاز معماری کنید، نه بیشتر. **Premature optimization** دشمن پروژه‌های کوچک است. خیلی از استارتاپ‌ها با یک سرور PostgreSQL و ۱۰K کاربر زنده‌اند." }
+      ]
+    },
+    {
+      "id": "diagram",
+      "title": "معماری کلی یک API تولیدی",
+      "blocks": [
+        { "type": "paragraph", "text": "این معماری مرجع است — هر قطعه یک نقش مشخص دارد. بسته به مقیاس شما، ممکن است بخشی از این‌ها را نداشته باشید یا ادغام کنید." },
+        { "type": "text", "code": "                ┌──────────┐\n                │  Client  │\n                │ (web/mob)│\n                └────┬─────┘\n                     │ HTTPS\n                     ▼\n              ┌──────────────┐\n              │     CDN      │  Cloudflare, CloudFront\n              │  - Static    │  WAF, DDoS protection\n              │  - Cache     │\n              └──────┬───────┘\n                     │\n                     ▼\n         ┌──────────────────────┐\n         │  Load Balancer (L4/L7)│  AWS ELB, HAProxy\n         │  - Health checks      │\n         │  - SSL termination    │\n         └──────────┬───────────┘\n                    │\n         ┌──────────┴──────────┐\n         │                     │\n         ▼                     ▼\n    ┌─────────┐           ┌─────────┐\n    │ Nginx 1 │           │ Nginx N │  Reverse proxy\n    │ - Rate  │           │         │  Static + Media\n    │ - Buffer│           │         │\n    └────┬────┘           └────┬────┘\n         │                     │\n         └──────────┬──────────┘\n                    │\n         ┌──────────┴──────────┐\n         │                     │\n         ▼                     ▼\n    ┌─────────┐           ┌─────────┐\n    │Django/1 │  ...      │Django/N │  Gunicorn + DRF\n    │  DRF    │           │  DRF    │\n    └────┬────┘           └────┬────┘\n         │                     │\n         └──────────┬──────────┘\n                    │\n    ┌───────────────┼───────────────┐\n    │               │               │\n    ▼               ▼               ▼\n┌────────┐    ┌──────────┐    ┌────────┐\n│ Redis  │    │PostgreSQL│    │ Celery │\n│ -Cache │    │-Primary  │    │ Workers│\n│ -Session│   │+2 Replica│    │        │\n│ -Queue │    │          │    │        │\n└────────┘    └──────────┘    └───┬────┘\n                                  │\n                            ┌─────▼─────┐\n                            │   Queue   │\n                            │  (Redis)  │\n                            └───────────┘\n\n         ┌─────────┐    ┌──────────┐\n         │   S3    │    │Monitoring│\n         │-Media   │    │-Sentry   │\n         │-Backup  │    │-Grafana  │\n         └─────────┘    │-Jaeger   │\n                        └──────────┘" }
+      ]
+    },
+    {
+      "id": "cdn",
+      "title": "CDN — لایه اول",
+      "blocks": [
+        { "type": "paragraph", "text": "CDN (Content Delivery Network) فایل‌های استاتیک و مدیا را از نزدیک‌ترین نقطه جغرافیایی به کاربر سرو می‌کند. این لایه سه فایده دارد: سرعت، کاهش بار سرور، و امنیت (WAF/DDoS)." },
+        { "type": "list", "ordered": false, "items": [
+          "**Static assets:** CSS، JS، تصاویر — با کش طولانی.",
+          "**Media files:** عکس‌های آپلودشده، PDF — با کش متوسط.",
+          "**WAF:** جلوگیری از SQL injection، XSS، botها.",
+          "**DDoS protection:** جذب حملات volumetric.",
+          "**SSL termination:** کاهش load سرور.",
+          "**Edge caching:** پاسخ‌های API عمومی."
+        ]},
+        { "type": "table", "headers": ["گزینه", "مزیت", "عیب"], "rows": [
+          ["Cloudflare", "رایگان، WAF، DNS", "تنظیمات پیشرفته پلن بالا"],
+          ["AWS CloudFront", "یکپارچه با AWS", "پیچیده‌تر"],
+          ["Fastly", "کنترل عالی", "هزینه بالا"],
+          ["Bunny CDN", "ارزان، ساده", "کمتر شناخته‌شده"]
+        ]},
+        { "type": "python", "filename": "settings/prod.py", "code": "# استفاده از CDN برای static\nSTATIC_URL = \"https://cdn.example.com/static/\"\n\n# یا برای S3 + CloudFront\nif os.environ.get(\"USE_S3_STATIC\"):\n    STORAGES = {\n        \"default\": {\n            \"BACKEND\": \"storages.backends.s3.S3Storage\",\n            \"OPTIONS\": {\n                \"bucket_name\": os.environ[\"AWS_STORAGE_BUCKET_NAME\"],\n                \"region_name\": os.environ.get(\"AWS_REGION\", \"us-east-1\"),\n            },\n        },\n        \"staticfiles\": {\n            \"BACKEND\": \"storages.backends.s3.S3StaticStorage\",\n        },\n    }" },
+        { "type": "bash", "filename": "Cache-Control برای CDN", "code": "# Static files — یک سال\nCache-Control: public, max-age=31536000, immutable\n\n# Media files — یک هفته\nCache-Control: public, max-age=604800\n\n# API responses (public GETs) — یک دقیقه\nCache-Control: public, max-age=60, s-maxage=300\n\n# Authenticated responses\nCache-Control: private, no-store" }
+      ]
+    },
+    {
+      "id": "load-balancer",
+      "title": "Load Balancer",
+      "blocks": [
+        { "type": "paragraph", "text": "Load Balancer ترافیک را بین چند سرور توزیع می‌کند و اگر یکی از کار افتاد، ترافیک را به بقیه می‌فرستد." },
+        { "type": "table", "headers": ["نوع", "لایه", "کاربرد"], "rows": [
+          ["L4 (TCP)", "Transport", "ساده، سریع"],
+          ["L7 (HTTP)", "Application", "مسیریابی بر اساس URL، هدر"],
+          ["DNS Round Robin", "DNS", "ساده اما بدون health check"],
+          ["Anycast", "Network", "مقیاس جهانی"]
+        ]},
+        { "type": "table", "headers": ["الگوریتم", "کاربرد"], "rows": [
+          ["Round Robin", "توزیع یکنواخت"],
+          ["Least Connections", "سرورهای مختلف بار متفاوت"],
+          ["IP Hash", "session stickiness"],
+          ["Weighted", "سرورهای با ظرفیت متفاوت"],
+          ["Least Response Time", "بهینه‌سازی latency"]
+        ]},
+        { "type": "bash", "filename": "Nginx — Load Balancer (L7)", "code": "upstream api_backend {\n    least_conn;                    # الگوریتم\n    server 10.0.1.10:8000 max_fails=3 fail_timeout=30s;\n    server 10.0.1.11:8000 max_fails=3 fail_timeout=30s;\n    server 10.0.1.12:8000 max_fails=3 fail_timeout=30s backup;\n    keepalive 32;\n}\n\nserver {\n    listen 443 ssl http2;\n\n    location / {\n        proxy_pass http://api_backend;\n        proxy_next_upstream error timeout http_502 http_503 http_504;\n        proxy_next_upstream_tries 3;\n        proxy_next_upstream_timeout 10s;\n\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n}" },
+        { "type": "note", "variant": "tip", "title": "Health check", "text": "Load Balancer باید به‌طور دوره‌ای `/health/` را صدا بزند. اگر سرور جواب نداد، از rotation حذف می‌شود. بدون این، کاربران به سرور خراب می‌رسند." }
+      ]
+    },
+    {
+      "id": "database-scaling",
+      "title": "مقیاس دیتابیس",
+      "blocks": [
+        { "type": "paragraph", "text": "دیتابیس معمولاً اولین bottleneck در رشد API است. راه‌حل‌های مختلف برای مقیاس‌های مختلف." },
+        { "type": "table", "headers": ["راه‌حل", "کیفیت", "هزینه", "پیچیدگی"], "rows": [
+          ["Index‌گذاری درست", "بالا", "صفر", "کم"],
+          ["بهینه‌سازی کوئری (select_related)", "بالا", "صفر", "کم"],
+          ["Connection pooling", "متوسط", "کم", "کم"],
+          ["Read Replica", "بالا", "متوسط", "متوسط"],
+          ["Partitioning", "بالا", "متوسط", "بالا"],
+          ["Sharding", "بسیار بالا", "بالا", "بسیار بالا"],
+          ["Citus / CockroachDB", "بالا", "بالا", "بالا"]
+        ]},
+        { "type": "callout-level",
+          "basic": "تک دیتابیس، بدون index.",
+          "better": "Index + بهینه‌سازی کوئری + PgBouncer.",
+          "production": "Primary + ۲ Replica + Router + PgBouncer + Partitioning برای جداول بزرگ + Monitoring با pg_stat_statements."
+        }
+      ]
+    },
+    {
+      "id": "read-replica",
+      "title": "Read Replica و Router",
+      "blocks": [
+        { "type": "paragraph", "text": "Read Replica یک کپی فقط-خواندنی از دیتابیس اصلی است. خواندن‌ها به Replica و نوشتن‌ها به Primary می‌روند. این کار بار Primary را کم می‌کند." },
+        { "type": "python", "filename": "settings/prod.py", "code": "DATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": os.environ[\"DB_NAME\"],\n        \"USER\": os.environ[\"DB_USER\"],\n        \"PASSWORD\": os.environ[\"DB_PASSWORD\"],\n        \"HOST\": os.environ[\"DB_WRITE_HOST\"],\n        \"PORT\": 5432,\n        \"CONN_MAX_AGE\": 60,\n        \"CONN_HEALTH_CHECKS\": True,\n        \"OPTIONS\": {\"connect_timeout\": 5},\n    },\n    \"replica_1\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": os.environ[\"DB_NAME\"],\n        \"USER\": os.environ[\"DB_READ_USER\"],\n        \"PASSWORD\": os.environ[\"DB_READ_PASSWORD\"],\n        \"HOST\": os.environ[\"DB_READ_HOST_1\"],\n        \"PORT\": 5432,\n        \"CONN_MAX_AGE\": 60,\n        \"CONN_HEALTH_CHECKS\": True,\n        \"OPTIONS\": {\n            \"connect_timeout\": 5,\n            \"options\": \"-c default_transaction_read_only=on\",   # فقط خواندن\n        },\n        \"TEST\": {\"MIRROR\": \"default\"},\n    },\n    \"replica_2\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": os.environ[\"DB_NAME\"],\n        \"USER\": os.environ[\"DB_READ_USER\"],\n        \"PASSWORD\": os.environ[\"DB_READ_PASSWORD\"],\n        \"HOST\": os.environ[\"DB_READ_HOST_2\"],\n        \"PORT\": 5432,\n        \"CONN_MAX_AGE\": 60,\n        \"TEST\": {\"MIRROR\": \"default\"},\n    },\n}\n\nDATABASE_ROUTERS = [\"common.routers.PrimaryReplicaRouter\"]" },
+        { "type": "python", "filename": "common/routers.py", "code": "import random\n\n\nclass PrimaryReplicaRouter:\n    \"\"\"\n    همه خواندن‌ها به Replica، همه نوشتن‌ها به Primary.\n    \"\"\"\n\n    def db_for_read(self, model, **hints):\n        # توزیع بین Replicaها به‌شکل تصادفی\n        return random.choice([\"replica_1\", \"replica_2\"])\n\n    def db_for_write(self, model, **hints):\n        return \"default\"\n\n    def allow_relation(self, obj1, obj2, **hints):\n        \"\"\"رابطه بین شیءها در دیتابیس‌های مختلف مجاز است.\"\"\"\n        return True\n\n    def allow_migrate(self, db, app_label, model_name=None, **hints):\n        \"\"\"مایگریشن فقط روی Primary.\"\"\"\n        return db == \"default\"\n\n\n# ================================\n# نکته مهم: Replication Lag\n# ================================\n# Replica چند میلی‌ثانیه عقب‌تر از Primary است.\n# مشکل: کاربر ثبت‌نام می‌کند، بعد login می‌کند،\n# اما Replica هنوز user را ندارد.\n\n\nclass SmartRouter(PrimaryReplicaRouter):\n    \"\"\"\n    اگر کاربر قبلاً نوشته باشد،\n    برای مدتی خواندن‌ها را به Primary می‌فرستد.\n    \"\"\"\n\n    def db_for_read(self, model, **hints):\n        # اگر در همان درخواست، نوشتنی انجام شده\n        if hasattr(self, \"_just_wrote\") and self._just_wrote:\n            return \"default\"\n        return super().db_for_read(model, **hints)\n\n    def db_for_write(self, model, **hints):\n        self._just_wrote = True\n        return \"default\"" },
+        { "type": "python", "filename": "استفاده در service", "code": "from django.db import transaction\n\n\n@transaction.atomic(using=\"default\")\ndef register_user(username, email, password):\n    \"\"\"ثبت‌نام — روی Primary.\"\"\"\n    user = User.objects.create_user(username=username, email=email, password=password)\n    return user\n\n\ndef get_user_after_register(user_id):\n    \"\"\"\n    بلافاصله بعد از ثبت‌نام،\n    از Primary بخوان تا مشکل lag نداشته باشیم.\n    \"\"\"\n    return User.objects.using(\"default\").get(pk=user_id)" },
+        { "type": "note", "variant": "warn", "title": "Replication Lag", "text": "Replica معمولاً ۱۰-۱۰۰ میلی‌ثانیه عقب‌تر است. اگر کاربر بعد از POST بلافاصله GET بزند، ممکن است داده قدیمی ببیند. راه‌حل: در ۵ ثانیه اول بعد از نوشتن، از Primary بخوانید." }
+      ]
+    },
+    {
+      "id": "connection-pooling",
+      "title": "Connection Pooling با PgBouncer",
+      "blocks": [
+        { "type": "paragraph", "text": "هر worker Gunicorn یک connection به PostgreSQL باز می‌کند. با ۱۰ سرور و ۸ worker، ۸۰ connection. PostgreSQL هر connection جدید ~۱۰MB RAM مصرف می‌کند. PgBouncer این مشکل را حل می‌کند." },
+        { "type": "bash", "filename": "docker-compose.pgbouncer.yml", "code": "services:\n  pgbouncer:\n    image: edoburu/pgbouncer:latest\n    environment:\n      DATABASE_URL: postgres://library_user:password@db:5432/library_db\n      POOL_MODE: transaction\n      MAX_CLIENT_CONN: 1000\n      DEFAULT_POOL_SIZE: 25\n      MIN_POOL_SIZE: 5\n      RESERVE_POOL_SIZE: 5\n    ports:\n      - \"6432:5432\"\n    depends_on:\n      - db" },
+        { "type": "python", "filename": "settings/prod.py", "code": "# Gunicorn به PgBouncer وصل شود، نه به PostgreSQL مستقیم\nDATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": \"library_db\",\n        \"USER\": \"library_user\",\n        \"PASSWORD\": \"password\",\n        \"HOST\": \"pgbouncer\",   # ← نه \"db\"\n        \"PORT\": 6432,           # ← نه 5432\n        \"CONN_MAX_AGE\": 0,      # ← PgBouncer مدیریت می‌کند\n        \"DISABLE_SERVER_SIDE_CURSORS\": True,  # ← برای PgBouncer\n    },\n}" },
+        { "type": "table", "headers": ["Pool Mode", "مزیت", "عیب"], "rows": [
+          ["session", "ساده، سازگار", "کمترین صرفه‌جویی"],
+          ["transaction", "تعادل خوب", "بعضی features محدود"],
+          ["statement", "بیشترین صرفه‌جویی", "تراکنش‌های چندگانه مشکل"]
+        ]}
+      ]
+    },
+    {
+      "id": "caching-layers",
+      "title": "لایه‌های کش",
+      "blocks": [
+        { "type": "paragraph", "text": "کش چندلایه است. هر لایه سرعت و هزینه متفاوتی دارد. استراتژی صحیح: از کاربر شروع، به سمت دیتابیس." },
+        { "type": "table", "headers": ["لایه", "مثال", "سرعت", "نگهداری"], "rows": [
+          ["Browser Cache", "Cache-Control header", "بسیار سریع", "کم"],
+          ["CDN Edge", "Cloudflare cache", "سریع", "کم"],
+          ["Application (Redis)", "QuerySet cache", "سریع", "متوسط"],
+          ["Database Query Cache", "shared_buffers", "متوسط", "صفر"],
+          ["Materialized Views", "پیش‌محاسبه‌شده", "متوسط", "بالا"],
+          ["Full Page Cache", "کل پاسخ", "سریع", "کم"]
+        ]},
+        { "type": "python", "filename": "نمونه استراتژی چندلایه", "code": "from django.core.cache import cache\nfrom django.views.decorators.cache import cache_control\n\n\n# لایه ۱: Browser + CDN\n@cache_control(public=True, max_age=60, s_maxage=300)\ndef api_book_list(request):\n    # لایه ۲: Redis cache\n    cache_key = f\"books_list_page_{request.GET.get('page', 1)}\"\n    data = cache.get(cache_key)\n    if data is None:\n        # لایه ۳: DB query\n        books = Book.objects.select_related(\"author\").all()[:20]\n        data = BookSerializer(books, many=True).data\n        cache.set(cache_key, data, timeout=300)\n    return Response(data)" }
+      ]
+    },
+    {
+      "id": "message-queue",
+      "title": "صف پیام و Celery",
+      "blocks": [
+        { "type": "paragraph", "text": "وقتی کاربر درخواستی می‌فرستد که کار طولانی می‌خواهد، نباید منتظر بماند. صف پیام این کار را جدا می‌کند." },
+        { "type": "flow", "steps": ["Request", "Queue task", "Response 202", "Worker process", "Callback/Email"] },
+        { "type": "python", "filename": "الگوی async task", "code": "@api_view([\"POST\"])\ndef request_report(request):\n    \"\"\"درخواست ساخت گزارش — فوری پاسخ می‌دهد.\"\"\"\n    report = Report.objects.create(user=request.user, status=\"pending\")\n\n    # تسک به Celery می‌رود\n    generate_report.delay(report.id)\n\n    return Response({\n        \"report_id\": report.id,\n        \"status\": \"pending\",\n        \"status_url\": f\"/api/reports/{report.id}/\",\n    }, status=202)\n\n\n@shared_task(bind=True, max_retries=3)\ndef generate_report(self, report_id):\n    report = Report.objects.get(pk=report_id)\n    report.status = \"processing\"\n    report.save(update_fields=[\"status\"])\n\n    try:\n        pdf = build_pdf_report(report)\n        report.file.save(f\"report_{report.id}.pdf\", pdf)\n        report.status = \"completed\"\n    except Exception as e:\n        report.status = \"failed\"\n        report.error = str(e)\n        raise self.retry(exc=e, countdown=60)\n    finally:\n        report.save()" },
+        { "type": "table", "headers": ["Broker", "مزیت", "عیب"], "rows": [
+          ["Redis", "سریع، ساده", "بدون persistence پیشرفته"],
+          ["RabbitMQ", "قابلیت‌های پیشرفته", "پیچیده‌تر"],
+          ["AWS SQS", "مدیریت‌شده", "وابسته به AWS"],
+          ["Kafka", "Event streaming", "پیچیده، سنگین"]
+        ]}
+      ]
+    },
+    {
+      "id": "resilience",
+      "title": "مقاومت و تحمل خطا",
+      "blocks": [
+        { "type": "paragraph", "text": "در یک سیستم توزیع‌شده، خرابی اجتناب‌ناپذیر است. سؤال این نیست که «آیا خرابی رخ می‌دهد؟» بلکه «وقتی رخ داد، سیستم چطور رفتار می‌کند؟»" },
+        { "type": "list", "ordered": false, "items": [
+          "**Timeout:** همه تماس‌های خارجی timeout داشته باشند.",
+          "**Retry با Backoff:** تلاش مجدد با تأخیر فزاینده.",
+          "**Circuit Breaker:** اگر سرویس خارجی خطا داد، به‌جای تلاش مداوم، موقتاً قطع کن.",
+          "**Bulkhead:** جداسازی منابع — خطا در یک بخش، روی بقیه تأثیر نگذارد.",
+          "**Graceful Degradation:** اگر یک قابلیت کار نکرد، بقیه کار کند.",
+          "**Idempotency:** عملیات تکراری، اثر یکسان.",
+          "**Rate Limiting:** جلوگیری از سیل درخواست."
+        ]},
+        { "type": "python", "filename": "common/resilience.py — Circuit Breaker", "code": "import time\nimport logging\nfrom threading import Lock\nfrom rest_framework.exceptions import APIException\n\nlogger = logging.getLogger(\"api.resilience\")\n\n\nclass ServiceUnavailable(APIException):\n    status_code = 503\n    default_detail = \"سرویس موقتاً در دسترس نیست.\"\n\n\nclass CircuitBreaker:\n    \"\"\"\n    Circuit Breaker ساده:\n    - CLOSED: عادی\n    - OPEN: بعد از N خطا، همه درخواست‌ها رد می‌شوند\n    - HALF_OPEN: بعد از timeout، یک درخواست آزمایشی\n    \"\"\"\n\n    def __init__(self, name, threshold=5, timeout=60, expected_exception=Exception):\n        self.name = name\n        self.threshold = threshold\n        self.timeout = timeout\n        self.expected_exception = expected_exception\n        self.failures = 0\n        self.opened_at = None\n        self._lock = Lock()\n\n    @property\n    def state(self):\n        if self.opened_at and time.time() - self.opened_at < self.timeout:\n            return \"OPEN\"\n        if self.opened_at:\n            return \"HALF_OPEN\"\n        return \"CLOSED\"\n\n    def call(self, func, *args, **kwargs):\n        with self._lock:\n            state = self.state\n\n            if state == \"OPEN\":\n                logger.warning(f\"Circuit {self.name} is OPEN — fast fail\")\n                raise ServiceUnavailable(f\"سرویس {self.name} در دسترس نیست.\")\n\n        try:\n            result = func(*args, **kwargs)\n            self._on_success()\n            return result\n        except self.expected_exception as e:\n            self._on_failure()\n            raise\n\n    def _on_success(self):\n        with self._lock:\n            self.failures = 0\n            self.opened_at = None\n            logger.info(f\"Circuit {self.name} reset to CLOSED\")\n\n    def _on_failure(self):\n        with self._lock:\n            self.failures += 1\n            logger.warning(f\"Circuit {self.name} failure {self.failures}/{self.threshold}\")\n            if self.failures >= self.threshold:\n                self.opened_at = time.time()\n                logger.error(f\"Circuit {self.name} OPENED\")\n\n\n# استفاده\npayment_breaker = CircuitBreaker(\n    \"payment_gateway\",\n    threshold=5,\n    timeout=60,\n    expected_exception=(TimeoutError, ConnectionError),\n)\n\n\ndef charge_card(amount, token):\n    return payment_breaker.call(\n        gateway.charge, amount, token,\n    )" },
+        { "type": "python", "filename": "Retry with Backoff", "code": "import time\nfrom functools import wraps\n\n\ndef retry_on_failure(\n    max_attempts=3,\n    backoff_base=2,\n    exceptions=(Exception,),\n    logger=None,\n):\n    \"\"\"دکوراتور retry با exponential backoff.\"\"\"\n    def decorator(func):\n        @wraps(func)\n        def wrapper(*args, **kwargs):\n            for attempt in range(1, max_attempts + 1):\n                try:\n                    return func(*args, **kwargs)\n                except exceptions as e:\n                    if attempt == max_attempts:\n                        raise\n                    wait = backoff_base ** attempt\n                    if logger:\n                        logger.warning(\n                            f\"Attempt {attempt}/{max_attempts} failed: {e}. \"\n                            f\"Retrying in {wait}s...\"\n                        )\n                    time.sleep(wait)\n            return None\n        return wrapper\n    return decorator\n\n\n# استفاده\n@retry_on_failure(max_attempts=3, backoff_base=2, exceptions=(TimeoutError,))\ndef send_notification(user, message):\n    response = notification_service.send(user.id, message)\n    return response" }
+      ]
+    },
+    {
+      "id": "backup-dr",
+      "title": "Backup و Disaster Recovery",
+      "blocks": [
+        { "type": "paragraph", "text": "Disaster Recovery (DR) یعنی وقتی فاجعه رخ داد (پاک شدن دیتابیس، حمله، قطع منطقه)، چطور سیستم را بازمی‌گردانید. این بخش نادیده گرفته می‌شود تا وقتی که فاجعه رخ دهد." },
+        { "type": "table", "headers": ["مفهوم", "معنی", "هدف"], "rows": [
+          ["**RPO** (Recovery Point Objective)", "چقدر داده می‌توانیم از دست بدهیم", "۱۵ دقیقه"],
+          ["**RTO** (Recovery Time Objective)", "چقدر طول می‌کشد بازگردیم", "۱ ساعت"],
+          ["**Backup**", "کپی دوره‌ای", "روزانه"],
+          ["**Replication**", "کپی real-time", "لحظه‌ای"],
+          ["**Failover**", "انتقال خودکار", "خودکار"]
+        ]},
+        { "type": "callout-level",
+          "basic": "backup گاهی به دیسک محلی.",
+          "better": "backup روزانه + S3 + تست بازیابی ماهانه.",
+          "production": "backup روزانه + WAL archiving برای PITR + replication به منطقه دیگر + تست بازیابی فصلی + Runbook مکتوب."
+        },
+        { "type": "bash", "filename": "PostgreSQL Point-in-Time Recovery", "code": "# postgresql.conf\nwal_level = replica\narchive_mode = on\narchive_command = 'aws s3 cp %p s3://my-backups/wal/%f'\n\n# base backup روزانه\n0 2 * * * pg_basebackup -D /var/backups/pg -Ft -z -P\n\n# بازیابی به یک نقطه در گذشته (مثلاً ساعت ۱۴:۰۰ دیروز)\n# ۱. base backup را restore کن\n# ۲. در recovery.conf:\n#    restore_command = 'aws s3 cp s3://my-backups/wal/%f %p'\n#    recovery_target_time = '2025-01-15 14:00:00'\n# ۳. PostgreSQL را بالا بیاور" }
+      ]
+    },
+    {
+      "id": "cost-optimization",
+      "title": "بهینه‌سازی هزینه",
+      "blocks": [
+        { "type": "paragraph", "text": "معماری درست فقط کارا نیست، ارزان هم هست. AWS bill می‌تواند در یک ماه از ۱۰۰ دلار به ۱۰,۰۰۰ دلار برود بدون برنامه." },
+        { "type": "list", "ordered": false, "items": [
+          "**Auto-scaling:** سرور فقط وقتی لازم است.",
+          "**Reserved Instances:** ۳۰-۶۰٪ تخفیف برای تعهد ۱-۳ ساله.",
+          "**Spot Instances:** ۷۰٪ تخفیف برای workloadهای غیرحیاتی (Celery workers).",
+          "**S3 Lifecycle:** فایل‌های قدیمی به Glacier.",
+          "**CloudFront caching:** کاهش درخواست به سرور.",
+          "**Database sizing:** مانیتورینگ دقیق، بدون over-provisioning.",
+          "**Logging:** فقط لاگ‌های مهم، retention محدود.",
+          "**CDN:** کاهش خروجی از سرور."
+        ]},
+        { "type": "python", "filename": "Auto-scaling بر اساس metric", "code": "# Kubernetes HPA (HorizontalPodAutoscaler)\n# apiVersion: autoscaling/v2\n# kind: HorizontalPodAutoscaler\n# metadata:\n#   name: library-api\n# spec:\n#   scaleTargetRef:\n#     apiVersion: apps/v1\n#     kind: Deployment\n#     name: library-api\n#   minReplicas: 2\n#   maxReplicas: 10\n#   metrics:\n#   - type: Resource\n#     resource:\n#       name: cpu\n#       target:\n#         type: Utilization\n#         averageUtilization: 70\n#   - type: Pods\n#     pods:\n#       metric:\n#         name: api_requests_per_second\n#       target:\n#         type: AverageValue\n#         averageValue: \"1000\"" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern",
+          "title": "SPOF (Single Point of Failure)",
+          "why": "اگر یک قطعه از کار بیفتد، کل سیستم قطع می‌شود.",
+          "when": "معماری ساده.",
+          "fix": "حداقل دو نسخه از هر قطعه حیاتی: دو سرور، دو دیتابیس، دو Redis."
+        },
+        { "type": "anti-pattern",
+          "title": "Shared Database در microservices",
+          "why": "coupling شدید — تغییر schema در یک سرویس، همه را می‌شکند.",
+          "when": "برای راحتی.",
+          "fix": "هر سرویس دیتابیس خودش. ارتباط از طریق API."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون Timeout روی درخواست‌های خارجی",
+          "why": "یک سرویس کند، همه workerها را بلاک می‌کند.",
+          "when": "وقتی فراموش می‌کنید.",
+          "fix": "همه درخواست‌ها timeout داشته باشند (۵-۱۰ ثانیه)."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون CDN",
+          "why": "سرور برای static و media درگیر می‌شود. کاربران دور، کند تجربه می‌کنند.",
+          "when": "شروع.",
+          "fix": "Cloudflare رایگان هم کار می‌کند."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون backup تست‌شده",
+          "why": "در فاجعه، متوجه می‌شوید backup خراب است.",
+          "when": "همیشه.",
+          "fix": "تست بازیابی هر ماه روی محیط جدا."
+        },
+        { "type": "anti-pattern",
+          "title": "Premature microservices",
+          "why": "پیچیدگی بی‌مورد، کندی توسعه، debugging سخت.",
+          "when": "تیم کوچک، پروژه جوان.",
+          "fix": "Modular Monolith + رشد تدریجی."
+        },
+        { "type": "anti-pattern",
+          "title": "N+1 در production",
+          "why": "با رشد داده، سرعت فاجعه‌بار می‌شود.",
+          "when": "سریالایزر بدون select_related.",
+          "fix": "select_related + prefetch_related + تست query count."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون connection pooling",
+          "why": "با رشد سرورها، PostgreSQL از connectionها اشباع می‌شود.",
+          "when": "چند سرور.",
+          "fix": "PgBouncer یا مشابه."
+        },
+        { "type": "anti-pattern",
+          "title": "Cache بدون invalidation",
+          "why": "کاربر داده قدیمی می‌بیند، تصمیم اشتباه می‌گیرد.",
+          "when": "برای سرعت.",
+          "fix": "TTL کوتاه + signal-based invalidation + version-based keys."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون observability",
+          "why": "در incident نمی‌دانید چه اتفاقی افتاد.",
+          "when": "همیشه.",
+          "fix": "Logs + Metrics + Traces + Alerting."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-078-q1",
+      "tag": "کوییز",
+      "question": "چه زمانی باید به microservices مهاجرت کنیم؟",
+      "options": [
+        { "text": "همیشه از روز اول.", "correct": false },
+        { "text": "وقتی تیم‌های مستقل، مقیاس متفاوت یا فناوری متفاوت داریم و مرزهای دامنه واضح است.", "correct": true, "explanation": "با Modular Monolith شروع کنید، در صورت نیاز واقعی جدا کنید." },
+        { "text": "وقتی به ۱۰۰۰ کاربر رسیدیم.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-078-q2",
+      "tag": "کوییز",
+      "question": "Replication Lag چیست و چرا مهم است؟",
+      "options": [
+        { "text": "یک باگ PostgreSQL.", "correct": false },
+        { "text": "Replica چند میلی‌ثانیه عقب‌تر از Primary است؛ ممکن است بعد از نوشتن، خواندن داده قدیمی برگرداند.", "correct": true, "explanation": "راه‌حل: در بازه کوتاه بعد از نوشتن، از Primary بخوانید." },
+        { "text": "یک ویژگی PostgreSQL که باید خاموش شود.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-078-q3",
+      "tag": "کوییز",
+      "question": "Circuit Breaker چطور به مقاومت سیستم کمک می‌کند؟",
+      "options": [
+        { "text": "سرعت را زیاد می‌کند.", "correct": false },
+        { "text": "اگر سرویس خارجی خطا داد، موقتاً همه درخواست‌ها را سریع رد می‌کند تا سرویس فرصت بهبود داشته باشد.", "correct": true, "explanation": "جلوگیری از cascade failure." },
+        { "text": "داده‌ها را کش می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-078-q4",
+      "tag": "کوییز",
+      "question": "تفاوت RPO و RTO چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "RPO: چقدر داده می‌توانیم از دست بدهیم. RTO: چقدر طول می‌کشد بازگردیم.", "correct": true, "explanation": "RPO مربوط به backup است، RTO مربوط به بازیابی." },
+        { "text": "RPO برای DB، RTO برای سرور.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-078-q5",
+      "tag": "کوییز",
+      "question": "چرا Connection Pooling (PgBouncer) مهم است؟",
+      "options": [
+        { "text": "چون امنیت را زیاد می‌کند.", "correct": false },
+        { "text": "چون هر connection PostgreSQL ~۱۰MB RAM مصرف می‌کند و با چند سرور، صدها connection ایجاد می‌شود.", "correct": true, "explanation": "PgBouncer این connectionها را به اشتراک می‌گذارد." },
+        { "text": "چون Django اجبار می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-078-ex1",
+      "title": "تمرین — طراحی سیستم فروشگاه",
+      "problem": "برای یک فروشگاه آنلاین با ۵۰,۰۰۰ کاربر فعال روزانه و اوج ۵۰۰ درخواست بر ثانیه، معماری کامل طراحی کنید. شامل: CDN، Load Balancer، Nginx، Django، PostgreSQL، Redis، Celery، S3، Monitoring. برای هر قطعه تصمیم و دلیل بنویسید.",
+      "hints": [
+        "به bottleneckها فکر کنید.",
+        "Read Replica برای خواندن.",
+        "Celery برای کارهای سنگین (ایمیل، گزارش).",
+        "CDN برای static و media."
+      ],
+      "solution": "**معماری پیشنهادی:**\n\n**لایه ۱ — Edge:**\n- **Cloudflare** برای static + media + WAF + DDoS.\n- **Load Balancer (L7)** بین ۲ سرور Nginx.\n\n**لایه ۲ — Application:**\n- **Nginx** روی هر سرور: SSL termination، rate limiting، static.\n- **Django + DRF** با Gunicorn (۴ worker × ۴ thread = ۱۶ concurrent per server).\n- حداقل **۳ instance** Django برای HA.\n\n**لایه ۳ — Data:**\n- **PostgreSQL Primary** (نوشتن) + **۲ Read Replica**.\n- **PgBouncer** برای connection pooling.\n- **Redis** (cache + session + Celery broker) — یک instance اصلی + replica.\n- **S3** برای media + backup.\n\n**لایه ۴ — Background:**\n- **Celery** با ۴-۶ worker، صف‌های جدا برای email، report، bulk.\n- **Celery Beat** برای taskهای زمان‌بندی.\n\n**لایه ۵ — Monitoring:**\n- **Sentry** برای خطاها.\n- **Prometheus + Grafana** برای metrics.\n- **Jaeger** برای tracing.\n- **Alertmanager** برای هشدار.\n\n**Auto-scaling:** بر اساس CPU > 70٪، از ۳ تا ۱۰ instance.\n\n**Backup:** pg_dump روزانه + WAL archiving + S3 + تست بازیابی ماهانه.",
+      "explanation": "این معماری برای ۵۰۰ req/s کافی است و می‌تواند تا ۲۰۰۰ req/s با auto-scaling رشد کند."
+    },
+    {
+      "id": "ch-078-ex2",
+      "title": "تمرین — Circuit Breaker",
+      "problem": "یک Circuit Breaker پیاده‌سازی کنید با: threshold=5 خطا، timeout=60 ثانیه، half-open state برای تست. سپس از آن برای فراخوانی یک سرویس پرداخت استفاده کنید.",
+      "hints": [
+        "سه state: CLOSED، OPEN، HALF_OPEN.",
+        "در OPEN، سریع fail کن.",
+        "در HALF_OPEN، یک درخواست آزمایشی.",
+        "Lock برای thread safety."
+      ],
+      "solution": "همان `common/resilience.py` در بخش «مقاومت و تحمل خطا» این فصل. سپس در سرویس:\n```python\npayment_breaker = CircuitBreaker(\n    name=\"payment\",\n    threshold=5,\n    timeout=60,\n    expected_exception=(TimeoutError, ConnectionError),\n)\n\ndef charge_card(amount, token):\n    return payment_breaker.call(gateway.charge, amount, token)\n```",
+      "explanation": "Circuit Breaker از cascade failure جلوگیری می‌کند و به سرویس خارجی فرصت بازیابی می‌دهد."
+    },
+    {
+      "id": "ch-078-ex3",
+      "title": "تمرین — Backup و بازیابی",
+      "problem": "یک استراتژی کامل backup طراحی کنید که RPO=۱۵ دقیقه و RTO=۱ ساعت داشته باشد. مراحل بازیابی (Runbook) را بنویسید.",
+      "hints": [
+        "برای RPO=۱۵ دقیقه: WAL archiving.",
+        "برای RTO=۱ ساعت: Replica + failover script.",
+        "Runbook: گام‌های دقیق برای operator."
+      ],
+      "solution": "**استراتژی Backup:**\n\n**۱. Base Backup روزانه:**\n```bash\n0 2 * * * pg_basebackup -D /backup/pg -Ft -z -P -X stream\n```\n\n**۲. WAL Archiving (برای PITR):**\n```\n# postgresql.conf\nwal_level = replica\narchive_mode = on\narchive_command = 'aws s3 cp %p s3://backup/wal/%f'\narchive_timeout = 900  # 15 دقیقه\n```\n\n**۳. Replication:**\n- Replica در منطقه دیگر (Region).\n- Streaming replication.\n\n**۴. تست:**\n- ماهانه: بازیابی backup روی محیط staging.\n- فصلی: failover کامل به Replica.\n\n**Runbook برای RTO=۱ ساعت:**\n\n**گام ۱ (۵ دقیقه):** تشخیص اینکه Primary از کار افتاده.\n**گام ۲ (۱۰ دقیقه):** ارتقای Replica به Primary.\n```bash\nssh replica-node\npg_ctl promote -D /var/lib/postgresql/data\n```\n**گام ۳ (۵ دقیقه):** آپدیت DNS/Connection strings.\n**گام ۴ (۱۰ دقیقه):** بررسی سلامت اپلیکیشن.\n**گام ۵ (۳۰ دقیقه):** راه‌اندازی Replica جدید از Primary جدید.\n\n**RPO:** با WAL archiving هر ۱۵ دقیقه، حداکثر ۱۵ دقیقه داده از دست می‌رود.\n**RTO:** از تشخیص تا بازیابی ~۱ ساعت.",
+      "explanation": "این استراتژی استاندارد صنعت برای سیستم‌های حیاتی است."
+    }
+  ],
+  "summary": [
+    "**تکامل معماری:** Prototype → MVP → Growth → Scale → Large Scale.",
+    "**لایه‌ها:** CDN → Load Balancer → Nginx → Django → DB/Cache/Queue.",
+    "**CDN** برای static، media، WAF، DDoS.",
+    "**Load Balancer** با health check و الگوریتم مناسب.",
+    "**PostgreSQL:** Primary + Read Replica + Router + PgBouncer.",
+    "**Replication Lag:** در بازه کوتاه بعد از نوشتن، از Primary بخوانید.",
+    "**Connection Pooling** با PgBouncer برای کاهش connection.",
+    "**کش چندلایه:** Browser → CDN → App → DB.",
+    "**صف پیام:** Celery برای کارهای طولانی، پاسخ 202.",
+    "**مقاومت:** Timeout، Retry، Circuit Breaker، Bulkhead، Graceful Degradation.",
+    "**Backup:** RPO/RTO + WAL archiving + تست بازیابی.",
+    "**بهینه‌سازی هزینه:** Auto-scaling، Reserved، Spot، Lifecycle.",
+    "**ضدالگوها:** SPOF، بدون backup، Premature microservices، N+1، بدون observability."
+  ],
+  "resources": [
+    { "title": "System Design Primer", "url": "https://github.com/donnemartin/system-design-primer", "official": false },
+    { "title": "AWS Architecture Center", "url": "https://aws.amazon.com/architecture/", "official": true },
+    { "title": "PostgreSQL High Availability", "url": "https://www.postgresql.org/docs/current/high-availability.html", "official": true },
+    { "title": "Google SRE Book", "url": "https://sre.google/sre-book/table-of-contents/", "official": true },
+    { "title": "Redis Documentation", "url": "https://redis.io/docs/", "official": true },
+    { "title": "PgBouncer", "url": "https://www.pgbouncer.org/", "official": true },
+    { "title": "Cloudflare Learning", "url": "https://www.cloudflare.com/learning/", "official": false }
+  ]
+}

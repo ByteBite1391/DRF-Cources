@@ -1,0 +1,373 @@
+{
+  "id": "ch-075",
+  "slug": "docker",
+  "title": "Docker و کانتینری‌سازی",
+  "kicker": "فصل ۷۵",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 55,
+  "lead": "Docker تضمین می‌کند کد شما در همه محیط‌ها یکسان اجرا می‌شود. این فصل از Dockerfile ساده تا docker-compose چندسرویسی و بهینه‌سازی تصویر را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا Docker؟",
+      "blocks": [
+        { "type": "paragraph", "text": "قبل از Docker، تیم توسعه با این جمله آشنا بود: «روی سیستم من کار می‌کند». Docker این جمله را برای همیشه حل می‌کند." },
+        { "type": "list", "ordered": false, "items": [
+          "**یکسانی محیط:** dev، staging و prod همه یک تصویر.",
+          "**جداسازی سرویس‌ها:** دیتابیس، Redis، API و Celery هرکدام در کانتینر خودش.",
+          "**مقیاس‌پذیری:** یک تصویر، چند instance.",
+          "**بدون dependency conflict:** نسخه پایتون، پکیج سیستم، همه داخل تصویر.",
+          "**CI/CD:** تصویر یکسان در همه مراحل."
+        ]},
+        { "type": "table", "headers": ["قبل از Docker", "با Docker"], "rows": [
+          ["نصب دستی پکیج‌ها روی سرور", "Dockerfile همه چیز را مشخص می‌کند"],
+          ["نسخه Python متفاوت در محیط‌ها", "تصویر پایه یکسان"],
+          ["پکیج‌های سیستم conflict", "جداسازی کامل"],
+          ["راه‌اندازی Celery، Redis، PostgreSQL دستی", "docker compose up"],
+          ["debug سخت بین محیط‌ها", "یک محیط واقعی"]
+        ]}
+      ]
+    },
+    {
+      "id": "basics",
+      "title": "مفاهیم پایه",
+      "blocks": [
+        { "type": "table", "headers": ["مفهوم", "توضیح"], "rows": [
+          ["**Image**", "قالب فقط-خواندنی شامل کد، پکیج‌ها و تنظیمات"],
+          ["**Container**", "نمونه اجرایی از Image"],
+          ["**Dockerfile**", "دستورات ساخت Image"],
+          ["**Volume**", "ذخیره‌سازی دائمی جدا از container"],
+          ["**Network**", "شبکه بین کانتینرها"],
+          ["**Registry**", "انبار Imageها (Docker Hub، ECR، GHCR)"],
+          ["**Compose**", "ابزار اجرای چند کانتینر با هم"]
+        ]},
+        { "type": "flow", "steps": ["Dockerfile", "→ build →", "Image", "→ run →", "Container"] },
+        { "type": "code", "lang": "bash", "code": "# مفاهیم در دستورات\ndocker build -t myapp:1.0 .     # ساخت image\ndocker images                    # لیست imageها\ndocker run myapp:1.0             # اجرای container\ndocker ps                        # containerهای در حال اجرا\ndocker ps -a                     # همه containerها\ndocker stop <id>                 # توقف\ndocker rm <id>                   # حذف container\ndocker rmi myapp:1.0             # حذف image\ndocker logs <id>                 # لاگ\ndocker exec -it <id> bash        # ورود به container" }
+      ]
+    },
+    {
+      "id": "dockerfile-basic",
+      "title": "Dockerfile پایه",
+      "blocks": [
+        { "type": "paragraph", "text": "هر Dockerfile از یک تصویر پایه شروع می‌شود و لایه‌به‌لایه روی آن ساخته می‌شود." },
+        { "type": "code", "lang": "dockerfile", "filename": "Dockerfile (ساده)", "code": "FROM python:3.11-slim\n\nWORKDIR /app\n\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY . .\n\nEXPOSE 8000\n\nCMD [\"python\", \"manage.py\", \"runserver\", \"0.0.0.0:8000\"]" },
+        { "type": "note", "variant": "warn", "title": "این نسخه فقط برای یادگیری", "text": "این Dockerfile ساده است اما در تولید مناسب نیست: با root اجرا می‌شود، `runserver` دارد، و حجم زیادی دارد. در بخش‌های بعدی آن را بهبود می‌دهیم." }
+      ]
+    },
+    {
+      "id": "dockerfile-prod",
+      "title": "Dockerfile حرفه‌ای (multi-stage)",
+      "blocks": [
+        { "type": "paragraph", "text": "چند تکنیک کلیدی برای Dockerfile تولید: تصویر پایه کم‌حجم، multi-stage build، کاربر غیر-root، کش pip، و CMD درست." },
+        { "type": "code", "lang": "dockerfile", "filename": "Dockerfile", "code": "# ================================\n# مرحله ۱: Builder — نصب پکیج‌ها\n# ================================\nFROM python:3.11-slim AS builder\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1 \\\n    PIP_NO_CACHE_DIR=1 \\\n    PIP_DISABLE_PIP_VERSION_CHECK=1\n\nWORKDIR /build\n\n# پکیج‌های سیستمی برای build\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    build-essential \\\n    libpq-dev \\\n    && rm -rf /var/lib/apt/lists/*\n\n# نصب پکیج‌های پایتون در /root/.local\nCOPY requirements.txt .\nRUN pip install --user -r requirements.txt\n\n# ================================\n# مرحله ۲: Runtime — تصویر نهایی\n# ================================\nFROM python:3.11-slim\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1 \\\n    PATH=\"/home/app/.local/bin:$PATH\" \\\n    DJANGO_SETTINGS_MODULE=library_system.settings\n\nWORKDIR /app\n\n# فقط runtime deps (بدون build-essential)\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    libpq5 \\\n    libmagic1 \\\n    curl \\\n    && rm -rf /var/lib/apt/lists/*\n\n# کاربر غیر-root\nRUN useradd --create-home --shell /bin/bash app\n\n# کپی پکیج‌های نصب‌شده از builder\nCOPY --from=builder --chown=app:app /root/.local /home/app/.local\n\n# کپی کد\nCOPY --chown=app:app . .\n\n# پوشه‌های static و media\nRUN mkdir -p /app/staticfiles /app/media && \\\n    chown -R app:app /app/staticfiles /app/media\n\nUSER app\n\nEXPOSE 8000\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \\\n    CMD curl -f http://localhost:8000/live/ || exit 1\n\n# اجرا با Gunicorn\nCMD [\"gunicorn\", \"library_system.wsgi:application\", \\\n     \"--bind\", \"0.0.0.0:8000\", \\\n     \"--workers\", \"3\", \\\n     \"--worker-class\", \"gthread\", \\\n     \"--threads\", \"2\", \\\n     \"--access-logfile\", \"-\", \\\n     \"--error-logfile\", \"-\"]" },
+        { "type": "table", "headers": ["تکنیک", "فایده"], "rows": [
+          ["`python:3.11-slim`", "حجم کم (۴۵MB در مقابل ۹۰۰MB نسخه کامل)"],
+          ["Multi-stage", "بدون build-essential در تصویر نهایی"],
+          ["`PIP_NO_CACHE_DIR=1`", "کاهش حجم"],
+          ["`--user` در pip", "نصب در home کاربر"],
+          ["`useradd app`", "غیر-root برای امنیت"],
+          ["`HEALTHCHECK`", "Docker وضعیت را می‌داند"],
+          ["`COPY --chown`", "بدون نیاز به chown اضافه"]
+        ]}
+      ]
+    },
+    {
+      "id": "dockerignore",
+      "title": ".dockerignore — حیاتی",
+      "blocks": [
+        { "type": "paragraph", "text": "بدون `.dockerignore`، Docker همه فایل‌های پروژه را در context می‌فرستد. این هم حجم را زیاد می‌کند و هم ممکن است اطلاعات حساس (`.env`, `.git`) را لو بدهد." },
+        { "type": "text", "filename": ".dockerignore", "code": "# Python\n__pycache__/\n*.py[cod]\n*.pyo\n*.pyd\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n*.egg-info/\ndist/\nbuild/\n\n# Virtual env\n.venv/\nvenv/\nenv/\n\n# Django\n*.sqlite3\ndb.sqlite3\nmedia/\nstaticfiles/\n\n# Environment\n.env\n.env.*\n!.env.example\n\n# IDE\n.idea/\n.vscode/\n*.swp\n*.swo\n\n# Git\n.git/\n.gitignore\n.gitattributes\n\n# Docker\nDockerfile*\ndocker-compose*.yml\n.dockerignore\n\n# Docs\n*.md\nREADME*\nLICENSE\n\n# CI\n.github/\n\n# OS\n.DS_Store\nThumbs.db\n*.log" },
+        { "type": "note", "variant": "tip", "title": "بررسی اثر .dockerignore", "text": "برای دیدن حجم context: `docker build -t test . 2>&1 | head` — جمله «Sending build context» حجم را نشان می‌دهد. اگر بیش از چند MB است، `.dockerignore` را بررسی کنید." }
+      ]
+    },
+    {
+      "id": "compose",
+      "title": "docker-compose.yml کامل",
+      "blocks": [
+        { "type": "paragraph", "text": "Compose ابزار استاندارد برای اجرای چند سرویس در کنار هم. این فایل همه سرویس‌های پروژه را تعریف می‌کند." },
+        { "type": "yaml", "filename": "docker-compose.yml", "code": "services:\n  # =========================\n  # PostgreSQL\n  # =========================\n  db:\n    image: postgres:16-alpine\n    container_name: library_db\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    environment:\n      POSTGRES_DB: ${DB_NAME:-library_db}\n      POSTGRES_USER: ${DB_USER:-library_user}\n      POSTGRES_PASSWORD: ${DB_PASSWORD:-library_pass}\n      PGDATA: /var/lib/postgresql/data/pgdata\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U $${POSTGRES_USER}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 5\n      start_period: 10s\n    restart: unless-stopped\n\n  # =========================\n  # Redis\n  # =========================\n  redis:\n    image: redis:7-alpine\n    container_name: library_redis\n    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru\n    volumes:\n      - redis_data:/data\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"ping\"]\n      interval: 5s\n      timeout: 3s\n      retries: 5\n    restart: unless-stopped\n\n  # =========================\n  # Django API\n  # =========================\n  api:\n    build:\n      context: .\n      dockerfile: Dockerfile\n      target: runtime\n    container_name: library_api\n    command: >\n      sh -c \"python manage.py migrate --noinput &&\n             python manage.py collectstatic --noinput &&\n             gunicorn library_system.wsgi:application --bind 0.0.0.0:8000 --workers 3 --worker-class gthread --threads 2 --access-logfile - --error-logfile -\"\n    volumes:\n      - static_files:/app/staticfiles\n      - media_files:/app/media\n      - ./logs:/app/logs\n    ports:\n      - \"8000:8000\"\n    env_file: .env\n    environment:\n      DB_HOST: db\n      REDIS_URL: redis://redis:6379/0\n      CELERY_BROKER_URL: redis://redis:6379/1\n      CELERY_RESULT_BACKEND: redis://redis:6379/2\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8000/live/\"]\n      interval: 30s\n      timeout: 5s\n      retries: 3\n      start_period: 20s\n\n  # =========================\n  # Celery Worker\n  # =========================\n  celery:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: library_celery\n    command: celery -A library_system worker -l info --concurrency=4 --max-tasks-per-child=1000\n    volumes:\n      - media_files:/app/media\n      - ./logs:/app/logs\n    env_file: .env\n    environment:\n      DB_HOST: db\n      REDIS_URL: redis://redis:6379/0\n      CELERY_BROKER_URL: redis://redis:6379/1\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\n  # =========================\n  # Celery Beat (Scheduler)\n  # =========================\n  celery-beat:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: library_celery_beat\n    command: celery -A library_system beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler\n    env_file: .env\n    environment:\n      DB_HOST: db\n      REDIS_URL: redis://redis:6379/0\n      CELERY_BROKER_URL: redis://redis:6379/1\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\n  # =========================\n  # Flower (Monitoring Celery)\n  # =========================\n  flower:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: library_flower\n    command: celery -A library_system flower --port=5555 --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-changeme}\n    ports:\n      - \"5555:5555\"\n    env_file: .env\n    environment:\n      CELERY_BROKER_URL: redis://redis:6379/1\n    depends_on:\n      - redis\n      - celery\n    restart: unless-stopped\n\n  # =========================\n  # Nginx (Reverse Proxy)\n  # =========================\n  nginx:\n    image: nginx:alpine\n    container_name: library_nginx\n    ports:\n      - \"80:80\"\n      - \"443:443\"\n    volumes:\n      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro\n      - ./nginx/conf.d:/etc/nginx/conf.d:ro\n      - ./nginx/certs:/etc/nginx/certs:ro\n      - static_files:/static:ro\n      - media_files:/media:ro\n    depends_on:\n      - api\n    restart: unless-stopped\n\n# =========================\n# Volumes\n# =========================\nvolumes:\n  postgres_data:\n    driver: local\n  redis_data:\n    driver: local\n  static_files:\n    driver: local\n  media_files:\n    driver: local\n\n# =========================\n# Networks\n# =========================\nnetworks:\n  default:\n    name: library_network\n    driver: bridge" },
+        { "type": "note", "variant": "tip", "title": "چرا env_file + environment؟", "text": "`env_file: .env` همه متغیرها را می‌خواند. `environment:` چند متغیر را override می‌کند — مثلاً `DB_HOST=db` که فقط در Compose معنی دارد (در dev محلی `localhost` است)." }
+      ]
+    },
+    {
+      "id": "compose-override",
+      "title": "Compose برای محیط‌های مختلف",
+      "blocks": [
+        { "type": "paragraph", "text": "Docker Compose از چند فایل پشتیبانی می‌کند که روی هم سوار می‌شوند. این روش برای تفکیک dev/prod عالی است." },
+        { "type": "yaml", "filename": "docker-compose.override.yml (dev)", "code": "# این فایل خودکار با docker-compose.yml ادغام می‌شود\nservices:\n  api:\n    build:\n      target: builder   # مرحله builder (با dev dependencies)\n    command: python manage.py runserver 0.0.0.0:8000\n    volumes:\n      - .:/app          # mount کد برای hot reload\n      - static_files:/app/staticfiles\n    environment:\n      DJANGO_ENV: dev\n      DEBUG: \"True\"\n    ports:\n      - \"8000:8000\"\n\n  # در dev نیازی به nginx و flower نیست\n  nginx:\n    profiles: [\"production\"]\n\n  flower:\n    profiles: [\"production\"]\n\n  celery-beat:\n    profiles: [\"production\"]" },
+        { "type": "yaml", "filename": "docker-compose.prod.yml", "code": "services:\n  api:\n    image: registry.example.com/library-api:${TAG:-latest}\n    build:\n      context: .\n      target: runtime\n    deploy:\n      replicas: 3\n      resources:\n        limits:\n          cpus: \"1.0\"\n          memory: 512M\n        reservations:\n          cpus: \"0.5\"\n          memory: 256M\n      restart_policy:\n        condition: on-failure\n        delay: 5s\n        max_attempts: 3\n        window: 120s\n      update_config:\n        parallelism: 1\n        delay: 10s\n        failure_action: rollback\n        order: start-first\n    logging:\n      driver: json-file\n      options:\n        max-size: \"10m\"\n        max-file: \"3\"\n\n  celery:\n    image: registry.example.com/library-api:${TAG:-latest}\n    deploy:\n      replicas: 2\n      resources:\n        limits:\n          cpus: \"0.5\"\n          memory: 512M" },
+        { "type": "code", "lang": "bash", "code": "# Development (override خودکار اعمال می‌شود)\ndocker compose up\n\n# Production\ndocker compose -f docker-compose.yml -f docker-compose.prod.yml up -d\n\n# فقط سرویس‌های production (بدون override)\ndocker compose -f docker-compose.yml --profile production up -d" }
+      ]
+    },
+    {
+      "id": "entrypoint",
+      "title": "Entrypoint Script",
+      "blocks": [
+        { "type": "paragraph", "text": "برای کارهای اولیه (migrations، collectstatic، انتظار برای DB)، یک entrypoint script جدا بسازید." },
+        { "type": "bash", "filename": "docker/entrypoint.sh", "code": "#!/bin/bash\nset -euo pipefail\n\necho \"[entrypoint] Starting...\"\n\n# ================================\n# انتظار برای PostgreSQL\n# ================================\necho \"[entrypoint] Waiting for database at ${DB_HOST}:${DB_PORT}...\"\nuntil pg_isready -h \"${DB_HOST}\" -p \"${DB_PORT}\" -U \"${DB_USER}\" > /dev/null 2>&1; do\n    echo \"[entrypoint] Database not ready, waiting...\"\n    sleep 1\ndone\necho \"[entrypoint] Database is ready\"\n\n# ================================\n# انتظار برای Redis\n# ================================\necho \"[entrypoint] Waiting for Redis...\"\nuntil redis-cli -u \"${REDIS_URL}\" ping > /dev/null 2>&1; do\n    echo \"[entrypoint] Redis not ready, waiting...\"\n    sleep 1\ndone\necho \"[entrypoint] Redis is ready\"\n\n# ================================\n# کارهای اولیه\n# ================================\ncase \"${1:-}\" in\n  gunicorn)\n    echo \"[entrypoint] Running migrations...\"\n    python manage.py migrate --noinput\n\n    echo \"[entrypoint] Collecting static files...\"\n    python manage.py collectstatic --noinput --clear\n\n    echo \"[entrypoint] Starting Gunicorn...\"\n    exec \"$@\"\n    ;;\n\n  celery)\n    echo \"[entrypoint] Starting Celery: $@\"\n    exec \"$@\"\n    ;;\n\n  python)\n    echo \"[entrypoint] Running Python: $@\"\n    exec \"$@\"\n    ;;\n\n  *)\n    exec \"$@\"\n    ;;\nesac" },
+        { "type": "bash", "code": "# در Dockerfile\nRUN chmod +x /app/docker/entrypoint.sh\n\nENTRYPOINT [\"/app/docker/entrypoint.sh\"]\nCMD [\"gunicorn\", \"library_system.wsgi:application\", \"--bind\", \"0.0.0.0:8000\"]\n\n# در compose\nservices:\n  api:\n    entrypoint: [\"/app/docker/entrypoint.sh\"]\n    command: [\"gunicorn\", \"library_system.wsgi:application\", \"--bind\", \"0.0.0.0:8000\"]" },
+        { "type": "note", "variant": "tip", "title": "چرا pg_isready؟", "text": "PostgreSQL چند ثانیه طول می‌کشد تا آماده شود. بدون انتظار، migration اول خطا می‌دهد. `depends_on` با `condition: service_healthy` هم کار می‌کند اما `pg_isready` تضمین بیشتر." }
+      ]
+    },
+    {
+      "id": "commands",
+      "title": "دستورات پرکاربرد",
+      "blocks": [
+        { "type": "bash", "code": "# =========================\n# ساخت و اجرا\n# =========================\ndocker compose up -d --build            # ساخت + اجرا در پس‌زمینه\ndocker compose up --build                # ساخت + اجرا در foreground\ndocker compose down                       # توقف\ndocker compose down -v                    # توقف + حذف volumes (⚠️ داده پاک می‌شود)\ndocker compose restart api                # restart یک سرویس\ndocker compose restart                    # restart همه\n\n# =========================\n# لاگ\n# =========================\ndocker compose logs -f                    # همه سرویس‌ها\ndocker compose logs -f api                # فقط api\ndocker compose logs --tail=100 api        # آخرین ۱۰۰ خط\ndocker compose logs --since=1h api        # یک ساعت اخیر\n\n# =========================\n# اجرای دستورات در container\n# =========================\ndocker compose exec api python manage.py createsuperuser\ndocker compose exec api python manage.py shell\ndocker compose exec api python manage.py makemigrations\ndocker compose exec api bash              # shell تعاملی\ndocker compose exec db psql -U library_user library_db\n\n# =========================\n# وضعیت\n# =========================\ndocker compose ps                        # لیست سرویس‌ها\ndocker compose top                       # پروسه‌های فعال\ndocker stats                             # منابع (CPU، RAM)\ndocker compose events                    # رخدادها\n\n# =========================\n# مقیاس\n# =========================\ndocker compose up -d --scale api=3 --scale celery=2\n\n# =========================\n# پاکسازی\n# =========================\ndocker system prune -a                   # حذف همه چیز بی‌استفاده\ndocker image prune                       # حذف imageهای بی‌تگ\ndocker volume prune                      # حذف volumeهای بی‌استفاده" }
+      ]
+    },
+    {
+      "id": "volume-backup",
+      "title": "Backup و Restore در Docker",
+      "blocks": [
+        { "type": "paragraph", "text": "Volume داده‌ها را نگه می‌دارد اما backup نمی‌گیرد. باید خودتان backup بگیرید." },
+        { "type": "bash", "filename": "scripts/docker-backup.sh", "code": "#!/bin/bash\nset -euo pipefail\n\nTIMESTAMP=$(date +%Y%m%d_%H%M%S)\nBACKUP_DIR=/var/backups/library\nmkdir -p $BACKUP_DIR\n\n# ================================\n# Backup Database\n# ================================\necho \"[backup] Database...\"\ndocker compose exec -T db pg_dump \\\n    -U ${DB_USER:-library_user} \\\n    ${DB_NAME:-library_db} \\\n    --format=custom \\\n    --compress=9 > $BACKUP_DIR/db_$TIMESTAMP.dump\n\n# ================================\n# Backup Media Volume\n# ================================\necho \"[backup] Media volume...\"\ndocker run --rm \\\n    -v library_media_files:/data \\\n    -v $BACKUP_DIR:/backup \\\n    alpine tar czf /backup/media_$TIMESTAMP.tar.gz -C /data .\n\n# ================================\n# Upload to S3\n# ================================\necho \"[backup] Uploading to S3...\"\naws s3 cp $BACKUP_DIR/db_$TIMESTAMP.dump s3://my-backups/library/db/\naws s3 cp $BACKUP_DIR/media_$TIMESTAMP.tar.gz s3://my-backups/library/media/\n\n# ================================\n# Cleanup\n# ================================\nfind $BACKUP_DIR -mtime +2 -delete\n\necho \"[backup] Done: $TIMESTAMP\"" },
+        { "type": "bash", "filename": "scripts/docker-restore.sh", "code": "#!/bin/bash\nset -euo pipefail\n\nBACKUP_FILE=$1\n\nif [ ! -f \"$BACKUP_FILE\" ]; then\n    echo \"Usage: $0 <backup-file.dump>\"\n    exit 1\nfi\n\necho \"[restore] Restoring $BACKUP_FILE...\"\n\n# توقف سرویس‌هایی که به DB وصل هستند\ndocker compose stop api celery celery-beat\n\n# Restore\ndocker compose exec -T db pg_restore \\\n    -U ${DB_USER:-library_user} \\\n    -d ${DB_NAME:-library_db} \\\n    --clean \\\n    --if-exists \\\n    --no-owner < $BACKUP_FILE\n\n# روشن کردن مجدد\ndocker compose start api celery celery-beat\n\necho \"[restore] Done\"" }
+      ]
+    },
+    {
+      "id": "optimization",
+      "title": "بهینه‌سازی تصویر",
+      "blocks": [
+        { "type": "paragraph", "text": "حجم تصویر روی زمان deploy، مصرف پهنای باند registry و هزینه CI/CD تأثیر می‌گذارد." },
+        { "type": "table", "headers": ["تصویر", "حجم (تقریبی)"], "rows": [
+          ["`python:3.11`", "~۹۰۰ MB"],
+          ["`python:3.11-slim`", "~۱۳۰ MB"],
+          ["`python:3.11-alpine`", "~۵۰ MB"],
+          ["`python:3.11-slim` + multi-stage", "~۱۸۰ MB (بعد از کد و پکیج‌ها)"]
+        ]},
+        { "type": "list", "ordered": false, "items": [
+          "**slim بهتر از alpine برای Python:** با glibc سازگار، بدون مشکل binary wheel.",
+          "**Multi-stage:** پکیج‌های build را در تصویر نهایی نگذارید.",
+          "**`.dockerignore`:** کاهش context.",
+          "**ترتیب دستورات:** `COPY requirements.txt` قبل از `COPY . .` — تا cache pip حفظ شود.",
+          "**`--no-install-recommends`:** فقط پکیج‌های لازم.",
+          "**پاک‌کردن `apt lists`:** `rm -rf /var/lib/apt/lists/*`",
+          "**یک CMD:** بدون shell اضافه (`exec form`)."
+        ]},
+        { "type": "code", "lang": "dockerfile", "filename": "ترتیب درست", "code": "# ✅ خوب — cache حفظ می‌شود\nCOPY requirements.txt .\nRUN pip install -r requirements.txt\nCOPY . .\n\n# ❌ بد — هر تغییر کد باعث نصب مجدد می‌شود\nCOPY . .\nRUN pip install -r requirements.txt" },
+        { "type": "bash", "code": "# بررسی حجم لایه‌ها\ndocker history library-api:latest\n\n# تحلیل با dive\ndocker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest library-api:latest" }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "نکات امنیتی Docker",
+      "blocks": [
+        { "type": "list", "ordered": false, "items": [
+          "**کاربر غیر-root:** `USER app` — کاهش سطح حمله.",
+          "**بدون secret در Dockerfile:** از `env_file` یا Docker Secrets.",
+          "**Base image به‌روز:** `docker pull python:3.11-slim` دوره‌ای.",
+          "**Scan آسیب‌پذیری:** `docker scan` یا Trivy.",
+          "**Read-only filesystem:** `--read-only` برای containerهای بی‌حالت.",
+          "**حد منابع:** `--memory`, `--cpus` در Compose.",
+          "**لاگ محدود:** `max-size` و `max-file`.",
+          "**بدون expose پورت دیتابیس:** فقط شبکه داخلی.",
+          "**Signed images:** Docker Content Trust.",
+          "**Regular updates:** rebuild دوره‌ای."
+        ]},
+        { "type": "bash", "code": "# Trivy scan\npip install trivy\n# یا\ndocker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\\n    aquasec/trivy:latest image library-api:latest\n\n# Docker Bench for Security\ndocker run --rm --net host --pid host --userns host --cap-add audit_control \\\n    -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \\\n    -v /var/lib:/var/lib \\\n    -v /var/run/docker.sock:/var/run/docker.sock \\\n    -v /usr/lib/systemd:/usr/lib/systemd \\\n    -v /etc:/etc --label docker_bench_security \\\n    docker/docker-bench-security" },
+        { "type": "callout-level",
+          "basic": "Dockerfile ساده با root.",
+          "better": "Multi-stage + `USER app`.",
+          "production": "Multi-stage + non-root + HEALTHCHECK + read-only fs + scan در CI + محدودیت منابع + لاگ چرخشی."
+        }
+      ]
+    },
+    {
+      "id": "registry",
+      "title": "Registry و CI/CD",
+      "blocks": [
+        { "type": "paragraph", "text": "تصویر ساخته‌شده باید در یک registry ذخیره شود تا سرورهای مختلف بتوانند pull کنند." },
+        { "type": "table", "headers": ["Registry", "کاربرد", "رایگان؟"], "rows": [
+          ["Docker Hub", "عمومی", "بله (محدود)"],
+          ["GitHub Container Registry (GHCR)", "مرتبط با GitHub", "بله"],
+          ["AWS ECR", "AWS", "بله (محدود)"],
+          ["Google GCR / Artifact Registry", "GCP", "بله (محدود)"],
+          ["Harbor", "Self-hosted", "بله"],
+          ["GitLab Registry", "مرتبط با GitLab", "بله"]
+        ]},
+        { "type": "bash", "code": "# Login\ndocker login registry.example.com\n\n# Build با tag\ndocker build -t registry.example.com/library-api:v1.2.3 .\ndocker tag registry.example.com/library-api:v1.2.3 registry.example.com/library-api:latest\n\n# Push\ndocker push registry.example.com/library-api:v1.2.3\ndocker push registry.example.com/library-api:latest\n\n# Pull روی سرور\ndocker pull registry.example.com/library-api:v1.2.3" },
+        { "type": "yaml", "filename": ".github/workflows/docker.yml", "code": "name: Build and Push Docker Image\n\non:\n  push:\n    tags: ['v*']\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      packages: write\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Set up Docker Buildx\n        uses: docker/setup-buildx-action@v3\n\n      - name: Login to GHCR\n        uses: docker/login-action@v3\n        with:\n          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.GITHUB_TOKEN }}\n\n      - name: Build and push\n        uses: docker/build-push-action@v5\n        with:\n          context: .\n          push: true\n          tags: |\n            ghcr.io/${{ github.repository }}:${{ github.ref_name }}\n            ghcr.io/${{ github.repository }}:latest\n          cache-from: type=gha\n          cache-to: type=gha,mode=max\n          labels: |\n            org.opencontainers.image.revision=${{ github.sha }}\n            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern",
+          "title": "اجرا با root",
+          "why": "اگر کد از کانتینر خارج شود (vulnerability)، مهاجم root روی host می‌شود.",
+          "when": "پیش‌فرض Dockerfile.",
+          "fix": "`useradd app && USER app`."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون .dockerignore",
+          "why": "تصویر بزرگ، context بزرگ، `.env` و `.git` لو می‌روند.",
+          "when": "فراموشی.",
+          "fix": "همیشه `.dockerignore` بسازید."
+        },
+        { "type": "anti-pattern",
+          "title": "تگ `latest` در تولید",
+          "why": "نمی‌دانید چه نسخه‌ای اجرا می‌شود. rollback غیرممکن.",
+          "when": "برای راحتی.",
+          "fix": "تگ نسخه (`v1.2.3`) یا commit hash."
+        },
+        { "type": "anti-pattern",
+          "title": "`COPY . .` قبل از `pip install`",
+          "why": "هر تغییر کد باعث نصب مجدد پکیج‌ها می‌شود (کند).",
+          "when": "ترتیب اشتباه.",
+          "fix": "`COPY requirements.txt .` → `pip install` → `COPY . .`."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون healthcheck",
+          "why": "Compose/K8s نمی‌داند سرویس آماده است یا نه.",
+          "when": "depends_on بدون condition.",
+          "fix": "`HEALTHCHECK` در Dockerfile + `condition: service_healthy`."
+        },
+        { "type": "anti-pattern",
+          "title": "Secret در Dockerfile",
+          "why": "در لایه تصویر باقی می‌ماند، حتی اگر بعداً پاک کنید.",
+          "when": "برای سادگی.",
+          "fix": "`env_file`، Docker Secrets، یا build args + multistage."
+        },
+        { "type": "anti-pattern",
+          "title": "Volume دیتابیس بدون backup",
+          "why": "Volume از بین می‌رود، داده از دست می‌رود.",
+          "when": "خوش‌شانسی.",
+          "fix": "backup روزانه به S3 + تست بازیابی."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون محدودیت منابع",
+          "why": "یک container همه RAM/CPU را می‌گیرد.",
+          "when": "مقیاس متوسط.",
+          "fix": "`deploy.resources.limits` در Compose."
+        },
+        { "type": "anti-pattern",
+          "title": "لاگ بدون محدودیت",
+          "why": "دیسک پر می‌شود.",
+          "when": "لاگ زیاد.",
+          "fix": "`logging.options.max-size: 10m, max-file: 3`."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون scan امنیتی",
+          "why": "آسیب‌پذیری‌های شناخته‌شده در تصویر باقی می‌مانند.",
+          "when": "بی‌توجهی.",
+          "fix": "Trivy در CI + rebuild دوره‌ای."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-075-q1",
+      "tag": "کوییز",
+      "question": "چرا از multi-stage build استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون پکیج‌های build (مثل build-essential) در تصویر نهایی نیستند و حجم کم می‌شود.", "correct": true, "explanation": "مرحله builder پکیج‌ها را می‌سازد، مرحله runtime فقط اجرا می‌کند." },
+        { "text": "چون Docker اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-075-q2",
+      "tag": "کوییز",
+      "question": "چرا از `USER app` در Dockerfile استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false },
+        { "text": "چون اگر مهاجم به container نفوذ کند، دسترسی root روی host ندارد.", "correct": true, "explanation": "کاهش سطح حمله — امنیت." },
+        { "text": "چون Docker اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-075-q3",
+      "tag": "کوییز",
+      "question": "چرا `COPY requirements.txt .` قبل از `COPY . .` می‌آید؟",
+      "options": [
+        { "text": "چون ترتیب مهم نیست.", "correct": false },
+        { "text": "چون Docker لایه‌ها را cache می‌کند. اگر `requirements.txt` تغییر نکند، `pip install` دوباره اجرا نمی‌شود.", "correct": true, "explanation": "هر تغییر کد نباید نصب مجدد پکیج‌ها را باعث شود." },
+        { "text": "چون Docker اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-075-q4",
+      "tag": "کوییز",
+      "question": "چرا `python:3.11-slim` بهتر از `python:3.11-alpine` است؟",
+      "options": [
+        { "text": "چون سبک‌تر است.", "correct": false },
+        { "text": "چون Alpine از musl libc استفاده می‌کند و بعضی binary wheelهای Python با آن سازگار نیستند.", "correct": true, "explanation": "slim با glibc سازگار، بدون دردسر compile مجدد." },
+        { "text": "چون امن‌تر است.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-075-q5",
+      "tag": "کوییز",
+      "question": "چرا در تولید از tag `latest` استفاده نمی‌کنیم؟",
+      "options": [
+        { "text": "چون Docker اجازه نمی‌دهد.", "correct": false },
+        { "text": "چون نمی‌دانید چه نسخه‌ای اجرا می‌شود و rollback غیرممکن است.", "correct": true, "explanation": "تگ نسخه (مثلاً `v1.2.3`) یا commit hash." },
+        { "text": "چون کندتر است.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-075-ex1",
+      "title": "تمرین — Dockerfile چندمرحله‌ای",
+      "problem": "برای یک پروژه DRF، یک Dockerfile چندمرحله‌ای بسازید با: مرحله builder، تصویر runtime slim، کاربر غیر-root، HEALTHCHECK، و Gunicorn.",
+      "hints": [
+        "مرحله ۱: نصب پکیج‌ها با `pip install --user`.",
+        "مرحله ۲: کپی از builder + useradd + chown.",
+        "CMD باید در فرم exec باشد."
+      ],
+      "solution": "همان Dockerfile بخش «Dockerfile حرفه‌ای (multi-stage)» در این فصل.",
+      "explanation": "این الگو، استاندارد تصاویر DRF در تولید است. حجم نهایی حدود ۱۸۰-۲۲۰ MB بسته به پکیج‌ها."
+    },
+    {
+      "id": "ch-075-ex2",
+      "title": "تمرین — docker-compose کامل",
+      "problem": "یک `docker-compose.yml` بسازید با سرویس‌های db، redis، api، celery، celery-beat، flower و nginx. با healthcheck، volume و network.",
+      "hints": [
+        "healthcheck برای db و redis.",
+        "`depends_on` با condition.",
+        "volume برای داده‌های persistent.",
+        "env_file برای متغیرها."
+      ],
+      "solution": "همان docker-compose.yml در بخش «docker-compose.yml کامل» این فصل.",
+      "explanation": "این فایل با `docker compose up -d` همه سرویس‌ها را راه‌اندازی می‌کند."
+    },
+    {
+      "id": "ch-075-ex3",
+      "title": "تمرین — entrypoint با انتظار برای سرویس‌ها",
+      "problem": "یک entrypoint script بسازید که قبل از اجرای دستور اصلی، منتظر آماده شدن PostgreSQL و Redis بماند و سپس migrations را اجرا کند.",
+      "hints": [
+        "از `pg_isready` برای PostgreSQL.",
+        "از `redis-cli ping` برای Redis.",
+        "از `case` برای تفکیک دستور."
+      ],
+      "solution": "همان `docker/entrypoint.sh` در بخش «Entrypoint Script» این فصل.",
+      "explanation": "بدون این انتظار، migration ممکن است در اولین اجرا خطا بدهد چون دیتابیس آماده نیست."
+    }
+  ],
+  "summary": [
+    "**Docker** محیط یکسان در dev، staging و prod.",
+    "**Multi-stage build** حجم را کم می‌کند.",
+    "**`.dockerignore`** حیاتی — از لو رفتن `.env` و `.git` جلوگیری می‌کند.",
+    "**کاربر غیر-root** سطح حمله را کاهش می‌دهد.",
+    "**docker-compose** همه سرویس‌ها با یک دستور.",
+    "**override** برای تفکیک dev و prod.",
+    "**entrypoint** برای انتظار و migration.",
+    "**Volume backup** به S3.",
+    "**بهینه‌سازی:** slim، multi-stage، ترتیب درست لایه‌ها.",
+    "**امنیت:** non-root، scan، محدودیت منابع.",
+    "**Registry:** GHCR، ECR، Harbor.",
+    "**ضدالگوها:** root، latest tag، بدون healthcheck، secret در Dockerfile."
+  ],
+  "resources": [
+    { "title": "Docker Documentation", "url": "https://docs.docker.com/", "official": true },
+    { "title": "Docker Compose", "url": "https://docs.docker.com/compose/", "official": true },
+    { "title": "Dockerfile Best Practices", "url": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/", "official": true },
+    { "title": "Trivy Scanner", "url": "https://github.com/aquasecurity/trivy", "official": false },
+    { "title": "dive — image analysis", "url": "https://github.com/wagoodman/dive", "official": false }
+  ]
+}

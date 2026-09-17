@@ -1,0 +1,273 @@
+{
+  "id": "ch-081",
+  "slug": "capstone-models",
+  "title": "پروژه نهایی — فاز ۲: مدل‌ها",
+  "kicker": "فصل ۸۱",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 70,
+  "lead": "در این فاز، همه مدل‌های اصلی سیستم را با روابط، ایندکس‌ها و constraint‌ها می‌سازیم. طراحی درست مدل‌ها، پایه همه فازهای بعدی است.",
+  "sections": [
+    {
+      "id": "users-models",
+      "title": "users/models.py",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "مدل کاربر سفارشی از AbstractUser ارث‌بری می‌کند و UUID به‌عنوان primary key دارد. پروفایل در مدل جدا برای جداسازی اطلاعات کم‌تغییر و پرتغییر."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/models.py",
+          "code": "from django.contrib.auth.models import AbstractUser\nfrom django.db import models\nfrom django.utils import timezone\nfrom common.models import UUIDModel, TimeStampedModel\n\n\nclass User(AbstractUser, UUIDModel):\n    \"\"\"\n    مدل کاربر سفارشی.\n    - UUID به‌جای عدد (امن‌تر برای IDOR)\n    - email یکتا\n    - فیلدهای اضافی\n    \"\"\"\n    email = models.EmailField(unique=True, db_index=True)\n    is_email_verified = models.BooleanField(default=False)\n    phone = models.CharField(max_length=20, blank=True)\n    avatar = models.ImageField(upload_to=\"avatars/\", blank=True, null=True)\n    bio = models.TextField(blank=True)\n\n    USERNAME_FIELD = \"username\"\n    REQUIRED_FIELDS = [\"email\"]\n\n    class Meta:\n        db_table = \"users\"\n        indexes = [\n            models.Index(fields=[\"email\"]),\n            models.Index(fields=[\"username\"]),\n        ]\n\n    def __str__(self):\n        return self.username\n\n\nclass UserProfile(TimeStampedModel, UUIDModel):\n    \"\"\"\n    پروفایل کاربر — جدا از User.\n    اطلاعاتی که بیشتر تغییر می‌کنند اینجا می‌آیند.\n    \"\"\"\n    SUBSCRIPTION_TIERS = [\n        (\"free\", \"رایگان\"),\n        (\"basic\", \"پایه\"),\n        (\"pro\", \"حرفه‌ای\"),\n    ]\n\n    user = models.OneToOneField(\n        User,\n        on_delete=models.CASCADE,\n        related_name=\"profile\",\n    )\n    preferred_language = models.CharField(max_length=5, default=\"fa\")\n    notification_email = models.BooleanField(default=True)\n    notification_push = models.BooleanField(default=True)\n\n    subscription_tier = models.CharField(\n        max_length=20,\n        choices=SUBSCRIPTION_TIERS,\n        default=\"free\",\n        db_index=True,\n    )\n    subscription_started = models.DateTimeField(null=True, blank=True)\n    subscription_expires = models.DateTimeField(null=True, blank=True, db_index=True)\n\n    # آمار\n    total_loans = models.PositiveIntegerField(default=0)\n    total_reviews = models.PositiveIntegerField(default=0)\n    total_favorites = models.PositiveIntegerField(default=0)\n\n    class Meta:\n        db_table = \"user_profiles\"\n\n    def __str__(self):\n        return f\"Profile of {self.user.username}\"\n\n    @property\n    def has_active_subscription(self):\n        if self.subscription_tier == \"free\":\n            return False\n        if not self.subscription_expires:\n            return False\n        return self.subscription_expires > timezone.now()"
+        }
+      ]
+    },
+    {
+      "id": "catalog-models",
+      "title": "catalog/models.py",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "قلب سیستم: نویسنده، دسته‌بندی (با ساختار درختی)، و کتاب با روابط کامل."
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/models.py",
+          "code": "from django.db import models\nfrom django.utils.text import slugify\nfrom common.models import BaseModel\n\n\nclass Author(BaseModel):\n    \"\"\"نویسنده کتاب.\"\"\"\n    full_name = models.CharField(max_length=200, db_index=True)\n    slug = models.SlugField(max_length=200, unique=True, db_index=True)\n    bio = models.TextField(blank=True)\n    birth_date = models.DateField(null=True, blank=True)\n    death_date = models.DateField(null=True, blank=True)\n    nationality = models.CharField(max_length=80, blank=True)\n    photo = models.ImageField(upload_to=\"authors/photos/\", blank=True, null=True)\n    website = models.URLField(blank=True)\n\n    class Meta:\n        db_table = \"authors\"\n        ordering = [\"full_name\"]\n        indexes = [\n            models.Index(fields=[\"full_name\"]),\n        ]\n\n    def __str__(self):\n        return self.full_name\n\n    def save(self, *args, **kwargs):\n        if not self.slug:\n            self.slug = slugify(self.full_name, allow_unicode=True)\n        super().save(*args, **kwargs)\n\n\nclass Category(BaseModel):\n    \"\"\"دسته‌بندی با ساختار درختی (parent/child).\"\"\"\n    name = models.CharField(max_length=100, unique=True)\n    slug = models.SlugField(max_length=100, unique=True, db_index=True)\n    description = models.TextField(blank=True)\n    icon = models.CharField(max_length=50, blank=True)\n\n    parent = models.ForeignKey(\n        \"self\",\n        on_delete=models.SET_NULL,\n        null=True,\n        blank=True,\n        related_name=\"children\",\n    )\n    order = models.PositiveIntegerField(default=0)\n\n    class Meta:\n        db_table = \"categories\"\n        verbose_name_plural = \"categories\"\n        ordering = [\"order\", \"name\"]\n        indexes = [\n            models.Index(fields=[\"parent\", \"order\"]),\n        ]\n\n    def __str__(self):\n        return self.name\n\n    def save(self, *args, **kwargs):\n        if not self.slug:\n            self.slug = slugify(self.name, allow_unicode=True)\n        super().save(*args, **kwargs)\n\n\nclass Book(BaseModel):\n    \"\"\"\n    مدل کتاب — قلب سیستم.\n    روابط: نویسنده، دسته‌ها، مالک.\n    \"\"\"\n    LANGUAGE_CHOICES = [\n        (\"fa\", \"فارسی\"),\n        (\"en\", \"انگلیسی\"),\n        (\"ar\", \"عربی\"),\n        (\"other\", \"سایر\"),\n    ]\n\n    # اطلاعات اصلی\n    title = models.CharField(max_length=300, db_index=True)\n    slug = models.SlugField(max_length=300, unique=True, db_index=True)\n    subtitle = models.CharField(max_length=300, blank=True)\n    description = models.TextField(blank=True)\n\n    # روابط\n    author = models.ForeignKey(\n        Author,\n        on_delete=models.PROTECT,\n        related_name=\"books\",\n        db_index=True,\n    )\n    categories = models.ManyToManyField(\n        Category,\n        related_name=\"books\",\n        blank=True,\n    )\n    owner = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.SET_NULL,\n        null=True,\n        blank=True,\n        related_name=\"owned_books\",\n    )\n\n    # شناسه‌ها\n    isbn = models.CharField(max_length=13, unique=True, db_index=True)\n\n    # فایل‌ها\n    cover = models.ImageField(upload_to=\"books/covers/\", blank=True, null=True)\n    document = models.FileField(upload_to=\"books/documents/\", blank=True, null=True)\n\n    # قیمت\n    price = models.DecimalField(max_digits=10, decimal_places=2, db_index=True)\n    discount_price = models.DecimalField(\n        max_digits=10,\n        decimal_places=2,\n        null=True,\n        blank=True,\n    )\n\n    # مشخصات\n    published_at = models.DateField(db_index=True)\n    pages = models.PositiveIntegerField(default=0)\n    language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default=\"fa\")\n    publisher = models.CharField(max_length=200, blank=True)\n\n    # موجودی و وضعیت\n    stock = models.PositiveIntegerField(default=0)\n    total_copies = models.PositiveIntegerField(default=1)\n    is_published = models.BooleanField(default=False, db_index=True)\n    is_featured = models.BooleanField(default=False, db_index=True)\n\n    # آمار (denormalized)\n    views_count = models.PositiveIntegerField(default=0)\n    loans_count = models.PositiveIntegerField(default=0)\n\n    class Meta:\n        db_table = \"books\"\n        ordering = [\"-created_at\"]\n        indexes = [\n            models.Index(fields=[\"-published_at\"]),\n            models.Index(fields=[\"is_published\", \"-published_at\"]),\n            models.Index(fields=[\"is_featured\", \"-created_at\"]),\n            models.Index(fields=[\"is_published\", \"price\"]),\n            models.Index(fields=[\"language\", \"is_published\"]),\n        ]\n        constraints = [\n            models.CheckConstraint(\n                check=models.Q(price__gte=0),\n                name=\"book_price_non_negative\",\n            ),\n            models.CheckConstraint(\n                check=models.Q(discount_price__isnull=True) | models.Q(discount_price__lt=models.F(\"price\")),\n                name=\"book_discount_less_than_price\",\n            ),\n            models.CheckConstraint(\n                check=models.Q(stock__lte=models.F(\"total_copies\")),\n                name=\"book_stock_lte_total\",\n            ),\n        ]\n\n    def __str__(self):\n        return self.title\n\n    def save(self, *args, **kwargs):\n        if not self.slug:\n            self.slug = slugify(self.title, allow_unicode=True)\n        super().save(*args, **kwargs)\n\n    @property\n    def final_price(self):\n        return self.discount_price if self.discount_price else self.price\n\n    @property\n    def has_discount(self):\n        return bool(self.discount_price and self.discount_price < self.price)\n\n    @property\n    def is_available(self):\n        return self.stock > 0"
+        }
+      ]
+    },
+    {
+      "id": "reviews-models",
+      "title": "reviews/models.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reviews/models.py",
+          "code": "from django.core.validators import MinValueValidator, MaxValueValidator\nfrom django.db import models\nfrom common.models import BaseModel\n\n\nclass Review(BaseModel):\n    \"\"\"نظر و امتیاز کاربر روی کتاب. یک کاربر فقط یک نظر روی هر کتاب.\"\"\"\n    book = models.ForeignKey(\n        \"catalog.Book\",\n        on_delete=models.CASCADE,\n        related_name=\"reviews\",\n    )\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.CASCADE,\n        related_name=\"reviews\",\n    )\n    rating = models.PositiveSmallIntegerField(\n        validators=[MinValueValidator(1), MaxValueValidator(5)],\n    )\n    title = models.CharField(max_length=200, blank=True)\n    comment = models.TextField()\n\n    is_approved = models.BooleanField(default=False, db_index=True)\n    approved_at = models.DateTimeField(null=True, blank=True)\n    approved_by = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.SET_NULL,\n        null=True,\n        blank=True,\n        related_name=\"approved_reviews\",\n    )\n\n    helpful_count = models.PositiveIntegerField(default=0)\n    report_count = models.PositiveIntegerField(default=0)\n\n    class Meta:\n        db_table = \"reviews\"\n        ordering = [\"-created_at\"]\n        constraints = [\n            models.UniqueConstraint(\n                fields=[\"book\", \"user\"],\n                name=\"unique_review_per_user_per_book\",\n            ),\n        ]\n        indexes = [\n            models.Index(fields=[\"book\", \"-created_at\"]),\n            models.Index(fields=[\"book\", \"is_approved\"]),\n            models.Index(fields=[\"user\", \"-created_at\"]),\n        ]\n\n    def __str__(self):\n        return f\"{self.user.username} - {self.book.title} ({self.rating}/5)\"\n\n\nclass ReviewHelpful(BaseModel):\n    \"\"\"رأی مفید بود به یک نظر. یک کاربر فقط یک رأی.\"\"\"\n    review = models.ForeignKey(\n        Review,\n        on_delete=models.CASCADE,\n        related_name=\"helpful_votes\",\n    )\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.CASCADE,\n        related_name=\"helpful_votes\",\n    )\n\n    class Meta:\n        db_table = \"review_helpful\"\n        constraints = [\n            models.UniqueConstraint(\n                fields=[\"review\", \"user\"],\n                name=\"unique_helpful_per_user\",\n            ),\n        ]\n\n\nclass ReviewReport(BaseModel):\n    \"\"\"گزارش یک نظر به‌عنوان نامناسب.\"\"\"\n    REPORT_REASONS = [\n        (\"spam\", \"اسپم\"),\n        (\"offensive\", \"توهین‌آمیز\"),\n        (\"irrelevant\", \"نامرتبط\"),\n        (\"other\", \"سایر\"),\n    ]\n\n    review = models.ForeignKey(\n        Review,\n        on_delete=models.CASCADE,\n        related_name=\"reports\",\n    )\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.CASCADE,\n        related_name=\"review_reports\",\n    )\n    reason = models.CharField(max_length=20, choices=REPORT_REASONS)\n    description = models.TextField(blank=True)\n    is_resolved = models.BooleanField(default=False)\n\n    class Meta:\n        db_table = \"review_reports\"\n        constraints = [\n            models.UniqueConstraint(\n                fields=[\"review\", \"user\"],\n                name=\"unique_report_per_user\",\n            ),\n        ]"
+        }
+      ]
+    },
+    {
+      "id": "favorites-models",
+      "title": "favorites/models.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "favorites/models.py",
+          "code": "from django.db import models\nfrom common.models import BaseModel\n\n\nclass Favorite(BaseModel):\n    \"\"\"کتاب علاقه‌مندی کاربر. یک کاربر فقط یک بار هر کتاب.\"\"\"\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.CASCADE,\n        related_name=\"favorites\",\n    )\n    book = models.ForeignKey(\n        \"catalog.Book\",\n        on_delete=models.CASCADE,\n        related_name=\"favorited_by\",\n    )\n\n    class Meta:\n        db_table = \"favorites\"\n        ordering = [\"-created_at\"]\n        constraints = [\n            models.UniqueConstraint(\n                fields=[\"user\", \"book\"],\n                name=\"unique_favorite_per_user\",\n            ),\n        ]\n        indexes = [\n            models.Index(fields=[\"user\", \"-created_at\"]),\n        ]\n\n    def __str__(self):\n        return f\"{self.user.username} -> {self.book.title}\""
+        }
+      ]
+    },
+    {
+      "id": "loans-models",
+      "title": "loans/models.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "loans/models.py",
+          "code": "from datetime import timedelta\nfrom django.db import models\nfrom django.utils import timezone\nfrom common.models import BaseModel\n\n\nclass Loan(BaseModel):\n    \"\"\"امانت کتاب به کاربر.\"\"\"\n    STATUS_CHOICES = [\n        (\"pending\", \"در انتظار\"),\n        (\"active\", \"فعال\"),\n        (\"returned\", \"بازگشته\"),\n        (\"overdue\", \"دیرکرد\"),\n        (\"lost\", \"گم‌شده\"),\n        (\"cancelled\", \"لغو\"),\n    ]\n\n    LOAN_DURATION_DAYS = 14\n\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.PROTECT,\n        related_name=\"loans\",\n    )\n    book = models.ForeignKey(\n        \"catalog.Book\",\n        on_delete=models.PROTECT,\n        related_name=\"loans\",\n    )\n    status = models.CharField(\n        max_length=20,\n        choices=STATUS_CHOICES,\n        default=\"pending\",\n        db_index=True,\n    )\n\n    # تاریخ‌ها\n    borrowed_at = models.DateTimeField(null=True, blank=True)\n    due_date = models.DateTimeField(db_index=True)\n    returned_at = models.DateTimeField(null=True, blank=True)\n\n    # مدیریت\n    extended_count = models.PositiveIntegerField(default=0)\n    max_extensions = models.PositiveIntegerField(default=2)\n    handled_by = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.SET_NULL,\n        null=True,\n        blank=True,\n        related_name=\"handled_loans\",\n    )\n    notes = models.TextField(blank=True)\n\n    class Meta:\n        db_table = \"loans\"\n        ordering = [\"-created_at\"]\n        indexes = [\n            models.Index(fields=[\"user\", \"status\"]),\n            models.Index(fields=[\"status\", \"due_date\"]),\n            models.Index(fields=[\"book\", \"status\"]),\n        ]\n        constraints = [\n            models.CheckConstraint(\n                check=models.Q(extended_count__lte=models.F(\"max_extensions\")),\n                name=\"loan_extensions_within_max\",\n            ),\n        ]\n\n    def __str__(self):\n        return f\"{self.user.username} - {self.book.title} [{self.status}]\"\n\n    def save(self, *args, **kwargs):\n        if not self.due_date:\n            self.due_date = timezone.now() + timedelta(days=self.LOAN_DURATION_DAYS)\n        super().save(*args, **kwargs)\n\n    @property\n    def is_overdue(self):\n        return (\n            self.status == \"active\"\n            and self.due_date < timezone.now()\n        )\n\n    @property\n    def days_overdue(self):\n        if not self.is_overdue:\n            return 0\n        return (timezone.now() - self.due_date).days\n\n    @property\n    def can_extend(self):\n        return (\n            self.status == \"active\"\n            and self.extended_count < self.max_extensions\n            and not self.is_overdue\n        )\n\n\nclass Reservation(BaseModel):\n    \"\"\"رزرو کتابی که موجود نیست.\"\"\"\n    STATUS_CHOICES = [\n        (\"waiting\", \"در انتظار\"),\n        (\"ready\", \"آماده تحویل\"),\n        (\"fulfilled\", \"تبدیل به امانت\"),\n        (\"expired\", \"منقضی\"),\n        (\"cancelled\", \"لغو\"),\n    ]\n\n    RESERVATION_HOLD_DAYS = 3\n\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.CASCADE,\n        related_name=\"reservations\",\n    )\n    book = models.ForeignKey(\n        \"catalog.Book\",\n        on_delete=models.CASCADE,\n        related_name=\"reservations\",\n    )\n    status = models.CharField(\n        max_length=20,\n        choices=STATUS_CHOICES,\n        default=\"waiting\",\n        db_index=True,\n    )\n    position = models.PositiveIntegerField(default=0)\n    notified_at = models.DateTimeField(null=True, blank=True)\n    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)\n\n    class Meta:\n        db_table = \"reservations\"\n        ordering = [\"position\", \"created_at\"]\n        indexes = [\n            models.Index(fields=[\"book\", \"status\", \"position\"]),\n            models.Index(fields=[\"user\", \"status\"]),\n        ]\n        constraints = [\n            models.UniqueConstraint(\n                fields=[\"user\", \"book\"],\n                condition=models.Q(status__in=[\"waiting\", \"ready\"]),\n                name=\"unique_active_reservation\",\n            ),\n        ]\n\n    def __str__(self):\n        return f\"Reservation: {self.user.username} - {self.book.title} [{self.status}]\"\n\n    @property\n    def is_ready(self):\n        return self.status == \"ready\"\n\n    @property\n    def is_expired(self):\n        if self.status != \"ready\" or not self.expires_at:\n            return False\n        return self.expires_at < timezone.now()"
+        }
+      ]
+    },
+    {
+      "id": "payments-models",
+      "title": "payments/models.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "payments/models.py",
+          "code": "from django.db import models\nfrom common.models import BaseModel\n\n\nclass Subscription(BaseModel):\n    \"\"\"اشتراک کاربر.\"\"\"\n    TIER_CHOICES = [\n        (\"basic\", \"پایه\"),\n        (\"pro\", \"حرفه‌ای\"),\n    ]\n    STATUS_CHOICES = [\n        (\"active\", \"فعال\"),\n        (\"expired\", \"منقضی\"),\n        (\"cancelled\", \"لغو‌شده\"),\n        (\"pending\", \"در انتظار\"),\n    ]\n\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.PROTECT,\n        related_name=\"subscriptions\",\n    )\n    tier = models.CharField(max_length=20, choices=TIER_CHOICES)\n    status = models.CharField(\n        max_length=20,\n        choices=STATUS_CHOICES,\n        default=\"pending\",\n        db_index=True,\n    )\n    started_at = models.DateTimeField(null=True, blank=True)\n    expires_at = models.DateTimeField(db_index=True)\n    auto_renew = models.BooleanField(default=False)\n    cancelled_at = models.DateTimeField(null=True, blank=True)\n    cancel_reason = models.TextField(blank=True)\n\n    class Meta:\n        db_table = \"subscriptions\"\n        ordering = [\"-created_at\"]\n        indexes = [\n            models.Index(fields=[\"user\", \"status\"]),\n            models.Index(fields=[\"status\", \"expires_at\"]),\n        ]\n\n    def __str__(self):\n        return f\"{self.user.username} - {self.tier} [{self.status}]\"\n\n    @property\n    def is_active(self):\n        from django.utils import timezone\n        return self.status == \"active\" and self.expires_at > timezone.now()\n\n\nclass Payment(BaseModel):\n    \"\"\"پرداخت — تراکنش مالی.\"\"\"\n    STATUS_CHOICES = [\n        (\"pending\", \"در انتظار\"),\n        (\"success\", \"موفق\"),\n        (\"failed\", \"ناموفق\"),\n        (\"refunded\", \"بازگشتی\"),\n    ]\n    GATEWAY_CHOICES = [\n        (\"zarinpal\", \"زرین‌پال\"),\n        (\"idpay\", \"آیدی‌پی\"),\n        (\"stripe\", \"Stripe\"),\n        (\"manual\", \"دستی\"),\n    ]\n\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.PROTECT,\n        related_name=\"payments\",\n    )\n    subscription = models.ForeignKey(\n        Subscription,\n        on_delete=models.SET_NULL,\n        null=True,\n        blank=True,\n        related_name=\"payments\",\n    )\n\n    amount = models.DecimalField(max_digits=12, decimal_places=2)\n    currency = models.CharField(max_length=3, default=\"IRR\")\n    status = models.CharField(\n        max_length=20,\n        choices=STATUS_CHOICES,\n        default=\"pending\",\n        db_index=True,\n    )\n\n    gateway = models.CharField(max_length=50, choices=GATEWAY_CHOICES)\n    transaction_id = models.CharField(max_length=200, blank=True, db_index=True)\n    gateway_authority = models.CharField(max_length=200, blank=True)\n    gateway_response = models.JSONField(default=dict, blank=True)\n\n    paid_at = models.DateTimeField(null=True, blank=True)\n    refunded_at = models.DateTimeField(null=True, blank=True)\n    refund_reason = models.TextField(blank=True)\n\n    class Meta:\n        db_table = \"payments\"\n        ordering = [\"-created_at\"]\n        indexes = [\n            models.Index(fields=[\"user\", \"status\"]),\n            models.Index(fields=[\"status\", \"-created_at\"]),\n            models.Index(fields=[\"transaction_id\"]),\n        ]\n        constraints = [\n            models.CheckConstraint(\n                check=models.Q(amount__gt=0),\n                name=\"payment_amount_positive\",\n            ),\n        ]\n\n    def __str__(self):\n        return f\"Payment {self.id} - {self.amount} {self.currency} [{self.status}]\""
+        }
+      ]
+    },
+    {
+      "id": "notifications-models",
+      "title": "notifications/models.py",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notifications/models.py",
+          "code": "from django.db import models\nfrom common.models import BaseModel\n\n\nclass Notification(BaseModel):\n    \"\"\"اعلان کاربر.\"\"\"\n    TYPE_CHOICES = [\n        (\"loan_created\", \"امانت ثبت شد\"),\n        (\"loan_due_soon\", \"یادآوری بازگشت\"),\n        (\"loan_overdue\", \"دیرکرد\"),\n        (\"loan_returned\", \"بازگشت ثبت شد\"),\n        (\"reservation_ready\", \"رزرو آماده\"),\n        (\"reservation_expired\", \"رزرو منقضی\"),\n        (\"review_approved\", \"نظر تأیید شد\"),\n        (\"review_rejected\", \"نظر رد شد\"),\n        (\"payment_success\", \"پرداخت موفق\"),\n        (\"payment_failed\", \"پرداخت ناموفق\"),\n        (\"subscription_expiring\", \"اشتراک در حال انقضا\"),\n    ]\n\n    PRIORITY_CHOICES = [\n        (\"low\", \"کم\"),\n        (\"normal\", \"عادی\"),\n        (\"high\", \"بالا\"),\n        (\"urgent\", \"فوری\"),\n    ]\n\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.CASCADE,\n        related_name=\"notifications\",\n    )\n    type = models.CharField(max_length=30, choices=TYPE_CHOICES, db_index=True)\n    priority = models.CharField(\n        max_length=20,\n        choices=PRIORITY_CHOICES,\n        default=\"normal\",\n        db_index=True,\n    )\n    title = models.CharField(max_length=200)\n    message = models.TextField()\n    payload = models.JSONField(default=dict, blank=True)\n\n    is_read = models.BooleanField(default=False, db_index=True)\n    read_at = models.DateTimeField(null=True, blank=True)\n\n    # ارسال\n    sent_email = models.BooleanField(default=False)\n    sent_push = models.BooleanField(default=False)\n\n    class Meta:\n        db_table = \"notifications\"\n        ordering = [\"-created_at\"]\n        indexes = [\n            models.Index(fields=[\"user\", \"is_read\", \"-created_at\"]),\n            models.Index(fields=[\"user\", \"type\", \"-created_at\"]),\n        ]\n\n    def __str__(self):\n        return f\"{self.user.username}: {self.title}\"\n\n\nclass EmailLog(BaseModel):\n    \"\"\"لاگ ایمیل‌های ارسال‌شده برای جلوگیری از ارسال تکراری.\"\"\"\n    STATUS_CHOICES = [\n        (\"pending\", \"در انتظار\"),\n        (\"sent\", \"ارسال شد\"),\n        (\"failed\", \"ناموفق\"),\n    ]\n\n    user = models.ForeignKey(\n        \"users.User\",\n        on_delete=models.SET_NULL,\n        null=True,\n        related_name=\"email_logs\",\n    )\n    recipient = models.EmailField()\n    subject = models.CharField(max_length=255)\n    template = models.CharField(max_length=100)\n    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=\"pending\")\n    error = models.TextField(blank=True)\n    sent_at = models.DateTimeField(null=True, blank=True)\n\n    class Meta:\n        db_table = \"email_logs\"\n        ordering = [\"-created_at\"]\n        indexes = [\n            models.Index(fields=[\"status\", \"-created_at\"]),\n        ]"
+        }
+      ]
+    },
+    {
+      "id": "migrate",
+      "title": "مایگریشن و تست",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# ساخت مایگریشن‌ها\npython manage.py makemigrations users catalog reviews favorites loans payments notifications\n\n# اعمال\npython manage.py migrate\n\n# بررسی\npython manage.py showmigrations\n\n# تست پنل ادمین (ثبت مدل‌ها)\npython manage.py runserver\n\n# ساخت superuser\npython manage.py createsuperuser"
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "ترتیب مایگریشن مهم است",
+          "text": "اگر خطای circular dependency خوردید، معمولاً به‌خاطر ForeignKey بین اپلیکیشن‌هاست. راه‌حل: از settings.AUTH_USER_MODEL به‌جای import مستقیم User استفاده کنید."
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "title": "admin.py — ثبت مدل‌ها",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "users/admin.py",
+          "code": "from django.contrib import admin\nfrom django.contrib.auth.admin import UserAdmin as BaseUserAdmin\nfrom .models import User, UserProfile\n\n\n@admin.register(User)\nclass UserAdmin(BaseUserAdmin):\n    list_display = [\"username\", \"email\", \"is_staff\", \"is_email_verified\", \"date_joined\"]\n    list_filter = [\"is_staff\", \"is_superuser\", \"is_email_verified\", \"is_active\"]\n    search_fields = [\"username\", \"email\", \"first_name\", \"last_name\"]\n    ordering = [\"-date_joined\"]\n    fieldsets = BaseUserAdmin.fieldsets + (\n        (\"اضافی\", {\"fields\": (\"phone\", \"avatar\", \"bio\", \"is_email_verified\")}),\n    )\n\n\n@admin.register(UserProfile)\nclass UserProfileAdmin(admin.ModelAdmin):\n    list_display = [\"user\", \"subscription_tier\", \"subscription_expires\", \"total_loans\"]\n    list_filter = [\"subscription_tier\", \"preferred_language\"]\n    search_fields = [\"user__username\", \"user__email\"]\n    readonly_fields = [\"total_loans\", \"total_reviews\", \"total_favorites\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "catalog/admin.py",
+          "code": "from django.contrib import admin\nfrom django.utils.html import format_html\nfrom .models import Author, Category, Book\n\n\n@admin.register(Author)\nclass AuthorAdmin(admin.ModelAdmin):\n    list_display = [\"full_name\", \"nationality\", \"books_count\", \"is_deleted\"]\n    list_filter = [\"nationality\", \"is_deleted\"]\n    search_fields = [\"full_name\", \"bio\"]\n    prepopulated_fields = {\"slug\": (\"full_name\",)}\n\n    def books_count(self, obj):\n        return obj.books.count()\n    books_count.short_description = \"تعداد کتاب‌ها\"\n\n\n@admin.register(Category)\nclass CategoryAdmin(admin.ModelAdmin):\n    list_display = [\"name\", \"parent\", \"order\", \"books_count\"]\n    list_filter = [\"parent\"]\n    search_fields = [\"name\"]\n    prepopulated_fields = {\"slug\": (\"name\",)}\n\n    def books_count(self, obj):\n        return obj.books.count()\n\n\n@admin.register(Book)\nclass BookAdmin(admin.ModelAdmin):\n    list_display = [\n        \"title\", \"author\", \"price\", \"final_price_display\",\n        \"stock\", \"is_published\", \"is_featured\", \"created_at\",\n    ]\n    list_filter = [\"is_published\", \"is_featured\", \"language\", \"is_deleted\", \"author\"]\n    search_fields = [\"title\", \"isbn\", \"description\", \"author__full_name\"]\n    prepopulated_fields = {\"slug\": (\"title\",)}\n    date_hierarchy = \"published_at\"\n    filter_horizontal = [\"categories\"]\n    readonly_fields = [\"views_count\", \"loans_count\", \"created_at\", \"updated_at\"]\n\n    fieldsets = (\n        (\"اطلاعات اصلی\", {\n            \"fields\": (\"title\", \"slug\", \"subtitle\", \"description\", \"language\"),\n        }),\n        (\"روابط\", {\n            \"fields\": (\"author\", \"categories\", \"owner\"),\n        }),\n        (\"شناسه و فایل\", {\n            \"fields\": (\"isbn\", \"cover\", \"document\"),\n        }),\n        (\"قیمت\", {\n            \"fields\": (\"price\", \"discount_price\"),\n        }),\n        (\"مشخصات\", {\n            \"fields\": (\"published_at\", \"pages\", \"publisher\"),\n        }),\n        (\"موجودی و وضعیت\", {\n            \"fields\": (\"stock\", \"total_copies\", \"is_published\", \"is_featured\"),\n        }),\n        (\"آمار\", {\n            \"fields\": (\"views_count\", \"loans_count\", \"created_at\", \"updated_at\"),\n            \"classes\": (\"collapse\",),\n        }),\n    )\n\n    def final_price_display(self, obj):\n        if obj.has_discount:\n            return format_html(\n                '<span style=\"color: red;\">{}</span> <s>{}</s>',\n                obj.final_price, obj.price,\n            )\n        return obj.price\n    final_price_display.short_description = \"قیمت نهایی\""
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "reviews/admin.py",
+          "code": "from django.contrib import admin\nfrom django.utils import timezone\nfrom .models import Review, ReviewHelpful, ReviewReport\n\n\n@admin.register(Review)\nclass ReviewAdmin(admin.ModelAdmin):\n    list_display = [\"id\", \"user\", \"book\", \"rating\", \"is_approved\", \"created_at\"]\n    list_filter = [\"is_approved\", \"rating\", \"created_at\"]\n    search_fields = [\"user__username\", \"book__title\", \"comment\"]\n    actions = [\"approve_reviews\", \"reject_reviews\"]\n\n    def approve_reviews(self, request, queryset):\n        updated = queryset.update(\n            is_approved=True,\n            approved_at=timezone.now(),\n            approved_by=request.user,\n        )\n        self.message_user(request, f\"{updated} نظر تأیید شد.\")\n    approve_reviews.short_description = \"تأیید نظرات انتخاب‌شده\"\n\n    def reject_reviews(self, request, queryset):\n        updated = queryset.update(is_approved=False, approved_at=None)\n        self.message_user(request, f\"{updated} نظر رد شد.\")\n    reject_reviews.short_description = \"رد نظرات انتخاب‌شده\"\n\n\n@admin.register(ReviewReport)\nclass ReviewReportAdmin(admin.ModelAdmin):\n    list_display = [\"review\", \"user\", \"reason\", \"is_resolved\", \"created_at\"]\n    list_filter = [\"reason\", \"is_resolved\"]\n    actions = [\"mark_resolved\"]\n\n    def mark_resolved(self, request, queryset):\n        queryset.update(is_resolved=True)"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "loans/admin.py",
+          "code": "from django.contrib import admin\nfrom django.utils import timezone\nfrom .models import Loan, Reservation\n\n\n@admin.register(Loan)\nclass LoanAdmin(admin.ModelAdmin):\n    list_display = [\n        \"id\", \"user\", \"book\", \"status\",\n        \"borrowed_at\", \"due_date\", \"returned_at\", \"is_overdue_display\",\n    ]\n    list_filter = [\"status\", \"borrowed_at\", \"due_date\"]\n    search_fields = [\"user__username\", \"book__title\"]\n    date_hierarchy = \"borrowed_at\"\n    readonly_fields = [\"is_overdue_display\", \"days_overdue\"]\n    actions = [\"mark_returned\", \"mark_lost\"]\n\n    def is_overdue_display(self, obj):\n        return obj.is_overdue\n    is_overdue_display.boolean = True\n    is_overdue_display.short_description = \"دیرکرد\"\n\n    def mark_returned(self, request, queryset):\n        updated = queryset.filter(status=\"active\").update(\n            status=\"returned\",\n            returned_at=timezone.now(),\n            handled_by=request.user,\n        )\n        self.message_user(request, f\"{updated} امانت بازگشت داده شد.\")\n\n    def mark_lost(self, request, queryset):\n        updated = queryset.update(status=\"lost\")\n        self.message_user(request, f\"{updated} امانت گم‌شده علامت‌گذاری شد.\")\n\n\n@admin.register(Reservation)\nclass ReservationAdmin(admin.ModelAdmin):\n    list_display = [\"id\", \"user\", \"book\", \"status\", \"position\", \"expires_at\"]\n    list_filter = [\"status\", \"created_at\"]\n    search_fields = [\"user__username\", \"book__title\"]\n    actions = [\"mark_ready\", \"mark_expired\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "payments/admin.py",
+          "code": "from django.contrib import admin\nfrom .models import Subscription, Payment\n\n\n@admin.register(Subscription)\nclass SubscriptionAdmin(admin.ModelAdmin):\n    list_display = [\"id\", \"user\", \"tier\", \"status\", \"expires_at\", \"auto_renew\"]\n    list_filter = [\"tier\", \"status\", \"auto_renew\"]\n    search_fields = [\"user__username\", \"user__email\"]\n    date_hierarchy = \"created_at\"\n\n\n@admin.register(Payment)\nclass PaymentAdmin(admin.ModelAdmin):\n    list_display = [\n        \"id\", \"user\", \"amount\", \"currency\", \"status\",\n        \"gateway\", \"transaction_id\", \"created_at\",\n    ]\n    list_filter = [\"status\", \"gateway\", \"currency\", \"created_at\"]\n    search_fields = [\"user__username\", \"transaction_id\", \"gateway_authority\"]\n    date_hierarchy = \"created_at\"\n    readonly_fields = [\"gateway_response\", \"transaction_id\", \"gateway_authority\"]"
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "filename": "notifications/admin.py",
+          "code": "from django.contrib import admin\nfrom .models import Notification, EmailLog\n\n\n@admin.register(Notification)\nclass NotificationAdmin(admin.ModelAdmin):\n    list_display = [\"id\", \"user\", \"type\", \"priority\", \"title\", \"is_read\", \"created_at\"]\n    list_filter = [\"type\", \"priority\", \"is_read\", \"created_at\"]\n    search_fields = [\"user__username\", \"title\", \"message\"]\n    date_hierarchy = \"created_at\"\n    actions = [\"mark_read\"]\n\n    def mark_read(self, request, queryset):\n        from django.utils import timezone\n        queryset.update(is_read=True, read_at=timezone.now())\n\n\n@admin.register(EmailLog)\nclass EmailLogAdmin(admin.ModelAdmin):\n    list_display = [\"id\", \"recipient\", \"subject\", \"template\", \"status\", \"sent_at\"]\n    list_filter = [\"status\", \"template\", \"created_at\"]\n    search_fields = [\"recipient\", \"subject\"]"
+        }
+      ]
+    },
+    {
+      "id": "next",
+      "title": "گام بعدی",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "پس از این فاز، شما همه مدل‌های سیستم را با روابط کامل، ایندکس‌ها، constraint‌ها و ثبت در ادمین دارید. در فاز بعد، سریالایزرها و ویوهای احراز هویت را می‌سازیم."
+        },
+        {
+          "type": "note",
+          "variant": "tip",
+          "title": "چک‌لیست پایان فاز",
+          "text": "✓ همه migrationها اعمال شده. ✓ پنل ادمین همه مدل‌ها را نشان می‌دهد. ✓ superuser ساخته شده. ✓ از ادمین می‌توانید Book، Author، Category بسازید."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-081-q1",
+      "tag": "کوییز",
+      "question": "چرا UserProfile را از User جدا کرده‌ایم؟",
+      "options": [
+        { "text": "چون اجباری است.", "correct": false },
+        { "text": "چون اطلاعات پایه (username, email) کمتر تغییر می‌کنند اما اطلاعات پروفایل (subscription, preferences) بیشتر تغییر می‌کنند.", "correct": true, "explanation": "جداسازی، کوئری‌های ساده‌تر و کش مؤثرتر." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-081-q2",
+      "tag": "کوییز",
+      "question": "چرا on_delete=models.PROTECT برای Book.author؟",
+      "options": [
+        { "text": "چون CASCADE می‌خواهیم.", "correct": false },
+        { "text": "چون نمی‌خواهیم با حذف نویسنده، کتاب‌هایش حذف شوند — کتاب باید باقی بماند.", "correct": true, "explanation": "PROTECT از حذف نویسنده‌ای که کتاب دارد جلوگیری می‌کند." },
+        { "text": "چون DRF می‌خواهد.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-081-q3",
+      "tag": "کوییز",
+      "question": "چرا Review یک UniqueConstraint روی (book, user) دارد؟",
+      "options": [
+        { "text": "چون DRF اجبار می‌کند.", "correct": false },
+        { "text": "چون یک کاربر باید فقط یک نظر روی هر کتاب داشته باشد — جلوگیری از spam.", "correct": true, "explanation": "این constraint در سطح دیتابیس اعمال می‌شود." },
+        { "text": "چون سرعت جستجو را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-081-q4",
+      "tag": "کوییز",
+      "question": "چرا Book ایندکس ترکیبی (is_published, -published_at) دارد؟",
+      "options": [
+        { "text": "چون زیباست.", "correct": false },
+        { "text": "چون کوئری رایج «کتاب‌های منتشرشده مرتب بر اساس تاریخ انتشار» را سریع می‌کند.", "correct": true, "explanation": "ایندکس ترکیبی برای فیلتر+مرتب‌سازی همزمان بهترین است." },
+        { "text": "چون DRF اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-081-q5",
+      "tag": "کوییز",
+      "question": "چرا از BaseModel (TimeStamped + UUID + SoftDelete) برای همه مدل‌ها استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون اجباری است.", "correct": false },
+        { "text": "چون همه مدل‌ها به created_at، updated_at، UUID و soft delete نیاز دارند — یک‌بار نوشته می‌شود، همه‌جا استفاده.", "correct": true, "explanation": "کاهش تکرار، یکدستی." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-081-ex1",
+      "title": "تمرین — پیاده‌سازی مدل‌ها",
+      "problem": "همه مدل‌های این فصل را در پروژه خود پیاده کنید، مایگریشن بسازید، در ادمین ثبت کنید و یک کتاب نمونه با ۲ دسته و ۱ نویسنده بسازید. سپس یک نظر و یک علاقه‌مندی به آن اضافه کنید.",
+      "hints": [
+        "از BaseModel مشترک استفاده کنید.",
+        "ایندکس‌های ذکرشده را فراموش نکنید.",
+        "constraintها را اعمال کنید.",
+        "پنل ادمین برای هر مدل جداگانه بسازید."
+      ],
+      "solution": "همه کدها در این فصل آمده است. سپس:\npython manage.py makemigrations\npython manage.py migrate\npython manage.py runserver\n# در /admin/ یک Author، ۲ Category و یک Book بسازید",
+      "explanation": "پس از این، شما پایه داده‌ای کامل برای پروژه دارید."
+    },
+    {
+      "id": "ch-081-ex2",
+      "title": "تمرین — تست constraints",
+      "problem": "با پنل ادمین یا shell، این constraintها را تست کنید:\n۱) ساخت دو Book با یک ISBN.\n۲) ساخت دو Review توسط یک کاربر روی یک کتاب.\n۳) ساخت Book با discount_price بیشتر از price.\n۴) حذف Author که Book دارد.",
+      "hints": [
+        "از python manage.py shell استفاده کنید.",
+        "خطاها را با try/except بگیرید.",
+        "IntegrityError از django.db.utils."
+      ],
+      "solution": "python manage.py shell\n\nسپس:\nfrom catalog.models import Author, Book, Category\nfrom reviews.models import Review\nfrom django.contrib.auth import get_user_model\nfrom django.db.utils import IntegrityError\nfrom datetime import date\n\na = Author.objects.create(full_name=\"Test Author\")\nc = Category.objects.create(name=\"Test\")\nb1 = Book.objects.create(title=\"B1\", author=a, isbn=\"9780000000001\", price=10, published_at=date.today())\n\ntry:\n    Book.objects.create(title=\"B2\", author=a, isbn=\"9780000000001\", price=10, published_at=date.today())\nexcept IntegrityError:\n    print(\"ISBN duplicate blocked\")\n\nUser = get_user_model()\nu = User.objects.create_user(username=\"test\", password=\"pass12345\")\nReview.objects.create(book=b1, user=u, rating=5, comment=\"Great\")\n\ntry:\n    Review.objects.create(book=b1, user=u, rating=4, comment=\"Again\")\nexcept IntegrityError:\n    print(\"Duplicate review blocked\")\n\ntry:\n    a.delete()\nexcept Exception:\n    print(\"Protected delete blocked\")",
+      "explanation": "این تست‌ها نشان می‌دهند که constraintهای دیتابیس به‌درستی کار می‌کنند."
+    }
+  ],
+  "summary": [
+    "همه مدل‌ها با BaseModel (TimeStamped + UUID + SoftDelete).",
+    "۹ ماژول: users، catalog، reviews، favorites، loans، payments، notifications.",
+    "روابط: ForeignKey، ManyToMany، OneToOne.",
+    "Index‌های ترکیبی برای کوئری‌های رایج.",
+    "Constraint‌های CheckConstraint و UniqueConstraint.",
+    "Admin Panel کامل برای همه مدل‌ها.",
+    "Action‌های ادمین (approve، mark_returned، ...).",
+    "Denormalized counters (views_count، loans_count)."
+  ],
+  "resources": [
+    { "title": "Django — Models", "url": "https://docs.djangoproject.com/en/stable/topics/db/models/", "official": true },
+    { "title": "Django — Constraints", "url": "https://docs.djangoproject.com/en/stable/ref/models/constraints/", "official": true },
+    { "title": "Django — Model index reference", "url": "https://docs.djangoproject.com/en/stable/ref/models/indexes/", "official": true }
+  ]
+}

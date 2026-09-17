@@ -1,0 +1,337 @@
+{
+  "id": "ch-076",
+  "slug": "ci-cd",
+  "title": "CI/CD — یکپارچگی و تحویل پیوسته",
+  "kicker": "فصل ۷۶",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 55,
+  "lead": "CI/CD تضمین می‌کند هر تغییر تست، بررسی و به‌طور خودکار deploy شود. این فصل از GitHub Actions ساده تا pipeline حرفه‌ای چندمرحله‌ای را پوشش می‌دهد.",
+  "sections": [
+    {
+      "id": "why",
+      "title": "چرا CI/CD؟",
+      "blocks": [
+        { "type": "paragraph", "text": "بدون CI/CD، هر deploy یک رخداد پرتنش است: کسی باید دستی تست کند، دستی push کند، دستی migration بزند. با CI/CD، این کارها خودکار می‌شوند و تیم می‌تواند چند بار در روز با اطمینان deploy کند." },
+        { "type": "list", "ordered": false, "items": [
+          "**تست خودکار:** هر commit و PR به‌طور خودکار تست می‌شود.",
+          "**Lint و Format:** کیفیت کد قبل از merge بررسی می‌شود.",
+          "**امنیت:** آسیب‌پذیری‌ها گرفته می‌شوند.",
+          "**Deploy خودکار:** از merge تا production، بدون دخالت انسان.",
+          "**Rollback آسان:** با tag نسخه.",
+          "**اعتماد:** تیم با اطمینان merge می‌کند چون می‌داند CI همه چیز را گرفته.",
+          "**تاریخچه:** می‌دانید چه چیزی کی deploy شد."
+        ]},
+        { "type": "table", "headers": ["بدون CI/CD", "با CI/CD"], "rows": [
+          ["تست دستی قبل از merge", "CI خودکار"],
+          ["Deploy با SSH دستی", "CD خودکار با script"],
+          ["فراموش کردن migration", "deploy script اجرا می‌کند"],
+          ["Bug در production کشف می‌شود", "در PR کشف می‌شود"],
+          ["Rollback سخت", "با tag، چند ثانیه"],
+          ["یک نفر فقط می‌داند چطور deploy کند", "هر عضو تیم می‌تواند"]
+        ]}
+      ]
+    },
+    {
+      "id": "concepts",
+      "title": "مفاهیم پایه",
+      "blocks": [
+        { "type": "table", "headers": ["مفهوم", "توضیح"], "rows": [
+          ["**CI (Continuous Integration)**", "ادغام مداوم تغییرات + تست خودکار"],
+          ["**CD (Continuous Delivery)**", "آماده‌سازی deploy خودکار (با تأیید دستی)"],
+          ["**CD (Continuous Deployment)**", "deploy خودکار بدون تأیید"],
+          ["**Pipeline**", "زنجیره‌ای از مراحل (jobها)"],
+          ["**Job**", "واحد اجرایی مستقل در CI"],
+          ["**Step**", "یک دستور در یک job"],
+          ["**Runner**", "ماشینی که jobها را اجرا می‌کند"],
+          ["**Artifact**", "خروجی job (فایل، تصویر Docker، ...)"],
+          ["**Cache**", "ذخیره‌سازی موقت بین jobها (سرعت)"],
+          ["**Secret**", "متغیر رمزنگاری‌شده"]
+        ]},
+        { "type": "flow", "steps": ["push", "→ lint", "→ test", "→ security", "→ build", "→ deploy"] }
+      ]
+    },
+    {
+      "id": "github-actions",
+      "title": "GitHub Actions — آشنایی",
+      "blocks": [
+        { "type": "paragraph", "text": "GitHub Actions یکی از محبوب‌ترین ابزارهای CI/CD است. config در پوشه `.github/workflows/` قرار می‌گیرد و با YAML نوشته می‌شود." },
+        { "type": "text", "code": "project/\n├── .github/\n│   └── workflows/\n│       ├── ci.yml              # تست، lint، security\n│       ├── cd.yml              # deploy به staging/prod\n│       ├── schema.yml          # بررسی OpenAPI\n│       └── schedule.yml        # jobهای زمان‌بندی‌شده" },
+        { "type": "table", "headers": ["Event", "معنی"], "rows": [
+          ["`push`", "push به شاخه"],
+          ["`pull_request`", "باز شدن PR"],
+          ["`workflow_dispatch`", "اجرای دستی"],
+          ["`schedule`", "زمان‌بندی cron"],
+          ["`release`", "انتشار release"],
+          ["`workflow_run`", "بعد از workflow دیگر"]
+        ]}
+      ]
+    },
+    {
+      "id": "ci-basic",
+      "title": "CI — تست و Lint",
+      "blocks": [
+        { "type": "paragraph", "text": "اولین workflow: نصب پکیج‌ها، اجرای lint و تست. این پایه‌ای است که همه پروژه‌ها باید داشته باشند." },
+        { "type": "yaml", "filename": ".github/workflows/ci.yml", "code": "name: CI\n\non:\n  push:\n    branches: [main, develop]\n  pull_request:\n    branches: [main, develop]\n  workflow_dispatch:  # اجرای دستی\n\n# لغو اجراهای قبلی روی همان branch\nconcurrency:\n  group: ci-${{ github.ref }}\n  cancel-in-progress: true\n\nenv:\n  PYTHON_VERSION: '3.11'\n  DJANGO_SETTINGS_MODULE: library_system.settings.dev\n  SECRET_KEY: ci-test-secret-key-not-for-production\n\njobs:\n  # =========================\n  # Job ۱: Lint و Format\n  # =========================\n  lint:\n    name: Lint &amp; Format\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Set up Python\n        uses: actions/setup-python@v5\n        with:\n          python-version: ${{ env.PYTHON_VERSION }}\n          cache: 'pip'\n\n      - name: Install tools\n        run: |\n          python -m pip install --upgrade pip\n          pip install ruff black\n\n      - name: Run Ruff (linter)\n        run: ruff check . --output-format=github\n\n      - name: Run Ruff (format check)\n        run: ruff format --check .\n\n      - name: Run Black\n        run: black --check .\n\n  # =========================\n  # Job ۲: تست با Coverage\n  # =========================\n  test:\n    name: Test\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n\n    services:\n      postgres:\n        image: postgres:16-alpine\n        env:\n          POSTGRES_DB: test_db\n          POSTGRES_USER: test_user\n          POSTGRES_PASSWORD: test_pass\n        ports:\n          - 5432:5432\n        options: >-\n          --health-cmd pg_isready\n          --health-interval 10s\n          --health-timeout 5s\n          --health-retries 5\n\n      redis:\n        image: redis:7-alpine\n        ports:\n          - 6379:6379\n        options: >-\n          --health-cmd \"redis-cli ping\"\n          --health-interval 10s\n          --health-timeout 5s\n          --health-retries 5\n\n    env:\n      DB_NAME: test_db\n      DB_USER: test_user\n      DB_PASSWORD: test_pass\n      DB_HOST: localhost\n      DB_PORT: 5432\n      REDIS_URL: redis://localhost:6379/0\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Set up Python\n        uses: actions/setup-python@v5\n        with:\n          python-version: ${{ env.PYTHON_VERSION }}\n          cache: 'pip'\n\n      - name: Install dependencies\n        run: |\n          python -m pip install --upgrade pip\n          pip install -r requirements.txt\n          pip install -r requirements-dev.txt\n\n      - name: Run migrations\n        run: python manage.py migrate --noinput\n\n      - name: Run tests with coverage\n        run: |\n          pytest \\\n            --cov=. \\\n            --cov-report=term-missing \\\n            --cov-report=xml \\\n            --cov-report=html \\\n            --cov-fail-under=75 \\\n            -v\n\n      - name: Upload coverage to Codecov\n        uses: codecov/codecov-action@v4\n        if: always()\n        with:\n          file: ./coverage.xml\n          fail_ci_if_error: false\n\n      - name: Upload HTML coverage\n        uses: actions/upload-artifact@v4\n        if: always()\n        with:\n          name: coverage-html\n          path: htmlcov/\n          retention-days: 7\n\n  # =========================\n  # Job ۳: بررسی امنیت\n  # =========================\n  security:\n    name: Security Scan\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - uses: actions/setup-python@v5\n        with:\n          python-version: ${{ env.PYTHON_VERSION }}\n\n      - name: Install pip-audit\n        run: pip install pip-audit\n\n      - name: Run pip-audit\n        run: pip-audit --requirement requirements.txt --fail-on high\n\n      - name: Check for secrets\n        uses: gitleaks/gitleaks-action@v2\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n\n  # =========================\n  # Job ۴: بررسی Migration\n  # =========================\n  migration-check:\n    name: Migration Check\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    needs: [lint]\n\n    services:\n      postgres:\n        image: postgres:16-alpine\n        env:\n          POSTGRES_DB: test_db\n          POSTGRES_USER: test_user\n          POSTGRES_PASSWORD: test_pass\n        ports:\n          - 5432:5432\n        options: >-\n          --health-cmd pg_isready\n          --health-interval 10s\n          --health-retries 5\n\n    env:\n      DB_NAME: test_db\n      DB_USER: test_user\n      DB_PASSWORD: test_pass\n      DB_HOST: localhost\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - uses: actions/setup-python@v5\n        with:\n          python-version: ${{ env.PYTHON_VERSION }}\n          cache: 'pip'\n\n      - name: Install dependencies\n        run: pip install -r requirements.txt\n\n      - name: Check for missing migrations\n        run: python manage.py makemigrations --check --dry-run\n\n  # =========================\n  # Job ۵: بررسی OpenAPI Schema\n  # =========================\n  schema:\n    name: OpenAPI Schema\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n\n    env:\n      SECRET_KEY: schema-test-key\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - uses: actions/setup-python@v5\n        with:\n          python-version: ${{ env.PYTHON_VERSION }}\n          cache: 'pip'\n\n      - name: Install dependencies\n        run: pip install -r requirements.txt\n\n      - name: Generate and validate schema\n        run: python manage.py spectacular --file /tmp/schema.yml --validate\n\n      - name: Upload schema\n        uses: actions/upload-artifact@v4\n        with:\n          name: openapi-schema\n          path: /tmp/schema.yml\n          retention-days: 30" }
+      ]
+    },
+    {
+      "id": "cd",
+      "title": "CD — Deploy خودکار",
+      "blocks": [
+        { "type": "paragraph", "text": "CD وقتی فعال می‌شود که یک tag نسخه push شود (مثل `v1.2.3`). این روش امن‌تر از deploy خودکار روی هر push است." },
+        { "type": "yaml", "filename": ".github/workflows/cd.yml", "code": "name: CD\n\non:\n  push:\n    tags: ['v*']\n  workflow_dispatch:\n    inputs:\n      environment:\n        description: 'Environment to deploy to'\n        required: true\n        default: 'staging'\n        type: choice\n        options:\n          - staging\n          - production\n\npermissions:\n  contents: read\n  packages: write\n  id-token: write   # برای OIDC\n\nenv:\n  REGISTRY: ghcr.io\n  IMAGE_NAME: ${{ github.repository }}\n\njobs:\n  # =========================\n  # Job ۱: Build و Push Docker\n  # =========================\n  build:\n    name: Build &amp; Push Image\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n\n    outputs:\n      image_tag: ${{ steps.meta.outputs.version }}\n      image_digest: ${{ steps.build.outputs.digest }}\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Set up Docker Buildx\n        uses: docker/setup-buildx-action@v3\n\n      - name: Login to GHCR\n        uses: docker/login-action@v3\n        with:\n          registry: ${{ env.REGISTRY }}\n          username: ${{ github.actor }}\n          password: ${{ secrets.GITHUB_TOKEN }}\n\n      - name: Extract metadata\n        id: meta\n        uses: docker/metadata-action@v5\n        with:\n          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\n          tags: |\n            type=ref,event=tag\n            type=semver,pattern={{version}}\n            type=semver,pattern={{major}}.{{minor}}\n            type=sha,prefix=sha-\n            type=raw,value=latest,enable={{is_default_branch}}\n\n      - name: Build and push\n        id: build\n        uses: docker/build-push-action@v5\n        with:\n          context: .\n          push: true\n          tags: ${{ steps.meta.outputs.tags }}\n          labels: ${{ steps.meta.outputs.labels }}\n          cache-from: type=gha\n          cache-to: type=gha,mode=max\n          provenance: true\n          sbom: true\n\n      - name: Scan image with Trivy\n        uses: aquasecurity/trivy-action@master\n        with:\n          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}\n          format: 'sarif'\n          output: 'trivy-results.sarif'\n          severity: 'CRITICAL,HIGH'\n          exit-code: '1'\n\n      - name: Upload Trivy results\n        uses: github/codeql-action/upload-sarif@v3\n        if: always()\n        with:\n          sarif_file: 'trivy-results.sarif'\n\n  # =========================\n  # Job ۲: Deploy به Staging\n  # =========================\n  deploy-staging:\n    name: Deploy to Staging\n    runs-on: ubuntu-latest\n    needs: [build]\n    environment:\n      name: staging\n      url: https://staging.example.com\n    if: |\n      github.event_name == 'workflow_dispatch' &amp;&amp; github.event.inputs.environment == 'staging' ||\n      (github.event_name == 'push' &amp;&amp; contains(github.ref, 'rc'))\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Deploy via SSH\n        uses: appleboy/ssh-action@v1\n        with:\n          host: ${{ secrets.STAGING_HOST }}\n          username: ${{ secrets.STAGING_USER }}\n          key: ${{ secrets.STAGING_SSH_KEY }}\n          script: |\n            set -e\n            cd /var/www/library-api\n            echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\n            export TAG=${{ needs.build.outputs.image_tag }}\n            docker compose pull api celery celery-beat\n            docker compose up -d --no-deps api celery celery-beat\n            docker compose exec -T api python manage.py migrate --noinput\n            docker image prune -f\n            echo \"Staging deployed: $TAG\"\n\n      - name: Health check\n        run: |\n          sleep 10\n          curl -f https://staging.example.com/health/ || exit 1\n\n  # =========================\n  # Job ۳: Deploy به Production\n  # =========================\n  deploy-production:\n    name: Deploy to Production\n    runs-on: ubuntu-latest\n    needs: [build]\n    environment:\n      name: production\n      url: https://api.example.com\n    if: github.event_name == 'push' &amp;&amp; startsWith(github.ref, 'refs/tags/v') &amp;&amp; !contains(github.ref, 'rc')\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Pre-deploy backup\n        uses: appleboy/ssh-action@v1\n        with:\n          host: ${{ secrets.PROD_HOST }}\n          username: ${{ secrets.PROD_USER }}\n          key: ${{ secrets.PROD_SSH_KEY }}\n          script: /usr/local/bin/backup.sh\n\n      - name: Deploy via SSH\n        uses: appleboy/ssh-action@v1\n        with:\n          host: ${{ secrets.PROD_HOST }}\n          username: ${{ secrets.PROD_USER }}\n          key: ${{ secrets.PROD_SSH_KEY }}\n          script: |\n            set -e\n            cd /var/www/library-api\n            echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\n            export TAG=${{ needs.build.outputs.image_tag }}\n            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull\n            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --scale api=3 api celery celery-beat\n            docker compose exec -T api python manage.py migrate --noinput\n            docker image prune -f\n\n      - name: Post-deploy health check\n        run: |\n          sleep 15\n          for i in {1..10}; do\n            if curl -f https://api.example.com/health/; then\n              echo \"Health check passed\"\n              exit 0\n            fi\n            echo \"Attempt $i failed, retrying in 5s...\"\n            sleep 5\n          done\n          echo \"Health check failed after 10 attempts\"\n          exit 1\n\n      - name: Notify Slack\n        if: always()\n        uses: slackapi/slack-github-action@v1\n        with:\n          payload: |\n            {\n              \"text\": \"Deployment ${{ job.status }}: ${{ github.ref_name }} to production\"\n            }\n        env:\n          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}" }
+      ]
+    },
+    {
+      "id": "pyproject",
+      "title": "تنظیمات pyproject.toml",
+      "blocks": [
+        { "type": "paragraph", "text": "همه تنظیمات ابزارها در یک فایل. این استاندارد مدرن پایتون است." },
+        { "type": "toml", "filename": "pyproject.toml", "code": "[project]\nname = \"library-system\"\nversion = \"1.0.0\"\ndescription = \"Library Management System API\"\nrequires-python = \"&gt;=3.11\"\n\n# ================================\n# Ruff — linter + formatter\n# ================================\n[tool.ruff]\nline-length = 100\ntarget-version = \"py311\"\nexclude = [\n    \".git\",\n    \".venv\",\n    \"venv\",\n    \"__pycache__\",\n    \"migrations\",\n    \"staticfiles\",\n    \"media\",\n]\n\n[tool.ruff.lint]\nselect = [\n    \"E\", \"W\",       # pycodestyle\n    \"F\",            # pyflakes\n    \"I\",            # isort\n    \"B\",            # flake8-bugbear\n    \"C4\",           # comprehensions\n    \"DJ\",           # flake8-django\n    \"S\",            # flake8-bandit (امنیت)\n    \"T20\",          # flake8-print\n    \"SIM\",          # simplify\n    \"UP\",           # pyupgrade\n]\nignore = [\n    \"E501\",         # طول خط (ruff format مدیریت می‌کند)\n    \"S101\",         # assert در تست‌ها\n    \"DJ001\",        # null=True روی CharField\n]\n\n[tool.ruff.lint.per-file-ignores]\n\"*/migrations/*\" = [\"E\", \"W\", \"F\", \"DJ\"]\n\"*/tests/*\" = [\"S101\", \"S105\", \"S106\"]\n\"*/settings/*\" = [\"F403\", \"F405\"]\n\n[tool.ruff.lint.isort]\nknown-first-party = [\"library_system\", \"common\", \"users\", \"catalog\"]\nsection-order = [\"future\", \"standard-library\", \"third-party\", \"first-party\", \"local-folder\"]\n\n[tool.ruff.format]\nquote-style = \"double\"\nindent-style = \"space\"\nskip-magic-trailing-comma = false\nline-ending = \"auto\"\n\n# ================================\n# Black — formatter\n# ================================\n[tool.black]\nline-length = 100\ntarget-version = [\"py311\"]\nskip-string-normalization = false\npreview = false\n\n# ================================\n# pytest\n# ================================\n[tool.pytest.ini_options]\nDJANGO_SETTINGS_MODULE = \"library_system.settings.dev\"\npython_files = [\"test_*.py\", \"*_test.py\"]\npython_classes = [\"Test*\"]\npython_functions = [\"test_*\"]\naddopts = [\n    \"--reuse-db\",\n    \"--strict-markers\",\n    \"--strict-config\",\n    \"--cov=.\",\n    \"--cov-report=term-missing\",\n    \"--cov-report=html\",\n    \"--cov-fail-under=75\",\n    \"-ra\",\n    \"-q\",\n]\ntestpaths = [\"tests\", \".\"]\nfilterwarnings = [\n    \"error\",\n    \"ignore::DeprecationWarning:django.*:\",\n    \"ignore::PendingDeprecationWarning\",\n]\nmarkers = [\n    \"slow: tests that take too long\",\n    \"integration: integration tests\",\n    \"e2e: end-to-end tests\",\n]\n\n# ================================\n# Coverage\n# ================================\n[tool.coverage.run]\nsource = [\".\"]\nomit = [\n    \"*/migrations/*\",\n    \"*/tests/*\",\n    \"*/test_*.py\",\n    \"*/admin.py\",\n    \"manage.py\",\n    \"*/settings/*\",\n    \"*/asgi.py\",\n    \"*/wsgi.py\",\n]\n\n[tool.coverage.report]\nexclude_lines = [\n    \"pragma: no cover\",\n    \"def __repr__\",\n    \"def __str__\",\n    \"raise AssertionError\",\n    \"raise NotImplementedError\",\n    \"if __name__ == .__main__.:\",\n    \"if TYPE_CHECKING:\",\n    \"@abstractmethod\",\n]\n\n# ================================\n# mypy (اختیاری — برای Type Hints)\n# ================================\n[tool.mypy]\npython_version = \"3.11\"\ncheck_untyped_defs = true\nignore_missing_imports = true\nwarn_unused_ignores = true\nwarn_redundant_casts = true\nwarn_unused_configs = true\nplugins = []" }
+      ]
+    },
+    {
+      "id": "pre-commit",
+      "title": "Pre-commit Hooks",
+      "blocks": [
+        { "type": "paragraph", "text": "Pre-commit hookها قبل از commit اجرا می‌شوند. اگر ایراد پیدا کنند، commit انجام نمی‌شود. این روش از ورود کد بی‌کیفیت به repo جلوگیری می‌کند." },
+        { "type": "bash", "code": "pip install pre-commit\npre-commit install              # نصب hook\npre-commit install --hook-type commit-msg   # برای پیام commit\npre-commit run --all-files      # اجرای دستی همه" },
+        { "type": "yaml", "filename": ".pre-commit-config.yaml", "code": "repos:\n  # ================================\n  # Hooks عمومی\n  # ================================\n  - repo: https://github.com/pre-commit/pre-commit-hooks\n    rev: v4.5.0\n    hooks:\n      - id: trailing-whitespace\n      - id: end-of-file-fixer\n      - id: check-yaml\n        args: [--allow-multiple-documents]\n      - id: check-json\n      - id: check-toml\n      - id: check-added-large-files\n        args: ['--maxkb=500']\n      - id: check-merge-conflict\n      - id: check-case-conflict\n      - id: detect-private-key\n      - id: mixed-line-ending\n        args: ['--fix=lf']\n      - id: no-commit-to-branch\n        args: ['--branch', 'main']\n\n  # ================================\n  # Ruff — linter + formatter\n  # ================================\n  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.3.0\n    hooks:\n      - id: ruff\n        args: [--fix, --exit-non-zero-on-fix]\n      - id: ruff-format\n\n  # ================================\n  # Black — formatter (اختیاری اگر ruff-format دارید)\n  # ================================\n  - repo: https://github.com/psf/black\n    rev: 24.2.0\n    hooks:\n      - id: black\n        language_version: python3.11\n\n  # ================================\n  # Django-specific\n  # ================================\n  - repo: https://github.com/django-upgrade/django-upgrade\n    rev: 1.16.0\n    hooks:\n      - id: django-upgrade\n        args: [--target-version, '5.0']\n\n  # ================================\n  # Security\n  # ================================\n  - repo: https://github.com/gitleaks/gitleaks\n    rev: v8.18.2\n    hooks:\n      - id: gitleaks\n\n  # ================================\n  # Commit message\n  # ================================\n  - repo: https://github.com/compilerla/conventional-pre-commit\n    rev: v3.2.0\n    hooks:\n      - id: conventional-pre-commit\n        stages: [commit-msg]\n        args: []" },
+        { "type": "note", "variant": "tip", "title": "Conventional Commits", "text": "استاندارد پیام commit: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. این استاندارد به تولید CHANGELOG خودکار کمک می‌کند." }
+      ]
+    },
+    {
+      "id": "secrets",
+      "title": "مدیریت Secrets",
+      "blocks": [
+        { "type": "paragraph", "text": "در CI/CD، secretها (رمز دیتابیس، کلید SSH، توکن API) نباید در کد باشند. GitHub Secrets راه استاندارد است." },
+        { "type": "table", "headers": ["نوع Secret", "کاربرد", "سطح دسترسی"], "rows": [
+          ["Repository secrets", "برای همه workflowها", "کل repo"],
+          ["Environment secrets", "فقط برای محیط مشخص (staging/prod)", "فقط job مربوطه"],
+          ["Organization secrets", "برای همه repoهای سازمان", "کل سازمان"],
+          ["Dependabot secrets", "برای Dependabot", "فقط Dependabot"]
+        ]},
+        { "type": "bash", "code": "# افزودن secret از CLI\ngh secret set SECRET_KEY --body \"...\"\ngh secret set DB_PASSWORD --env production --body \"...\"\n\n# لیست secretها\ngh secret list\n\n# استفاده در workflow\n# ${{ secrets.SECRET_KEY }}\n# ${{ secrets.DB_PASSWORD }}" },
+        { "type": "yaml", "filename": "استفاده از Environment Secrets", "code": "jobs:\n  deploy:\n    environment: production    # ← این باعث دسترسی به Environment Secrets می‌شود\n    steps:\n      - name: Deploy\n        env:\n          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}\n          API_KEY: ${{ secrets.API_KEY }}\n        run: ./deploy.sh" },
+        { "type": "callout-level",
+          "basic": "Secretها را در کد نگه دارید (خیلی بد).",
+          "better": "GitHub Repository Secrets.",
+          "production": "Environment Secrets + OIDC برای AWS/GCP + rotation دوره‌ای + audit log."
+        }
+      ]
+    },
+    {
+      "id": "matrix",
+      "title": "Matrix و Parallelism",
+      "blocks": [
+        { "type": "paragraph", "text": "Matrix اجازه می‌دهد یک job را با ترکیب‌های مختلف (نسخه Python، دیتابیس، ...) اجرا کنید." },
+        { "type": "yaml", "filename": ".github/workflows/matrix.yml", "code": "name: Test Matrix\n\non: [push, pull_request]\n\njobs:\n  test:\n    runs-on: ${{ matrix.os }}\n    strategy:\n      fail-fast: false       # اگر یکی fail داد، بقیه ادامه دهند\n      matrix:\n        os: [ubuntu-latest, macos-latest]\n        python-version: ['3.11', '3.12']\n        django-version: ['4.2', '5.0']\n        exclude:\n          - os: macos-latest\n            python-version: '3.12'\n        include:\n          - os: ubuntu-latest\n            python-version: '3.12'\n            django-version: '5.0'\n            experimental: true\n\n    continue-on-error: ${{ matrix.experimental == true }}\n\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Set up Python ${{ matrix.python-version }}\n        uses: actions/setup-python@v5\n        with:\n          python-version: ${{ matrix.python-version }}\n\n      - name: Install dependencies\n        run: |\n          pip install \"Django&gt;=${{ matrix.django-version }},&lt;$(echo ${{ matrix.django-version }} + 0.1 | bc)\"\n          pip install -r requirements.txt\n\n      - name: Run tests\n        run: pytest" },
+        { "type": "note", "variant": "tip", "title": "fail-fast", "text": "`fail-fast: false` اجازه می‌دهد همه ترکیب‌ها اجرا شوند حتی اگر یکی fail داد. مفید برای کشف مشکل ناسازگاری نسخه." }
+      ]
+    },
+    {
+      "id": "branch-protection",
+      "title": "Branch Protection Rules",
+      "blocks": [
+        { "type": "paragraph", "text": "در GitHub، قوانین محافظت از شاخه تعیین می‌کنند چه چیزی می‌تواند merge شود." },
+        { "type": "list", "ordered": false, "items": [
+          "**✓** Require pull request before merging",
+          "**✓** Require approvals (۱-۲ نفر)",
+          "**✓** Dismiss stale approvals when new commits pushed",
+          "**✓** Require review from Code Owners",
+          "**✓** Require status checks to pass:",
+          "   - Lint & Format",
+          "   - Test",
+          "   - Security Scan",
+          "   - Migration Check",
+          "**✓** Require branches to be up to date before merging",
+          "**✓** Require conversation resolution",
+          "**✓** Require signed commits (اختیاری)",
+          "**✓** Require linear history",
+          "**✓** Do not allow bypassing (حتی adminها)",
+          "**✓** Restrict who can push to matching branches"
+        ]},
+        { "type": "bash", "code": "# تنظیم از CLI (نیاز به admin)\ngh api repos/:owner/:repo/branches/main/protection \\\n  --method PUT \\\n  --input protection.json\n\n# protection.json:\n# {\n#   \"required_status_checks\": {\n#     \"strict\": true,\n#     \"contexts\": [\"Lint & Format\", \"Test\", \"Security Scan\"]\n#   },\n#   \"enforce_admins\": true,\n#   \"required_pull_request_reviews\": {\n#     \"required_approving_review_count\": 1,\n#     \"dismiss_stale_reviews\": true\n#   },\n#   \"restrictions\": null\n# }" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern",
+          "title": "بدون CI از روز اول",
+          "why": "خطاها در production کشف می‌شوند، هزینه تعمیر بالاست.",
+          "when": "وقتی فکر می‌کنید «بعداً اضافه می‌کنیم».",
+          "fix": "CI از اولین commit. حداقل یک job ساده."
+        },
+        { "type": "anti-pattern",
+          "title": "CI کند (بیش از ۱۰ دقیقه)",
+          "why": "تیم آن را دور می‌زند یا از کنارش می‌گذرد.",
+          "when": "وقتی همه چیز را در یک job جمع می‌کنید.",
+          "fix": "تقسیم به jobهای موازی، cache، فقط تست‌های مربوطه در هر مرحله."
+        },
+        { "type": "anti-pattern",
+          "title": "Deploy روی هر push به main",
+          "why": "بدون تأیید، خطا مستقیم به production می‌رود.",
+          "when": "برای سرعت.",
+          "fix": "tag نسخه (v1.2.3) یا تأیید دستی."
+        },
+        { "type": "anti-pattern",
+          "title": "نبود تست در CI",
+          "why": "CI تبدیل به یک تیک تشریفاتی می‌شود.",
+          "when": "وقتی فقط lint اجرا می‌کنید.",
+          "fix": "تست همیشه. حداقل smoke test."
+        },
+        { "type": "anti-pattern",
+          "title": "Secret در yaml workflow",
+          "why": "در Git history باقی می‌ماند، هر کسی می‌بیند.",
+          "when": "برای سادگی.",
+          "fix": "`secrets.NAME` + Environment Secrets."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون cache",
+          "why": "CI هر بار ۱۰ دقیقه برای نصب پکیج‌ها صبر می‌کند.",
+          "when": "فراموشی.",
+          "fix": "`cache: 'pip'` در setup-python."
+        },
+        { "type": "anti-pattern",
+          "title": "اجرای همه تست‌ها در هر push",
+          "why": "کند.",
+          "when": "پروژه بزرگ.",
+          "fix": "smoke در push، full در PR یا nightly."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون rollback plan",
+          "why": "اگر deploy fail داد، سرگردان می‌شوید.",
+          "when": "همیشه.",
+          "fix": "تگ نسخه قبلی + اسکریپت rollback + تست."
+        },
+        { "type": "anti-pattern",
+          "title": "Deploy بدون backup",
+          "why": "migration خراب، دیتابیس از دست می‌رود.",
+          "when": "migration با تغییر ساختار.",
+          "fix": "backup قبل از deploy + تست بازیابی."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون notification",
+          "why": "نمی‌فهمید deploy fail داده.",
+          "when": "تیم بزرگ.",
+          "fix": "Slack/Email notification در پایان job."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-076-q1",
+      "tag": "کوییز",
+      "question": "چرا از `cache: 'pip'` در setup-python استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون امن‌تر است.", "correct": false },
+        { "text": "چون pip cache بین اجراها حفظ می‌شود و نصب سریع‌تر است.", "correct": true, "explanation": "صرفه‌جویی در زمان CI از چند دقیقه به چند ثانیه." },
+        { "text": "چون GitHub اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-076-q2",
+      "tag": "کوییز",
+      "question": "چرا از tag نسخه (v1.2.3) برای deploy استفاده می‌کنیم نه هر push به main؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون deploy با تأیید انجام می‌شود و rollback آسان است.", "correct": true, "explanation": "بدون tag، هر push مستقیماً به production می‌رود." },
+        { "text": "چون GitHub اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-076-q3",
+      "tag": "کوییز",
+      "question": "تفاوت `fail-fast: true` و `fail-fast: false` در matrix چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "`fail-fast: true` با اولین شکست همه را متوقف می‌کند؛ `false` بقیه را ادامه می‌دهد.", "correct": true, "explanation": "برای کشف همه ناسازگاری‌ها، `false` بهتر است." },
+        { "text": "`fail-fast: false` سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-076-q4",
+      "tag": "کوییز",
+      "question": "چرا از Environment Secrets به‌جای Repository Secrets استفاده می‌کنیم؟",
+      "options": [
+        { "text": "چون سریع‌تر است.", "correct": false },
+        { "text": "چون secret فقط برای job مربوط به آن environment قابل دسترسی است و می‌توان تأیید دستی اضافه کرد.", "correct": true, "explanation": "جداسازی staging و production." },
+        { "text": "چون GitHub اجبار می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-076-q5",
+      "tag": "کوییز",
+      "question": "چرا `python manage.py makemigrations --check --dry-run` در CI اجرا می‌کنیم؟",
+      "options": [
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false },
+        { "text": "چون مطمئن می‌شویم مدل‌ها تغییر کرده‌اند اما migration ساخته نشده — خطای رایج.", "correct": true, "explanation": "اگر developer فراموش کند `makemigrations` بزند، CI هشدار می‌دهد." },
+        { "text": "چون Django اجبار می‌کند.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-076-ex1",
+      "title": "تمرین — CI کامل",
+      "problem": "یک workflow GitHub Actions بسازید که در هر PR روی main اجرا شود و شامل: lint، تست با coverage (حداقل ۷۵٪)، بررسی امنیت با pip-audit، و بررسی migration باشد.",
+      "hints": [
+        "چهار job جدا: lint، test، security، migration-check.",
+        "Service برای PostgreSQL و Redis.",
+        "Coverage threshold با `--cov-fail-under=75`.",
+        "`--check --dry-run` برای migration."
+      ],
+      "solution": "همان `.github/workflows/ci.yml` در بخش «CI — تست و Lint» این فصل.",
+      "explanation": "این workflow استاندارد صنعت است. هر PR قبل از merge از این فیلترها عبور می‌کند."
+    },
+    {
+      "id": "ch-076-ex2",
+      "title": "تمرین — CD با tag",
+      "problem": "یک workflow بسازید که وقتی tag `v*` push شد: Docker image بسازد، به GHCR push کند، Trivy scan کند، و به production deploy کند با health check.",
+      "hints": [
+        "`on: push: tags: ['v*']`.",
+        "docker/build-push-action.",
+        "Trivy scan قبل از deploy.",
+        "Health check بعد از deploy."
+      ],
+      "solution": "همان `.github/workflows/cd.yml` در بخش «CD — Deploy خودکار» این فصل.",
+      "explanation": "این pipeline امن، تست‌شده و قابل rollback است."
+    },
+    {
+      "id": "ch-076-ex3",
+      "title": "تمرین — Pre-commit hooks",
+      "problem": "یک `.pre-commit-config.yaml` بسازید با: trailing-whitespace، end-of-file-fixer، check-yaml، detect-private-key، ruff، black، gitleaks، و conventional commits.",
+      "hints": [
+        "هر hook از repo جدا می‌آید.",
+        "`rev` باید نسخه pin شده باشد.",
+        "conventional-pre-commit در stage `commit-msg`."
+      ],
+      "solution": "همان `.pre-commit-config.yaml` در بخش «Pre-commit Hooks» این فصل.",
+      "explanation": "این hookها از ورود کد بی‌کیفیت یا secret به repo جلوگیری می‌کنند."
+    }
+  ],
+  "summary": [
+    "**CI:** lint، test، security، migration check.",
+    "**CD:** build image، push registry، scan، deploy.",
+    "**GitHub Actions:** `on`, `jobs`, `steps`, `services`, `matrix`.",
+    "**Cache pip:** سرعت CI را چند برابر می‌کند.",
+    "**Environment Secrets:** جداسازی staging و production.",
+    "**Pre-commit:** hookهای محلی قبل از commit.",
+    "**Branch protection:** CI باید قبل از merge پاس شود.",
+    "**Rollback:** با tag نسخه.",
+    "**Backup قبل از deploy** migration.",
+    "**ضدالگوها:** بدون CI، CI کند، secret در yaml، deploy خودکار روی main بدون تأیید، بدون rollback."
+  ],
+  "resources": [
+    { "title": "GitHub Actions Documentation", "url": "https://docs.github.com/en/actions", "official": true },
+    { "title": "GitHub Actions — Workflow syntax", "url": "https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions", "official": true },
+    { "title": "pre-commit", "url": "https://pre-commit.com/", "official": true },
+    { "title": "Conventional Commits", "url": "https://www.conventionalcommits.org/", "official": true },
+    { "title": "Ruff", "url": "https://docs.astral.sh/ruff/", "official": true },
+    { "title": "Trivy", "url": "https://github.com/aquasecurity/trivy", "official": false }
+  ]
+}

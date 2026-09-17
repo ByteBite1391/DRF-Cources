@@ -1,0 +1,226 @@
+{
+  "id": "ch-079",
+  "slug": "capstone-overview",
+  "title": "پروژه نهایی — نمای کلی",
+  "kicker": "فصل ۷۹",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 40,
+  "lead": "در این پروژه نهایی، همه چیزهایی که در ۷۸ فصل گذشته یاد گرفتید را در یک سیستم واقعی و قابل استقرار به کار می‌گیرید.",
+  "sections": [
+    {
+      "id": "intro",
+      "title": "معرفی پروژه",
+      "blocks": [
+        { "type": "paragraph", "text": "پروژه نهایی، یک **سیستم مدیریت کتابخانه دیجیتال** است. این پروژه از عمد پیچیده انتخاب شده تا همه مباحث DRF را پوشش دهد: از احراز هویت و مجوز تا فیلتر، صفحه‌بندی، امانت، پرداخت، اعلان و گزارش." },
+        { "type": "list", "ordered": false, "items": [
+          "**چند ماژول مستقل:** users، catalog، reviews، favorites، loans، payments، notifications، reports",
+          "**احراز هویت JWT** کامل با Rotation و Blacklist",
+          "**مجوز سطح شیء** برای مالکیت",
+          "**CRUD کامل** برای همه منابع",
+          "**روابط پیچیده** بین مدل‌ها",
+          "**فیلتر، جستجو، مرتب‌سازی، صفحه‌بندی**",
+          "**آپلود فایل** (تصویر جلد، سند PDF)",
+          "**پس‌زمینه با Celery** (ایمیل، گزارش، اعلان)",
+          "**تست کامل** با pytest + factory_boy",
+          "**مستندات OpenAPI** با drf-spectacular",
+          "**Docker + CI/CD**",
+          "**Observability** (Sentry، Prometheus)"
+        ]}
+      ]
+    },
+    {
+      "id": "goals",
+      "title": "اهداف یادگیری",
+      "blocks": [
+        { "type": "paragraph", "text": "پس از تکمیل این پروژه، باید بتوانید به‌طور مستقل یک سیستم API واقعی و آماده تولید طراحی، پیاده‌سازی، تست، مستندسازی و deploy کنید." },
+        { "type": "table", "headers": ["حوزه", "مهارت کسب‌شده"], "rows": [
+          ["طراحی دامنه", "شکستن سیستم به ماژول‌های مستقل"],
+          ["مدل‌سازی", "طراحی مدل‌ها با روابط، ایندکس، constraint"],
+          ["احراز هویت", "JWT با Rotation، Blacklist، Throttling"],
+          ["مجوز", "مجوز سطح ویو و شیء، ترکیبی"],
+          ["CRUD پیشرفته", "ViewSet، @action، Generic Views"],
+          ["روابط", "ForeignKey، ManyToMany، OneToOne، Nested"],
+          ["اعتبارسنجی", "Field-level، Object-level، Custom Validators"],
+          ["فیلتر و جستجو", "django-filter، SearchFilter، OrderingFilter"],
+          ["صفحه‌بندی", "PageNumber، Cursor برای فید"],
+          ["فایل", "آپلود امن، resize تصویر، S3"],
+          ["پس‌زمینه", "Celery، Retry، Beat، Flower"],
+          ["تست", "Unit، Integration، Coverage"],
+          ["مستندسازی", "OpenAPI، Swagger، ReDoc"],
+          ["Deployment", "Docker، CI/CD، Nginx، Gunicorn"],
+          ["Observability", "Logs، Metrics، Traces"]
+        ]}
+      ]
+    },
+    {
+      "id": "architecture",
+      "title": "معماری کلی",
+      "blocks": [
+        { "type": "text", "code": "┌──────────────────────────────────────────────┐\n│           CLIENT (web / mobile)              │\n└──────────────────┬───────────────────────────┘\n                   │ HTTPS + JWT\n                   ▼\n        ┌──────────────────────┐\n        │   Nginx / CDN        │\n        │  - SSL Termination   │\n        │  - Static / Media    │\n        │  - Rate Limiting     │\n        └──────────┬───────────┘\n                   │\n        ┌──────────▼───────────┐\n        │  Django + DRF        │\n        │  - Gunicorn          │\n        │  - 3+ Instances      │\n        └──────────┬───────────┘\n                   │\n        ┌──────────┼──────────┬──────────┐\n        ▼          ▼          ▼          ▼\n   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐\n   │Postgres│ │ Redis  │ │ Celery │ │   S3   │\n   │+Replica│ │-Cache  │ │Workers │ │-Media  │\n   │        │ │-Queue  │ │+Beat   │ │-Backup │\n   └────────┘ └────────┘ └────────┘ └────────┘\n\n        ┌──────────────────────────┐\n        │  Sentry + Prometheus +   │\n        │  Grafana + Jaeger        │\n        └──────────────────────────┘" }
+      ]
+    },
+    {
+      "id": "apps",
+      "title": "ماژول‌های پروژه",
+      "blocks": [
+        { "type": "table", "headers": ["ماژول", "مسئولیت", "مدل‌ها"], "rows": [
+          ["**users**", "کاربر، احراز هویت، پروفایل، اشتراک", "User، UserProfile"],
+          ["**catalog**", "کتاب، نویسنده، دسته‌بندی", "Book، Author، Category"],
+          ["**reviews**", "نظرات و امتیاز", "Review، ReviewHelpful"],
+          ["**favorites**", "علاقه‌مندی", "Favorite"],
+          ["**loans**", "امانت و رزرو", "Loan، Reservation"],
+          ["**payments**", "اشتراک و پرداخت", "Subscription، Payment"],
+          ["**notifications**", "اعلان‌ها", "Notification"],
+          ["**reports**", "گزارش‌ها و آمار", "—"],
+          ["**common**", "ابزارهای مشترک", "TimeStamped، SoftDelete"]
+        ]},
+        { "type": "note", "variant": "tip", "title": "چرا این تفکیک؟", "text": "هر ماژول یک **Bounded Context** است: مسئولیت مشخص، مدل‌های خودش، سرویس‌های خودش. این ساختار برای رشد پروژه و تست‌پذیری حیاتی است." }
+      ]
+    },
+    {
+      "id": "features",
+      "title": "قابلیت‌ها به تفکیک نقش",
+      "blocks": [
+        { "type": "table", "headers": ["نقش", "قابلیت‌ها"], "rows": [
+          ["**کاربر ناشناس**", "مشاهده کتاب‌ها، جستجو، فیلتر، دیدن نظرات، ثبت‌نام"],
+          ["**کاربر وارد‌شده**", "همه بالا + امانت، رزرو، نظر، امتیاز، علاقه‌مندی، پروفایل"],
+          ["**اشتراک پایه**", "همه بالا + امانت بیشتر، رزرو اولویت‌دار"],
+          ["**اشتراک حرفه‌ای**", "همه بالا + دسترسی به کتاب‌های ویژه، دانلود PDF"],
+          ["**ویرایشگر/نویسنده**", "همه بالا + افزودن کتاب، مدیریت دسته‌ها"],
+          ["**ادمین**", "همه چیز + مدیریت کاربران، تأیید نظرات، گزارش‌ها"],
+          ["**کارمند کتابخانه**", "مدیریت امانت‌ها، رزروها، بازگشت"]
+        ]}
+      ]
+    },
+    {
+      "id": "roadmap",
+      "title": "نقشه راه پیاده‌سازی",
+      "blocks": [
+        { "type": "paragraph", "text": "پروژه در ۱۳ فاز پیاده‌سازی می‌شود. هر فاز مستقل است و روی فاز قبلی بنا می‌شود." },
+        { "type": "table", "headers": ["فاز", "موضوع", "فصل مربوطه"], "rows": [
+          ["۱", "Setup — پروژه، settings، Docker", "ch-080"],
+          ["۲", "Models — طراحی مدل‌های پایه", "ch-081"],
+          ["۳", "Auth — JWT، Register، Login، Profile", "ch-082"],
+          ["۴", "Catalog — Book، Author، Category", "ch-083"],
+          ["۵", "Reviews — نظرات و امتیاز", "ch-084"],
+          ["۶", "Favorites — علاقه‌مندی", "ch-084"],
+          ["۷", "Loans — امانت و رزرو", "ch-085"],
+          ["۸", "Payments — اشتراک و پرداخت", "ch-085"],
+          ["۹", "Notifications — اعلان‌ها با Celery", "ch-085"],
+          ["۱۰", "Reports — گزارش‌ها و داشبورد", "ch-085"],
+          ["۱۱", "Testing — Unit + Integration", "ch-085"],
+          ["۱۲", "Docs — OpenAPI", "ch-085"],
+          ["۱۳", "Deploy — Docker، CI/CD، Nginx", "ch-085"]
+        ]}
+      ]
+    },
+    {
+      "id": "acceptance",
+      "title": "معیارهای پذیرش",
+      "blocks": [
+        { "type": "paragraph", "text": "پروژه زمانی کامل است که همه این معیارها برقرار باشند:" },
+        { "type": "list", "ordered": false, "items": [
+          "**✓** همه Endpointها با `curl` کار می‌کنند",
+          "**✓** JWT روی همه Endpointهای محافظت‌شده اعمال می‌شود",
+          "**✓** مجوز سطح شیء (مالکیت) پیاده شده",
+          "**✓** تست‌ها با coverage بالای ۸۰٪",
+          "**✓** OpenAPI در `/api/docs/` قابل دسترسی",
+          "**✓** Docker Compose با یک دستور همه سرویس‌ها را بالا می‌آورد",
+          "**✓** CI در GitHub Actions روی PR اجرا می‌شود",
+          "**✓** Sentry و Prometheus فعال",
+          "**✓** Backup خودکار به S3",
+          "**✓** Health check برای Load Balancer",
+          "**✓** مستندات کامل در README",
+          "**✓** Deployment Zero-Downtime"
+        ]}
+      ]
+    },
+    {
+      "id": "requirements",
+      "title": "پیش‌نیازها و محدودیت‌ها",
+      "blocks": [
+        { "type": "table", "headers": ["مورد", "نسخه / محدودیت"], "rows": [
+          ["Python", "3.11+"],
+          ["Django", "5.0+"],
+          ["DRF", "3.15+"],
+          ["PostgreSQL", "16+"],
+          ["Redis", "7+"],
+          ["Celery", "5.3+"],
+          ["Docker", "24+"],
+          ["Node (اختیاری)", "برای فرانت‌اند"],
+          ["سیستم‌عامل", "Linux (prod)، هر (dev)"]
+        ]},
+        { "type": "note", "variant": "warn", "title": "زمان تقریبی", "text": "تکمیل این پروژه برای یک توسعه‌دهنده با تجربه، ۲۰-۴۰ ساعت کار نیاز دارد. اگر با مفاهیم آشنایید، می‌توانید سریع‌تر بروید." }
+      ]
+    },
+    {
+      "id": "resources",
+      "title": "منابع و ساختار پوشه",
+      "blocks": [
+        { "type": "text", "code": "library_system/\n├── library_system/\n│   ├── settings/\n│   │   ├── __init__.py\n│   │   ├── base.py\n│   │   ├── dev.py\n│   │   └── prod.py\n│   ├── urls.py\n│   ├── asgi.py\n│   ├── wsgi.py\n│   └── celery.py\n│\n├── common/              # BaseModel، exceptions، middleware، logging\n├── users/               # User، Auth\n├── catalog/             # Book، Author، Category\n├── reviews/             # Review، Rating\n├── favorites/           # Favorite\n├── loans/               # Loan، Reservation\n├── payments/            # Subscription، Payment\n├── notifications/       # Notification\n├── reports/             # Dashboard، Stats\n│\n├── tests/               # Integration tests\n├── nginx/               # Nginx config\n├── scripts/             # deploy.sh، backup.sh، entrypoint.sh\n├── docker/\n│   └── entrypoint.sh\n├── .github/\n│   └── workflows/\n├── docker-compose.yml\n├── docker-compose.prod.yml\n├── Dockerfile\n├── .env.example\n├── .dockerignore\n├── .gitignore\n├── requirements.txt\n├── requirements-dev.txt\n├── pyproject.toml\n├── pytest.ini\n├── manage.py\n└── README.md" }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-079-q1",
+      "tag": "کوییز",
+      "question": "چرا پروژه به چند ماژول (users، catalog، ...) تفکیک شده؟",
+      "options": [
+        { "text": "چون Django اجبار می‌کند.", "correct": false },
+        { "text": "چون هر ماژول یک Bounded Context است — مسئولیت مشخص، قابل تست، قابل رشد مستقل.", "correct": true, "explanation": "این ساختار برای رشد پروژه حیاتی است." },
+        { "text": "چون سرعت را زیاد می‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-079-q2",
+      "tag": "کوییز",
+      "question": "کدام قابلیت برای کاربر ناشناس در دسترس است؟",
+      "options": [
+        { "text": "همه چیز", "correct": false },
+        { "text": "مشاهده کتاب‌ها، جستجو، فیلتر، دیدن نظرات، ثبت‌نام", "correct": true, "explanation": "نوشتن و امانت نیاز به احراز هویت دارد." },
+        { "text": "فقط ثبت‌نام", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-079-q3",
+      "tag": "کوییز",
+      "question": "پروژه در چند فاز پیاده‌سازی می‌شود؟",
+      "options": [
+        { "text": "۵ فاز", "correct": false },
+        { "text": "۱۳ فاز", "correct": true, "explanation": "از Setup تا Deploy." },
+        { "text": "۳۰ فاز", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-079-ex1",
+      "title": "تمرین — نقشه ذهنی پروژه",
+      "problem": "یک نقشه ذهنی از پروژه بکشید که شامل: ماژول‌ها، مدل‌ها، روابط بین مدل‌ها، و APIهای اصلی هر ماژول باشد.",
+      "hints": [
+        "از users شروع کنید (چون همه به آن وابسته‌اند).",
+        "catalog را با Book و Author و Category بسازید.",
+        "روابط: Book ← Author، Book ↔ Category، Review ← Book+User.",
+        "برای هر ماژول ۳-۴ Endpoint اصلی بنویسید."
+      ],
+      "solution": "**نقشه ذهنی:**\n\n```\n[users]\n  User (username, email, password, is_staff)\n  UserProfile (user, subscription_tier, notification_prefs)\n  API: register, login, me, profile, change-password\n      │\n      └──→ همه ماژول‌ها به User وابسته‌اند\n\n[catalog]\n  Author (full_name, bio, birth_date)\n      │\n      └──→ Book (1:N)\n  Category (name, slug, parent)\n      │\n      └──→ Book (M:N)\n  Book (title, isbn, price, author, categories, stock)\n  API: authors, categories, books (CRUD), books/{slug}/reviews\n\n[reviews]\n  Review (book, user, rating, comment, is_approved)\n  ReviewHelpful (review, user)\n  API: /books/{slug}/reviews, /reviews/{id}/helpful\n\n[favorites]\n  Favorite (user, book)\n  API: /favorites, /books/{slug}/favorite\n\n[loans]\n  Loan (user, book, status, due_date, returned_at)\n  Reservation (user, book, status, position)\n  API: /loans, /loans/{id}/return, /reservations\n\n[payments]\n  Subscription (user, tier, expires_at)\n  Payment (user, subscription, amount, status)\n  API: /subscriptions, /payments, /payments/{id}/verify\n\n[notifications]\n  Notification (user, type, title, message, is_read)\n  API: /notifications, /notifications/{id}/read\n\n[reports]\n  API: /reports/dashboard, /reports/sales, /reports/popular-books\n```",
+      "explanation": "این نقشه، تصویر کلی از پروژه می‌دهد و به شما کمک می‌کند پیاده‌سازی را منظم پیش ببرید."
+    }
+  ],
+  "summary": [
+    "پروژه نهایی: سیستم مدیریت کتابخانه دیجیتال.",
+    "۹ ماژول مستقل: users، catalog، reviews، favorites، loans، payments، notifications، reports، common.",
+    "۱۳ فاز پیاده‌سازی از Setup تا Deploy.",
+    "احراز هویت JWT + مجوز سطح شیء.",
+    "فیلتر، جستجو، صفحه‌بندی، آپلود فایل.",
+    "Celery برای پس‌زمینه.",
+    "Docker + CI/CD + Observability.",
+    "معیارهای پذیرش: coverage ۸۰٪، Docker، Sentry، Backup، Health check."
+  ],
+  "resources": [
+    { "title": "DRF — Community examples", "url": "https://www.django-rest-framework.org/community/", "official": true },
+    { "title": "HackSoftware Django Styleguide", "url": "https://github.com/HackSoftware/Django-Styleguide", "official": false }
+  ]
+}

@@ -1,0 +1,308 @@
+{
+  "id": "ch-077",
+  "slug": "observability",
+  "title": "Observability — لاگ، متریک، ردیابی",
+  "kicker": "فصل ۷۷",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 55,
+  "lead": "Observability یعنی بتوانید بفهمید در سیستم چه می‌گذرد بدون اینکه کد را تغییر دهید. این فصل سه ستون اصلی — Logs، Metrics، Traces — را در عمل پیاده می‌کند.",
+  "sections": [
+    {
+      "id": "three-pillars",
+      "title": "سه ستون Observability",
+      "blocks": [
+        { "type": "paragraph", "text": "Observability در سه ستون خلاصه می‌شود. هر ستون به سؤال متفاوتی پاسخ می‌دهد و همه با هم تصویر کامل می‌سازند." },
+        { "type": "table", "headers": ["ستون", "پاسخ به", "مثال سؤال", "ابزارها"], "rows": [
+          ["**Logs**", "چه اتفاقی افتاد؟", "«چرا این درخواست ۵۰۰ داد؟»", "ELK، Loki، CloudWatch، Datadog"],
+          ["**Metrics**", "چند وقت یک بار؟ چقدر سریع؟", "«نرخ خطای امروز چقدر است؟»", "Prometheus، Grafana، Datadog"],
+          ["**Traces**", "کجا کند شد؟", "«کدام سرویس کند بود؟»", "Jaeger، Tempo، Datadog APM"]
+        ]},
+        { "type": "flow", "steps": ["Log", "Metric", "Trace"] },
+        { "type": "note", "variant": "info", "title": "تفاوت Monitoring و Observability", "text": "**Monitoring** می‌گوید «سیستم سالم است یا نه؟». **Observability** می‌گوید «چرا این مشکل خاص رخ داد؟» — حتی برای مشکلاتی که پیش‌بینی نکرده بودید." }
+      ]
+    },
+    {
+      "id": "structured-logging",
+      "title": "Logging ساختاریافته",
+      "blocks": [
+        { "type": "paragraph", "text": "لاگ‌های ساده (`print`) در تولید بی‌فایده‌اند. لاگ باید **JSON** باشد تا قابل فیلتر، جستجو و تحلیل ماشینی باشد." },
+        { "type": "code", "lang": "bash", "code": "pip install python-json-logger" },
+        { "type": "python", "filename": "settings/base.py", "code": "LOGGING = {\n    \"version\": 1,\n    \"disable_existing_loggers\": False,\n\n    # فرمترها\n    \"formatters\": {\n        \"json\": {\n            \"()\": \"pythonjsonlogger.jsonlogger.JsonFormatter\",\n            \"format\": \"%(asctime)s %(levelname)s %(name)s %(message)s %(request_id)s %(user_id)s %(path)s %(method)s\",\n        },\n        \"console\": {\n            \"format\": \"{levelname} {asctime} {name} {message}\",\n            \"style\": \"{\",\n        },\n    },\n\n    # فیلترها — request_id را به همه لاگ‌ها اضافه می‌کند\n    \"filters\": {\n        \"request_context\": {\n            \"()\": \"common.logging.RequestContextFilter\",\n        },\n    },\n\n    # هندلرها\n    \"handlers\": {\n        \"console\": {\n            \"class\": \"logging.StreamHandler\",\n            \"formatter\": \"json\",\n            \"filters\": [\"request_context\"],\n        },\n        \"file\": {\n            \"class\": \"logging.handlers.RotatingFileHandler\",\n            \"filename\": \"/var/log/library/app.log\",\n            \"maxBytes\": 10 * 1024 * 1024,\n            \"backupCount\": 5,\n            \"formatter\": \"json\",\n            \"filters\": [\"request_context\"],\n        },\n        \"errors_file\": {\n            \"class\": \"logging.handlers.RotatingFileHandler\",\n            \"filename\": \"/var/log/library/errors.log\",\n            \"maxBytes\": 10 * 1024 * 1024,\n            \"backupCount\": 10,\n            \"level\": \"ERROR\",\n            \"formatter\": \"json\",\n        },\n    },\n\n    # Loggerها\n    \"root\": {\n        \"handlers\": [\"console\"],\n        \"level\": \"INFO\",\n    },\n    \"loggers\": {\n        # Django internal\n        \"django\": {\"level\": \"INFO\"},\n        \"django.db.backends\": {\"level\": \"WARNING\"},   # کوئری‌های SQL را لاگ نکن\n        \"django.security\": {\"level\": \"WARNING\"},\n        \"django.request\": {\"level\": \"WARNING\"},\n\n        # اپلیکیشن\n        \"api\": {\"handlers\": [\"console\", \"file\"], \"level\": \"INFO\", \"propagate\": False},\n        \"api.errors\": {\"handlers\": [\"console\", \"errors_file\"], \"level\": \"WARNING\", \"propagate\": False},\n        \"api.security\": {\"handlers\": [\"console\", \"file\"], \"level\": \"WARNING\", \"propagate\": False},\n        \"api.audit\": {\"handlers\": [\"console\", \"file\"], \"level\": \"INFO\", \"propagate\": False},\n\n        # Celery\n        \"celery\": {\"level\": \"INFO\"},\n\n        # Third-party noise\n        \"urllib3\": {\"level\": \"WARNING\"},\n        \"botocore\": {\"level\": \"WARNING\"},\n    },\n}" },
+        { "type": "python", "filename": "common/logging.py", "code": "import logging\nfrom contextvars import ContextVar\n\n# ContextVarها — در هر درخواست ذخیره می‌شوند\n_request_id: ContextVar[str] = ContextVar(\"request_id\", default=\"-\")\n_user_id: ContextVar[str] = ContextVar(\"user_id\", default=\"-\")\n_path: ContextVar[str] = ContextVar(\"path\", default=\"-\")\n_method: ContextVar[str] = ContextVar(\"method\", default=\"-\")\n\n\ndef set_request_context(request_id: str, user_id: str = \"-\", path: str = \"-\", method: str = \"-\"):\n    \"\"\"ذخیره context درخواست برای همه لاگ‌های بعدی.\"\"\"\n    _request_id.set(request_id)\n    _user_id.set(str(user_id))\n    _path.set(path)\n    _method.set(method)\n\n\ndef clear_request_context():\n    _request_id.set(\"-\")\n    _user_id.set(\"-\")\n    _path.set(\"-\")\n    _method.set(\"-\")\n\n\ndef get_request_id() -> str:\n    return _request_id.get()\n\n\nclass RequestContextFilter(logging.Filter):\n    \"\"\"افزودن request_id, user_id, path, method به هر لاگ.\"\"\"\n\n    def filter(self, record: logging.LogRecord) -> bool:\n        record.request_id = _request_id.get()\n        record.user_id = _user_id.get()\n        record.path = _path.get()\n        record.method = _method.get()\n        return True" },
+        { "type": "paragraph", "text": "خروجی یک لاگ JSON:" },
+        { "type": "code", "lang": "json", "code": "{\n  \"asctime\": \"2025-01-15T10:30:45.123Z\",\n  \"levelname\": \"ERROR\",\n  \"name\": \"api.errors\",\n  \"message\": \"Payment gateway timeout\",\n  \"request_id\": \"req_abc123\",\n  \"user_id\": \"42\",\n  \"path\": \"/api/orders/\",\n  \"method\": \"POST\",\n  \"order_id\": 1234,\n  \"provider\": \"gateway-x\",\n  \"duration_ms\": 5003\n}" },
+        { "type": "note", "variant": "tip", "title": "چرا JSON؟", "text": "لاگ‌های JSON را می‌توان در ELK، Loki، CloudWatch، Datadog به‌طور خودکار پارس، فیلتر و جستجو کرد. لاگ‌های متنی به این راحتی قابل تحلیل نیستند." }
+      ]
+    },
+    {
+      "id": "middleware",
+      "title": "Middleware برای Request ID و لاگ",
+      "blocks": [
+        { "type": "paragraph", "text": "هر درخواست باید یک `request_id` یکتا داشته باشد که در سراسر سیستم (سرویس‌ها، لاگ‌ها، traces) قابل ردیابی باشد." },
+        { "type": "python", "filename": "common/middleware.py", "code": "import uuid\nimport time\nimport logging\nfrom common.logging import set_request_context, clear_request_context, get_request_id\n\nlogger = logging.getLogger(\"api\")\n\n\nclass RequestIDMiddleware:\n    \"\"\"\n    افزودن X-Request-ID به هر درخواست.\n    اگر کلاینت فرستاده باشد، همان را استفاده می‌کنیم (correlation).\n    در غیر این صورت، یک UUID تولید می‌کنیم.\n    \"\"\"\n\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        # از هدر کلاینت یا تولید جدید\n        request_id = request.headers.get(\"X-Request-ID\") or str(uuid.uuid4())\n        request.request_id = request_id\n\n        # ذخیره در contextvar برای همه لاگ‌ها\n        user_id = \"-\"\n        if hasattr(request, \"user\") and request.user.is_authenticated:\n            user_id = str(request.user.id)\n\n        set_request_context(\n            request_id=request_id,\n            user_id=user_id,\n            path=request.path,\n            method=request.method,\n        )\n\n        try:\n            response = self.get_response(request)\n        finally:\n            clear_request_context()\n\n        # افزودن به پاسخ\n        response[\"X-Request-ID\"] = request_id\n        return response\n\n\nclass RequestLoggingMiddleware:\n    \"\"\"لاگ هر درخواست با جزئیات.\"\"\"\n\n    # مسیرهایی که نباید لاگ شوند\n    IGNORE_PATHS = [\"/health/\", \"/live/\", \"/ready/\", \"/metrics\"]\n\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        if any(request.path.startswith(p) for p in self.IGNORE_PATHS):\n            return self.get_response(request)\n\n        start = time.monotonic()\n        response = self.get_response(request)\n        duration_ms = round((time.monotonic() - start) * 1000, 2)\n\n        log_level = logging.INFO\n        if response.status_code >= 500:\n            log_level = logging.ERROR\n        elif response.status_code >= 400:\n            log_level = logging.WARNING\n\n        logger.log(\n            log_level,\n            f\"{request.method} {request.path} → {response.status_code}\",\n            extra={\n                \"method\": request.method,\n                \"path\": request.path,\n                \"status_code\": response.status_code,\n                \"duration_ms\": duration_ms,\n                \"user_agent\": request.headers.get(\"User-Agent\", \"\")[:200],\n                \"remote_addr\": self.get_client_ip(request),\n                \"content_length\": response.get(\"Content-Length\", 0),\n            },\n        )\n\n        return response\n\n    @staticmethod\n    def get_client_ip(request):\n        x_forwarded = request.headers.get(\"X-Forwarded-For\")\n        if x_forwarded:\n            return x_forwarded.split(\",\")[0].strip()\n        return request.META.get(\"REMOTE_ADDR\", \"-\")" },
+        { "type": "python", "filename": "settings/base.py (MIDDLEWARE)", "code": "MIDDLEWARE = [\n    \"common.middleware.RequestIDMiddleware\",        # اول — request_id\n    \"common.middleware.RequestLoggingMiddleware\",   # دوم — لاگ\n    # ... بقیه\n]" }
+      ]
+    },
+    {
+      "id": "audit-logging",
+      "title": "Audit Logging — لاگ رویدادهای حساس",
+      "blocks": [
+        { "type": "paragraph", "text": "لاگ رویدادهای امنیتی و کسب‌وکار جدا از لاگ درخواست‌ها. برای بازرسی و امنیت ضروری است." },
+        { "type": "python", "filename": "common/audit.py", "code": "import logging\n\n# لاگر مخصوص audit\nlogger = logging.getLogger(\"api.audit\")\n\n\nclass AuditLogger:\n    \"\"\"لاگ رویدادهای کسب‌وکار و امنیتی.\"\"\"\n\n    @staticmethod\n    def log(event: str, user=None, request=None, **extra):\n        payload = {\n            \"event\": event,\n            \"user_id\": str(user.id) if user and user.is_authenticated else None,\n            \"username\": user.username if user and user.is_authenticated else None,\n            \"ip\": AuditLogger._get_ip(request) if request else None,\n            \"user_agent\": request.headers.get(\"User-Agent\", \"\")[:200] if request else None,\n            **extra,\n        }\n        logger.info(event, extra=payload)\n\n    @staticmethod\n    def _get_ip(request):\n        x_forwarded = request.headers.get(\"X-Forwarded-For\")\n        if x_forwarded:\n            return x_forwarded.split(\",\")[0].strip()\n        return request.META.get(\"REMOTE_ADDR\", \"-\")\n\n\n# ================================\n# رویدادهای امنیتی\n# ================================\nclass SecurityAudit(AuditLogger):\n    @staticmethod\n    def login_success(user, request):\n        AuditLogger.log(\"security.login.success\", user=user, request=request)\n\n    @staticmethod\n    def login_failed(username, request):\n        AuditLogger.log(\"security.login.failed\", user=None, request=request, attempted_username=username)\n\n    @staticmethod\n    def logout(user, request):\n        AuditLogger.log(\"security.logout\", user=user, request=request)\n\n    @staticmethod\n    def password_changed(user, request):\n        AuditLogger.log(\"security.password.changed\", user=user, request=request)\n\n    @staticmethod\n    def permission_denied(user, request, resource, action):\n        AuditLogger.log(\n            \"security.permission.denied\",\n            user=user, request=request,\n            resource=resource, action=action,\n        )\n\n    @staticmethod\n    def suspicious_activity(user, request, reason):\n        AuditLogger.log(\n            \"security.suspicious\",\n            user=user, request=request, reason=reason,\n        )\n\n\n# ================================\n# رویدادهای کسب‌وکار\n# ================================\nclass BusinessAudit(AuditLogger):\n    @staticmethod\n    def order_created(user, request, order_id, total):\n        AuditLogger.log(\n            \"business.order.created\",\n            user=user, request=request,\n            order_id=order_id, total=str(total),\n        )\n\n    @staticmethod\n    def order_cancelled(user, request, order_id, reason):\n        AuditLogger.log(\n            \"business.order.cancelled\",\n            user=user, request=request,\n            order_id=order_id, reason=reason,\n        )\n\n    @staticmethod\n    def payment_processed(user, request, payment_id, amount, status):\n        AuditLogger.log(\n            \"business.payment.processed\",\n            user=user, request=request,\n            payment_id=payment_id, amount=str(amount), status=status,\n        )\n\n    @staticmethod\n    def subscription_changed(user, request, old_tier, new_tier):\n        AuditLogger.log(\n            \"business.subscription.changed\",\n            user=user, request=request,\n            old_tier=old_tier, new_tier=new_tier,\n        )\n\n    @staticmethod\n    def sensitive_data_accessed(user, request, resource, resource_id):\n        AuditLogger.log(\n            \"business.data.accessed\",\n            user=user, request=request,\n            resource=resource, resource_id=resource_id,\n        )" },
+        { "type": "python", "filename": "نحوه استفاده", "code": "# در view یا service\nfrom common.audit import SecurityAudit, BusinessAudit\n\n\nclass LoginView(TokenObtainPairView):\n    def post(self, request, *args, **kwargs):\n        response = super().post(request, *args, **kwargs)\n        if response.status_code == 200:\n            user = User.objects.get(username=request.data[\"username\"])\n            SecurityAudit.login_success(user, request)\n        else:\n            SecurityAudit.login_failed(request.data.get(\"username\", \"-\"), request)\n        return response\n\n\ndef create_order(user, items, request):\n    order = Order.objects.create(user=user, ...)\n    BusinessAudit.order_created(user, request, order.id, order.total)\n    return order" }
+      ]
+    },
+    {
+      "id": "sentry",
+      "title": "Sentry — ردیابی خطاها",
+      "blocks": [
+        { "type": "paragraph", "text": "Sentry یک سرویس جامع برای گرفتن، دسته‌بندی و اطلاع‌دادن خطاهاست. با یکپارچه‌سازی Django، هر خطای مدیریت‌نشده خودکار ثبت می‌شود." },
+        { "type": "bash", "code": "pip install sentry-sdk" },
+        { "type": "python", "filename": "settings/base.py", "code": "import sentry_sdk\nfrom sentry_sdk.integrations.django import DjangoIntegration\nfrom sentry_sdk.integrations.celery import CeleryIntegration\nfrom sentry_sdk.integrations.redis import RedisIntegration\nfrom sentry_sdk.integrations.logging import LoggingIntegration\nimport logging\n\n\nif SENTRY_DSN := os.environ.get(\"SENTRY_DSN\"):\n    sentry_sdk.init(\n        dsn=SENTRY_DSN,\n\n        # یکپارچه‌سازی‌ها\n        integrations=[\n            DjangoIntegration(\n                transaction_style=\"url\",    # گروه‌بندی بر اساس URL\n                middleware_spans=True,\n                signals_spans=False,\n                cache_spans=True,\n            ),\n            CeleryIntegration(monitor_beat_tasks=True),\n            RedisIntegration(),\n            LoggingIntegration(\n                level=logging.INFO,          # Breadcrumbs از INFO\n                event_level=logging.ERROR,   # رویدادها از ERROR\n            ),\n        ],\n\n        # Performance\n        traces_sample_rate=0.1,              # ۱۰٪ تراکنش‌ها\n        profiles_sample_rate=0.1,            # ۱۰٪ پروفایل\n\n        # Environment\n        environment=os.environ.get(\"SENTRY_ENV\", \"production\"),\n        release=os.environ.get(\"GIT_SHA\", \"unknown\"),\n\n        # حریم خصوصی\n        send_default_pii=False,              # IP/کوکی نفرست\n        attach_stacktrace=True,\n\n        # فیلتر کردن خطاهای بی‌اهمیت\n        ignore_errors=[\n            \"django.exceptions.DisallowedHost\",\n            \"django.exceptions.Http404\",\n        ],\n\n        # قبل از ارسال، PII را پاک کن\n        before_send=lambda event, hint: _strip_sensitive(event),\n    )\n\n\ndef _strip_sensitive(event):\n    \"\"\"حذف اطلاعات حساس از رویداد Sentry.\"\"\"\n    if \"request\" in event:\n        headers = event[\"request\"].get(\"headers\", {})\n        headers.pop(\"Authorization\", None)\n        headers.pop(\"Cookie\", None)\n        headers.pop(\"X-Api-Key\", None)\n\n        data = event[\"request\"].get(\"data\")\n        if isinstance(data, dict):\n            for key in (\"password\", \"token\", \"secret\", \"api_key\"):\n                if key in data:\n                    data[key] = \"***REDACTED***\"\n    return event" },
+        { "type": "python", "filename": "استفاده دستی — خطاهای غیرمنتظره", "code": "import sentry_sdk\n\n\ndef process_payment(order):\n    try:\n        result = gateway.charge(order.total)\n    except Exception as e:\n        # ارسال با context اضافه\n        with sentry_sdk.push_scope() as scope:\n            scope.set_tag(\"order_id\", order.id)\n            scope.set_tag(\"payment_gateway\", \"stripe\")\n            scope.set_context(\"order\", {\n                \"id\": order.id,\n                \"total\": str(order.total),\n                \"user_id\": order.user_id,\n            })\n            scope.set_level(\"error\")\n            sentry_sdk.capture_exception(e)\n        raise" },
+        { "type": "note", "variant": "tip", "title": "Sentry Performance", "text": "با `traces_sample_rate`، Sentry تراکنش‌ها را می‌گیرد و می‌توانید ببینید کدام Endpoint کند است. این ردیابی رایگان است و در پلن پایه هم موجود." }
+      ]
+    },
+    {
+      "id": "prometheus",
+      "title": "Prometheus + Grafana — متریک‌ها",
+      "blocks": [
+        { "type": "paragraph", "text": "Prometheus متریک‌ها را scrape می‌کند و Grafana آن‌ها را نمایش می‌دهد. با `django-prometheus` یکپارچه‌سازی تقریباً خودکار است." },
+        { "type": "bash", "code": "pip install django-prometheus" },
+        { "type": "python", "filename": "settings/base.py", "code": "INSTALLED_APPS += [\n    \"django_prometheus\",\n]\n\nMIDDLEWARE = [\n    \"django_prometheus.middleware.PrometheusBeforeMiddleware\",\n    # ... همه middlewareها\n    \"django_prometheus.middleware.PrometheusAfterMiddleware\",\n]\n\n# در urls.py\nurlpatterns += [\n    path(\"\", include(\"django_prometheus.urls\")),   # /metrics\n]" },
+        { "type": "python", "filename": "common/metrics.py — متریک‌های سفارشی", "code": "from prometheus_client import Counter, Histogram, Gauge, Summary\n\n# ================================\n# Request Metrics\n# ================================\nREQUEST_COUNT = Counter(\n    \"api_requests_total\",\n    \"Total API requests\",\n    [\"method\", \"endpoint\", \"status\"],\n)\n\nREQUEST_LATENCY = Histogram(\n    \"api_request_duration_seconds\",\n    \"API request latency\",\n    [\"method\", \"endpoint\"],\n    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],\n)\n\nREQUEST_IN_PROGRESS = Gauge(\n    \"api_requests_in_progress\",\n    \"API requests currently in progress\",\n    [\"method\", \"endpoint\"],\n)\n\n# ================================\n# Business Metrics\n# ================================\nORDERS_CREATED = Counter(\n    \"business_orders_created_total\",\n    \"Total orders created\",\n    [\"status\"],\n)\n\nORDER_VALUE = Histogram(\n    \"business_order_value\",\n    \"Order values\",\n    buckets=[100, 500, 1000, 5000, 10000, 50000, 100000],\n)\n\nPAYMENTS_PROCESSED = Counter(\n    \"business_payments_total\",\n    \"Total payments processed\",\n    [\"gateway\", \"status\"],\n)\n\n# ================================\n# Celery Metrics\n# ================================\nCELERY_TASK_DURATION = Histogram(\n    \"celery_task_duration_seconds\",\n    \"Celery task duration\",\n    [\"task_name\", \"status\"],\n)\n\nCELERY_QUEUE_LENGTH = Gauge(\n    \"celery_queue_length\",\n    \"Number of tasks in queue\",\n    [\"queue_name\"],\n)" },
+        { "type": "python", "filename": "common/middleware.py (افزودنی)", "code": "import time\nfrom common.metrics import REQUEST_COUNT, REQUEST_LATENCY, REQUEST_IN_PROGRESS\n\n\nclass MetricsMiddleware:\n    \"\"\"ثبت متریک برای هر درخواست.\"\"\"\n\n    IGNORE_PATHS = [\"/health/\", \"/live/\", \"/ready/\", \"/metrics\"]\n\n    def __init__(self, get_response):\n        self.get_response = get_response\n\n    def __call__(self, request):\n        if any(request.path.startswith(p) for p in self.IGNORE_PATHS):\n            return self.get_response(request)\n\n        endpoint = self._get_endpoint(request)\n        method = request.method\n\n        REQUEST_IN_PROGRESS.labels(method=method, endpoint=endpoint).inc()\n        start = time.monotonic()\n\n        try:\n            response = self.get_response(request)\n        except Exception:\n            REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=\"500\").inc()\n            raise\n        finally:\n            duration = time.monotonic() - start\n            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(duration)\n            REQUEST_IN_PROGRESS.labels(method=method, endpoint=endpoint).dec()\n\n        REQUEST_COUNT.labels(\n            method=method,\n            endpoint=endpoint,\n            status=str(response.status_code),\n        ).inc()\n        return response\n\n    @staticmethod\n    def _get_endpoint(request):\n        \"\"\"نام endpoint — بدون UUID.\"\"\"\n        match = getattr(request, \"resolver_match\", None)\n        if match:\n            return match.url_name or match.route or request.path\n        return request.path" },
+        { "type": "yaml", "filename": "prometheus/prometheus.yml", "code": "global:\n  scrape_interval: 15s\n  evaluation_interval: 15s\n  external_labels:\n    cluster: library\n    env: production\n\nscrape_configs:\n  - job_name: django\n    static_configs:\n      - targets: [\"api:8000\"]\n    metrics_path: /metrics\n    scrape_interval: 10s\n\n  - job_name: postgres\n    static_configs:\n      - targets: [\"postgres_exporter:9187\"]\n\n  - job_name: redis\n    static_configs:\n      - targets: [\"redis_exporter:9121\"]\n\n  - job_name: nginx\n    static_configs:\n      - targets: [\"nginx_exporter:9113\"]" },
+        { "type": "yaml", "filename": "prometheus/alerts.yml", "code": "groups:\n  - name: api_alerts\n    interval: 30s\n    rules:\n      # نرخ خطای 5xx بالای ۵٪\n      - alert: HighErrorRate\n        expr: |\n          rate(api_requests_total{status=~\"5..\"}[5m])\n          /\n          rate(api_requests_total[5m]) > 0.05\n        for: 5m\n        labels:\n          severity: critical\n        annotations:\n          summary: \"نرخ خطای 5xx بالای ۵٪\"\n          description: \"مقدار فعلی: {{ $value | humanizePercentage }}\"\n\n      # p95 latency بیش از ۱ ثانیه\n      - alert: HighLatency\n        expr: |\n          histogram_quantile(0.95,\n            sum(rate(api_request_duration_seconds_bucket[5m])) by (le, endpoint)\n          ) > 1\n        for: 10m\n        labels:\n          severity: warning\n        annotations:\n          summary: \"p95 latency endpoint {{ $labels.endpoint }} بیش از ۱ ثانیه\"\n\n      # صف Celery بیش از حد طولانی\n      - alert: CeleryQueueBacklog\n        expr: celery_queue_length > 1000\n        for: 15m\n        labels:\n          severity: warning\n        annotations:\n          summary: \"صف Celery {{ $labels.queue_name }} بیش از ۱۰۰۰ تسک\"\n\n      # خطا در taskهای Celery\n      - alert: CeleryHighFailureRate\n        expr: |\n          rate(celery_task_duration_seconds_count{status=\"failed\"}[10m])\n          /\n          rate(celery_task_duration_seconds_count[10m]) > 0.1\n        for: 10m\n        labels:\n          severity: warning\n\n      # دیسک پر\n      - alert: DiskSpaceLow\n        expr: |\n          (node_filesystem_avail_bytes{mountpoint=\"/\"}\n           / node_filesystem_size_bytes{mountpoint=\"/\"}) < 0.1\n        for: 5m\n        labels:\n          severity: critical\n\n      # دیتابیس در دسترس نیست\n      - alert: DatabaseDown\n        expr: up{job=\"postgres\"} == 0\n        for: 1m\n        labels:\n          severity: critical\n        annotations:\n          summary: \"PostgreSQL در دسترس نیست\"" }
+      ]
+    },
+    {
+      "id": "tracing",
+      "title": "OpenTelemetry + Jaeger — ردیابی توزیع‌شده",
+      "blocks": [
+        { "type": "paragraph", "text": "Tracing نشان می‌دهد یک درخواست از چه مسیری عبور کرده و در هر مرحله چقدر طول کشیده. برای سیستم‌های چندسرویسی (microservices) حیاتی است." },
+        { "type": "bash", "code": "pip install opentelemetry-distro opentelemetry-exporter-otlp\nopentelemetry-bootstrap -a install\n\n# پکیج‌های Django-specific\npip install opentelemetry-instrumentation-django\npip install opentelemetry-instrumentation-psycopg2\npip install opentelemetry-instrumentation-redis\npip install opentelemetry-instrumentation-celery\npip install opentelemetry-instrumentation-requests" },
+        { "type": "python", "filename": "library_system/otel.py", "code": "import os\nfrom opentelemetry import trace\nfrom opentelemetry.sdk.trace import TracerProvider\nfrom opentelemetry.sdk.trace.export import BatchSpanProcessor\nfrom opentelemetry.sdk.resources import Resource\nfrom opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter\n\n\ndef setup_tracing():\n    \"\"\"راه‌اندازی OpenTelemetry.\"\"\"\n    if not os.environ.get(\"OTEL_EXPORTER_OTLP_ENDPOINT\"):\n        return\n\n    # Resource — اطلاعات سرویس\n    resource = Resource.create({\n        \"service.name\": os.environ.get(\"OTEL_SERVICE_NAME\", \"library-api\"),\n        \"service.version\": os.environ.get(\"GIT_SHA\", \"unknown\"),\n        \"deployment.environment\": os.environ.get(\"SENTRY_ENV\", \"production\"),\n    })\n\n    # Tracer Provider\n    provider = TracerProvider(resource=resource)\n\n    # OTLP Exporter — می‌فرستد به Jaeger یا Tempo\n    exporter = OTLPSpanExporter(\n        endpoint=os.environ[\"OTEL_EXPORTER_OTLP_ENDPOINT\"],\n        insecure=os.environ.get(\"OTEL_INSECURE\", \"false\") == \"true\",\n    )\n    provider.add_span_processor(BatchSpanProcessor(exporter))\n\n    trace.set_tracer_provider(provider)\n\n    # Instrumentors\n    from opentelemetry.instrumentation.django import DjangoInstrumentor\n    from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor\n    from opentelemetry.instrumentation.redis import RedisInstrumentor\n    from opentelemetry.instrumentation.celery import CeleryInstrumentor\n    from opentelemetry.instrumentation.requests import RequestsInstrumentor\n\n    DjangoInstrumentor().instrument()\n    Psycopg2Instrumentor().instrument()\n    RedisInstrumentor().instrument()\n    CeleryInstrumentor().instrument()\n    RequestsInstrumentor().instrument()" },
+        { "type": "python", "filename": "common/tracing.py — استفاده دستی", "code": "from opentelemetry import trace\n\n# tracer برای این ماژول\ntracer = trace.get_tracer(__name__)\n\n\ndef process_order(order_id):\n    \"\"\"همه عملیات داخل یک span.\"\"\"\n    with tracer.start_as_current_span(\"process_order\") as span:\n        span.set_attribute(\"order.id\", order_id)\n\n        order = Order.objects.get(pk=order_id)\n\n        # span داخلی برای پرداخت\n        with tracer.start_as_current_span(\"charge_payment\") as payment_span:\n            payment_span.set_attribute(\"payment.amount\", str(order.total))\n            payment_span.set_attribute(\"payment.gateway\", \"stripe\")\n            result = gateway.charge(order.total)\n            payment_span.set_attribute(\"payment.transaction_id\", result.id)\n\n        # span داخلی برای ایمیل\n        with tracer.start_as_current_span(\"send_email\"):\n            send_confirmation_email(order)\n\n        return order\n\n\ndef slow_operation():\n    with tracer.start_as_current_span(\"slow_operation\") as span:\n        span.set_attribute(\"complexity\", \"high\")\n        span.add_event(\"started processing\")\n        # ... کار\n        span.add_event(\"finished processing\")" },
+        { "type": "python", "filename": "library_system/settings/__init__.py", "code": "# در ابتدای فایل\nfrom library_system.otel import setup_tracing\n\n# بعد از import settings\nsetup_tracing()" },
+        { "type": "note", "variant": "info", "title": "Correlation با Sentry", "text": "Sentry و Jaeger می‌توانند با `trace_id` یکپارچه شوند. Sentry خودش OpenTelemetry را پشتیبانی می‌کند." }
+      ]
+    },
+    {
+      "id": "dashboards",
+      "title": "داشبوردهای Grafana",
+      "blocks": [
+        { "type": "paragraph", "text": "Grafana داشبوردهای زیبا از متریک‌های Prometheus می‌سازد. اینها مهم‌ترین نمودارها برای یک API هستند." },
+        { "type": "table", "headers": ["نمودار", "متریک", "کاربرد"], "rows": [
+          ["Request Rate", "`rate(api_requests_total[5m])`", "چند درخواست در ثانیه"],
+          ["Error Rate", "`rate(api_requests_total{status=~\"5..\"}[5m])`", "خطاها"],
+          ["Latency p50/p95/p99", "`histogram_quantile(0.95, ...)`", "سرعت"],
+          ["Active Requests", "`api_requests_in_progress`", "بار فعلی"],
+          ["DB Connections", "`django_db_new_connections_total`", "اتصال‌ها"],
+          ["Cache Hit Ratio", "`django_cache_hits / (hits + misses)`", "کارایی کش"],
+          ["Celery Queue", "`celery_queue_length`", "تسک‌های معلق"],
+          ["Celery Success Rate", "`rate(celery_task_duration_seconds_count{status=\"success\"}[5m])`", "موفقیت"]
+        ]},
+        { "type": "json", "filename": "grafana/dashboard.json (نمونه)", "code": "{\n  \"title\": \"Library API\",\n  \"panels\": [\n    {\n      \"title\": \"Request Rate\",\n      \"targets\": [{\n        \"expr\": \"sum(rate(api_requests_total[5m])) by (endpoint)\",\n        \"legendFormat\": \"{{endpoint}}\"\n      }],\n      \"type\": \"timeseries\"\n    },\n    {\n      \"title\": \"Error Rate\",\n      \"targets\": [{\n        \"expr\": \"rate(api_requests_total{status=~\\\"5..\\\"}[5m]) / rate(api_requests_total[5m])\",\n        \"legendFormat\": \"Error Rate\"\n      }]\n    },\n    {\n      \"title\": \"Latency p95\",\n      \"targets\": [{\n        \"expr\": \"histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m])) by (le))\",\n        \"legendFormat\": \"p95\"\n      }]\n    }\n  ]\n}" }
+      ]
+    },
+    {
+      "id": "slo-sli",
+      "title": "SLI، SLO، SLA",
+      "blocks": [
+        { "type": "paragraph", "text": "این سه مفهوم قلب مانیتورینگ حرفه‌ای است. تفاوتشان مهم است." },
+        { "type": "table", "headers": ["مفهوم", "معنی", "مثال"], "rows": [
+          ["**SLI**", "شاخص سطح سرویس — چه چیزی را اندازه بگیریم", "نرخ موفقیت درخواست‌ها"],
+          ["**SLO**", "هدف سطح سرویس — چه هدفی داریم", "۹۹.۹٪ موفقیت در ۳۰ روز"],
+          ["**SLA**", "توافق سطح سرویس — قرارداد با مشتری", "۹۹.۹٪ یا بازگشت پول"]
+        ]},
+        { "type": "callout-level",
+          "basic": "بدون SLI/SLO — فقط متریک‌های خام.",
+          "better": "SLI مشخص + SLO داخلی.",
+          "production": "SLI/SLO + SLA + Error Budget + Alerting بر اساس مصرف بودجه."
+        },
+        { "type": "python", "filename": "محاسبه SLO", "code": "# SLI: نرخ موفقیت\n# SLO: ۹۹.۹٪ در ۳۰ روز\n\n# Error Budget:\n# اگر SLO = 99.9٪\n# بودجه خطا = 0.1٪ = 43.2 دقیقه در ماه\n\n# اگر 20 دقیقه در ماه خطا داشتید:\n# error_budget_used = 20 / 43.2 = 46٪\n# هنوز 54٪ بودجه باقی است\n\n# اگر از 100٪ گذشت:\n# باید release جدید را متوقف کنید و روی پایداری تمرکز کنید" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern",
+          "title": "لاگ بدون ساختار (print / رشته ساده)",
+          "why": "نمی‌توان فیلتر، جستجو یا تحلیل کرد. لاگ‌های بزرگ بی‌فایده هستند.",
+          "when": "وقتی تازه شروع می‌کنید.",
+          "fix": "JSON logging با contextvars برای request_id و user_id."
+        },
+        { "type": "anti-pattern",
+          "title": "لاگ کردن اطلاعات حساس",
+          "why": "رمز عبور، توکن، اطلاعات کارت اعتباری در لاگ باقی می‌ماند و در دسترس همه است.",
+          "when": "وقتی `request.data` را کاملاً لاگ می‌کنید.",
+          "fix": "Redaction — فقط فیلدهای لازم. Authorization، password، token را حذف کنید."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون request_id",
+          "why": "نمی‌توان یک درخواست خاص را در لاگ‌ها ردیابی کرد. در چند سرویس، غیرممکن.",
+          "when": "معماری ساده.",
+          "fix": "Middleware برای X-Request-ID + ContextVar."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون trace_id در microservices",
+          "why": "نمی‌توانید بفهمید درخواست در کدام سرویس کند شده.",
+          "when": "معماری چندسرویسی.",
+          "fix": "OpenTelemetry + Jaeger."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون alerting",
+          "why": "خطاها را کاربر گزارش می‌کند، نه سیستم.",
+          "when": "همیشه.",
+          "fix": "Prometheus + Alertmanager + Slack/PagerDuty."
+        },
+        { "type": "anti-pattern",
+          "title": "Alertهای بی‌هدف",
+          "why": "Alert fatigue — تیم یاد می‌گیرد alertها را نادیده بگیرد.",
+          "when": "وقتی همه چیز را alert می‌کنید.",
+          "fix": "فقط alert برای SLOهای مهم. هر alert باید action داشته باشد."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون داشبورد",
+          "why": "بدون دید بصری، تحلیل کند است.",
+          "when": "تیم فنی.",
+          "fix": "Grafana با نمودارهای کلیدی: rate، error، latency، saturation."
+        },
+        { "type": "anti-pattern",
+          "title": "لاگ بدون چرخش",
+          "why": "دیسک پر می‌شود، سرویس crash می‌کند.",
+          "when": "وقتی لاگ زیاد می‌شود.",
+          "fix": "`RotatingFileHandler` یا `logrotate`."
+        },
+        { "type": "anti-pattern",
+          "title": "Sentry با traces_sample_rate=1.0 در ترافیک بالا",
+          "why": "هزینه بالا + کندی.",
+          "when": "پروژه بزرگ.",
+          "fix": "0.01 تا 0.1 بسته به ترافیک."
+        },
+        { "type": "anti-pattern",
+          "title": "لاگ در STDOUT و دیسک همزمان بدون دلیل",
+          "why": "دو بار ذخیره‌سازی، هزینه بالا.",
+          "when": "معماری نامشخص.",
+          "fix": "در container فقط STDOUT (Docker لاگ می‌گیرد)."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-077-q1",
+      "tag": "کوییز",
+      "question": "تفاوت سه ستون Observability چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "Logs: چه اتفاقی افتاد. Metrics: چقدر سریع/چند بار. Traces: کجا کند شد.", "correct": true, "explanation": "هر ستون به سؤال متفاوتی پاسخ می‌دهد." },
+        { "text": "Logs برای dev، Metrics برای ops، Traces برای business.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-077-q2",
+      "tag": "کوییز",
+      "question": "چرا request_id ضروری است؟",
+      "options": [
+        { "text": "چون Sentry اجبار می‌کند.", "correct": false },
+        { "text": "چون می‌توان یک درخواست خاص را در لاگ‌ها و سرویس‌های مختلف ردیابی کرد.", "correct": true, "explanation": "بدون آن، debugging در چند سرویس تقریباً غیرممکن است." },
+        { "text": "چون Prometheus می‌خواهد.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-077-q3",
+      "tag": "کوییز",
+      "question": "SLI، SLO و SLA چه تفاوتی دارند؟",
+      "options": [
+        { "text": "هر سه یک چیز هستند.", "correct": false },
+        { "text": "SLI: شاخص اندازه‌گیری. SLO: هدف داخلی. SLA: قرارداد با مشتری.", "correct": true, "explanation": "SLA معمولاً سخت‌گیرانه‌تر و با جریمه است." },
+        { "text": "SLA برای داخلی، SLO برای خارجی.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-077-q4",
+      "tag": "کوییز",
+      "question": "چرا traces_sample_rate را در Sentry کمتر از ۱ می‌گذاریم؟",
+      "options": [
+        { "text": "چون Sentry اجبار می‌کند.", "correct": false },
+        { "text": "چون ارسال ۱۰۰٪ تراکنش‌ها هزینه و کندی می‌آورد؛ ۱۰٪ نمونه کافی است.", "correct": true, "explanation": "برای ترافیک بالا، نمونه‌گیری آماری هم کافی است." },
+        { "text": "چون در پلن رایگان محدودیت دارد.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-077-q5",
+      "tag": "کوییز",
+      "question": "چرا همه چیز را alert نمی‌کنیم؟",
+      "options": [
+        { "text": "چون هزینه دارد.", "correct": false },
+        { "text": "چون Alert Fatigue — تیم یاد می‌گیرد alertها را نادیده بگیرد.", "correct": true, "explanation": "هر alert باید action مشخصی داشته باشد." },
+        { "text": "چون Prometheus اجازه نمی‌دهد.", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-077-ex1",
+      "title": "تمرین — Logging ساختاریافته",
+      "problem": "برای یک پروژه DRF، JSON logging با: request_id، user_id، path، method در همه لاگ‌ها. Middleware برای تولید X-Request-ID. جدا کردن لاگ audit از لاگ خطا.",
+      "hints": [
+        "python-json-logger برای فرمت.",
+        "ContextVar برای ذخیره request_id.",
+        "Middleware برای تنظیم context.",
+        "دو فایل: app.log و errors.log."
+      ],
+      "solution": "همان کدهای بخش‌های «Logging ساختاریافته» و «Middleware» این فصل را کنار هم بگذارید:\n- `settings/base.py` با LOGGING کامل\n- `common/logging.py` با ContextVar و Filter\n- `common/middleware.py` با RequestIDMiddleware و RequestLoggingMiddleware\n- اضافه کردن middleware به MIDDLEWARE",
+      "explanation": "این ترکیب، پایه‌ی هر پروژه حرفه‌ای است. بعد از این، هر لاگ شامل request_id خواهد بود."
+    },
+    {
+      "id": "ch-077-ex2",
+      "title": "تمرین — Metrics و Dashboard",
+      "problem": "برای یک پروژه DRF:\n- django-prometheus را نصب و راه‌اندازی کنید.\n- متریک‌های سفارشی برای orders_created و order_value اضافه کنید.\n- Middleware برای latency و request count.\n- Alert برای نرخ خطا بالای ۵٪.",
+      "hints": [
+        "django-prometheus در INSTALLED_APPS و MIDDLEWARE.",
+        "Counter، Histogram، Gauge از prometheus_client.",
+        "Alert rule در prometheus/alerts.yml."
+      ],
+      "solution": "همان کدهای بخش‌های «Prometheus + Grafana» و «Alert Rules» این فصل:\n- تنظیمات django-prometheus\n- `common/metrics.py` با متریک‌ها\n- `common/middleware.py` با MetricsMiddleware\n- `prometheus/prometheus.yml`\n- `prometheus/alerts.yml`",
+      "explanation": "بعد از این، در Grafana می‌توانید نمودارها بسازید و در Alertmanager هشدارها را تنظیم کنید."
+    },
+    {
+      "id": "ch-077-ex3",
+      "title": "تمرین — Audit Logging",
+      "problem": "یک سیستم Audit Logging بسازید که این رویدادها را ثبت کند:\n- ورود موفق و ناموفق\n- تغییر رمز\n- دسترسی رد‌شده\n- سفارش جدید\n- پرداخت انجام‌شده",
+      "hints": [
+        "لاگر جدا `api.audit`.",
+        "کلاس `AuditLogger` با متد `log`.",
+        "کلاس‌های `SecurityAudit` و `BusinessAudit`.",
+        "استفاده در view و service."
+      ],
+      "solution": "همان `common/audit.py` در بخش «Audit Logging» این فصل. سپس در viewهای مربوطه صدا بزنید:\n```python\nfrom common.audit import SecurityAudit, BusinessAudit\n\n# در LoginView\nSecurityAudit.login_success(user, request)\n\n# در create_order\nBusinessAudit.order_created(user, request, order.id, order.total)\n```",
+      "explanation": "Audit logها جدا از لاگ‌های عادی نگه داشته می‌شوند. برای بازرسی و امنیت ضروری هستند."
+    }
+  ],
+  "summary": [
+    "**سه ستون Observability:** Logs، Metrics، Traces.",
+    "**JSON logging** با `python-json-logger`.",
+    "**Request ID** با Middleware و ContextVar.",
+    "**Audit Logging** جدا برای رویدادهای امنیتی و کسب‌وکار.",
+    "**Sentry** برای خطاها + Performance + Profiling.",
+    "**Prometheus + Grafana** برای متریک‌ها و داشبوردها.",
+    "**Alerting** روی نرخ خطا، latency، صف، disk.",
+    "**OpenTelemetry + Jaeger** برای tracing توزیع‌شده.",
+    "**SLI / SLO / SLA** مفاهیم کلیدی پایداری.",
+    "**ضدالگوها:** لاگ بدون ساختار، لاگ حساس، بدون request_id، بدون alerting، alert fatigue."
+  ],
+  "resources": [
+    { "title": "Prometheus Documentation", "url": "https://prometheus.io/docs/", "official": true },
+    { "title": "Grafana Documentation", "url": "https://grafana.com/docs/", "official": true },
+    { "title": "Sentry Documentation", "url": "https://docs.sentry.io/", "official": true },
+    { "title": "OpenTelemetry Documentation", "url": "https://opentelemetry.io/docs/", "official": true },
+    { "title": "Jaeger", "url": "https://www.jaegertracing.io/docs/", "official": true },
+    { "title": "Google SRE Book", "url": "https://sre.google/sre-book/table-of-contents/", "official": true },
+    { "title": "django-prometheus", "url": "https://github.com/korfuri/django-prometheus", "official": false }
+  ]
+}

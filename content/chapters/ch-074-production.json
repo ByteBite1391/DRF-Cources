@@ -1,0 +1,340 @@
+{
+  "id": "ch-074",
+  "slug": "production",
+  "title": "محیط تولید (Production)",
+  "kicker": "فصل ۷۴",
+  "level": "professional",
+  "difficulty": 4,
+  "estimatedMinutes": 55,
+  "lead": "تفاوت بین «کار می‌کند» و «قابل تولید» در جزئیات است. این فصل چک‌لیست کامل تولید را با مثال‌های عملی نشان می‌دهد.",
+  "sections": [
+    {
+      "id": "checklist",
+      "title": "چک‌لیست قبل از تولید",
+      "blocks": [
+        { "type": "paragraph", "text": "قبل از اینکه کد شما روی سرور واقعی برود، این چک‌لیست را کامل کنید. هر موردی که نادیده بگیرید، در آینده شما را به دردسر می‌اندازد." },
+        { "type": "table", "headers": ["دسته", "مورد", "چرا مهم است"], "rows": [
+          ["تنظیمات", "`DEBUG = False`", "جلوگیری از افشای stack trace"],
+          ["تنظیمات", "`SECRET_KEY` از env", "جلوگیری از افشای در Git"],
+          ["تنظیمات", "`ALLOWED_HOSTS` محدود", "جلوگیری از Host header attack"],
+          ["امنیت", "HTTPS اجباری + HSTS", "جلوگیری از Man-in-the-Middle"],
+          ["امنیت", "Cookies با Secure و HttpOnly", "جلوگیری از XSS و CSRF"],
+          ["دیتابیس", "PostgreSQL (نه SQLite)", "Concurrent writes + backup"],
+          ["دیتابیس", "Connection pooling", "کاهش زمان اتصال"],
+          ["کش", "Redis فعال", "Session + cache + queue"],
+          ["پس‌زمینه", "Celery + Worker", "کارهای سنگین بدون بلاک"],
+          ["سرور", "Gunicorn / Uvicorn", "جایگزین runserver"],
+          ["پروکسی", "Nginx به‌عنوان reverse proxy", "SSL + static + buffering"],
+          ["مانیتور", "Sentry فعال", "خطاها را ببینید"],
+          ["مانیتور", "Metrics + Logs", "دیباگ سریع"],
+          ["پشتیبان", "Backup دیتابیس روزانه", "بازیابی در فاجعه"],
+          ["Static", "`collectstatic` اجرا شده", "فایل‌های static سرو شوند"],
+          ["Migration", "مایگریشن‌ها خودکار در deploy", "دیتابیس همیشه سازگار"],
+          ["Health", "Endpoint سلامت", "Load balancer می‌فهمد چه سروری سالم است"],
+          ["Docs", "OpenAPI محدود به admin", "جلوگیری از افشای ساختار"]
+        ]}
+      ]
+    },
+    {
+      "id": "settings-split",
+      "title": "تفکیک تنظیمات به base/dev/prod",
+      "blocks": [
+        { "type": "paragraph", "text": "یک فایل `settings.py` غول، در پروژه‌های واقعی نگهداری‌ناپذیر است. بهترین روش: تفکیک به سه فایل." },
+        { "type": "flow", "steps": ["base.py", "→ dev.py", "→ prod.py", "→ staging.py"] },
+        { "type": "text", "code": "settings/\n├── __init__.py       # تعیین محیط بر اساس env\n├── base.py           # مشترک بین همه محیط‌ها\n├── dev.py            # توسعه (DEBUG=True، SQLite، console email)\n├── staging.py        # شباهت به تولید + DEBUG=True\n└── prod.py           # تولید (امن، PostgreSQL، Sentry)" },
+        { "type": "code", "lang": "python", "filename": "settings/__init__.py", "code": "import os\n\nENV = os.environ.get(\"DJANGO_ENV\", \"dev\")\n\nif ENV == \"prod\":\n    from .prod import *\n    from .prod import *  # noqa\nelif ENV == \"staging\":\n    from .staging import *\n    from .staging import *  # noqa\nelse:\n    from .dev import *\n    from .dev import *  # noqa" },
+        { "type": "code", "lang": "python", "filename": "settings/base.py", "code": "from pathlib import Path\nimport os\nfrom datetime import timedelta\nfrom dotenv import load_dotenv\n\nBASE_DIR = Path(__file__).resolve().parent.parent.parent\nload_dotenv(BASE_DIR / \".env\")\n\n# --- Core ---\nSECRET_KEY = os.environ[\"SECRET_KEY\"]\nDEBUG = False\nALLOWED_HOSTS = []\n\n# --- Apps ---\nDJANGO_APPS = [\n    \"django.contrib.admin\",\n    \"django.contrib.auth\",\n    \"django.contrib.contenttypes\",\n    \"django.contrib.sessions\",\n    \"django.contrib.messages\",\n    \"django.contrib.staticfiles\",\n    \"django.contrib.postgres\",\n]\n\nTHIRD_PARTY_APPS = [\n    \"rest_framework\",\n    \"rest_framework_simplejwt\",\n    \"rest_framework_simplejwt.token_blacklist\",\n    \"django_filters\",\n    \"corsheaders\",\n    \"drf_spectacular\",\n    \"django_prometheus\",\n    \"django_celery_beat\",\n]\n\nLOCAL_APPS = [\n    \"common\",\n    \"users\",\n    \"catalog\",\n]\n\nINSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS\n\n# --- Middleware ---\nMIDDLEWARE = [\n    \"django_prometheus.middleware.PrometheusBeforeMiddleware\",\n    \"corsheaders.middleware.CorsMiddleware\",\n    \"django.middleware.security.SecurityMiddleware\",\n    \"django.contrib.sessions.middleware.SessionMiddleware\",\n    \"django.middleware.common.CommonMiddleware\",\n    \"django.middleware.csrf.CsrfViewMiddleware\",\n    \"django.contrib.auth.middleware.AuthenticationMiddleware\",\n    \"django.contrib.messages.middleware.MessageMiddleware\",\n    \"django.middleware.clickjacking.XFrameOptionsMiddleware\",\n    \"django_prometheus.middleware.PrometheusAfterMiddleware\",\n]\n\nROOT_URLCONF = \"library_system.urls\"\nWSGI_APPLICATION = \"library_system.wsgi.application\"\nASGI_APPLICATION = \"library_system.asgi.application\"\n\nTEMPLATES = [\n    {\n        \"BACKEND\": \"django.template.backends.django.DjangoTemplates\",\n        \"DIRS\": [BASE_DIR / \"templates\"],\n        \"APP_DIRS\": True,\n        \"OPTIONS\": {\n            \"context_processors\": [\n                \"django.template.context_processors.debug\",\n                \"django.template.context_processors.request\",\n                \"django.contrib.auth.context_processors.auth\",\n                \"django.contrib.messages.context_processors.messages\",\n            ],\n        },\n    },\n]\n\nAUTH_USER_MODEL = \"users.User\"\n\n# --- i18n ---\nLANGUAGE_CODE = \"fa\"\nTIME_ZONE = \"Asia/Tehran\"\nUSE_I18N = True\nUSE_TZ = True\nLOCALE_PATHS = [BASE_DIR / \"locale\"]\n\n# --- Static & Media ---\nSTATIC_URL = \"/static/\"\nSTATIC_ROOT = BASE_DIR / \"staticfiles\"\nSTATICFILES_DIRS = [BASE_DIR / \"assets\"]\n\nMEDIA_URL = \"/media/\"\nMEDIA_ROOT = BASE_DIR / \"media\"\n\nDEFAULT_AUTO_FIELD = \"django.db.models.BigAutoField\"\n\n# --- DRF ---\nREST_FRAMEWORK = {\n    \"DEFAULT_AUTHENTICATION_CLASSES\": [\n        \"rest_framework_simplejwt.authentication.JWTAuthentication\",\n    ],\n    \"DEFAULT_PERMISSION_CLASSES\": [\n        \"rest_framework.permissions.IsAuthenticated\",\n    ],\n    \"DEFAULT_PAGINATION_CLASS\": \"rest_framework.pagination.PageNumberPagination\",\n    \"PAGE_SIZE\": 20,\n    \"DEFAULT_FILTER_BACKENDS\": [\n        \"django_filters.rest_framework.DjangoFilterBackend\",\n        \"rest_framework.filters.SearchFilter\",\n        \"rest_framework.filters.OrderingFilter\",\n    ],\n    \"DEFAULT_THROTTLE_CLASSES\": [\n        \"rest_framework.throttling.AnonRateThrottle\",\n        \"rest_framework.throttling.UserRateThrottle\",\n    ],\n    \"DEFAULT_THROTTLE_RATES\": {\n        \"anon\": \"30/min\",\n        \"user\": \"2000/day\",\n        \"login\": \"5/min\",\n        \"register\": \"3/hour\",\n    },\n    \"DEFAULT_SCHEMA_CLASS\": \"drf_spectacular.openapi.AutoSchema\",\n    \"EXCEPTION_HANDLER\": \"common.exceptions.custom_exception_handler\",\n}\n\n# --- JWT ---\nSIMPLE_JWT = {\n    \"ACCESS_TOKEN_LIFETIME\": timedelta(minutes=15),\n    \"REFRESH_TOKEN_LIFETIME\": timedelta(days=7),\n    \"ROTATE_REFRESH_TOKENS\": True,\n    \"BLACKLIST_AFTER_ROTATION\": True,\n    \"UPDATE_LAST_LOGIN\": True,\n    \"AUTH_HEADER_TYPES\": (\"Bearer\",),\n}\n\n# --- Celery ---\nCELERY_BROKER_URL = os.environ.get(\"CELERY_BROKER_URL\", \"redis://localhost:6379/1\")\nCELERY_RESULT_BACKEND = os.environ.get(\"CELERY_RESULT_BACKEND\", \"redis://localhost:6379/2\")\nCELERY_TASK_SERIALIZER = \"json\"\nCELERY_ACCEPT_CONTENT = [\"json\"]\nCELERY_TIMEZONE = \"Asia/Tehran\"\nCELERY_TASK_TRACK_STARTED = True\nCELERY_TASK_TIME_LIMIT = 30 * 60\n\n# --- Logging ---\nLOGGING = {\n    \"version\": 1,\n    \"disable_existing_loggers\": False,\n    \"formatters\": {\n        \"json\": {\n            \"()\": \"pythonjsonlogger.jsonlogger.JsonFormatter\",\n            \"format\": \"%(asctime)s %(levelname)s %(name)s %(message)s %(request_id)s\",\n        },\n        \"simple\": {\n            \"format\": \"{levelname} {asctime} {name} {message}\",\n            \"style\": \"{\",\n        },\n    },\n    \"filters\": {\n        \"request_id\": {\"()\": \"common.logging.RequestIDFilter\"},\n    },\n    \"handlers\": {\n        \"console\": {\n            \"class\": \"logging.StreamHandler\",\n            \"formatter\": \"json\",\n            \"filters\": [\"request_id\"],\n        },\n    },\n    \"root\": {\"handlers\": [\"console\"], \"level\": \"INFO\"},\n    \"loggers\": {\n        \"django.db.backends\": {\"level\": \"WARNING\"},\n        \"api.errors\": {\"handlers\": [\"console\"], \"level\": \"WARNING\", \"propagate\": False},\n        \"api.security\": {\"handlers\": [\"console\"], \"level\": \"WARNING\", \"propagate\": False},\n    },\n}" }
+      ]
+    },
+    {
+      "id": "dev-settings",
+      "title": "settings/dev.py — توسعه",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "settings/dev.py", "code": "from .base import *\n\nDEBUG = True\nALLOWED_HOSTS = [\"*\"]\n\n# دیتابیس محلی\nDATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": os.environ.get(\"DB_NAME\", \"library_db\"),\n        \"USER\": os.environ.get(\"DB_USER\", \"postgres\"),\n        \"PASSWORD\": os.environ.get(\"DB_PASSWORD\", \"postgres\"),\n        \"HOST\": os.environ.get(\"DB_HOST\", \"localhost\"),\n        \"PORT\": os.environ.get(\"DB_PORT\", \"5432\"),\n    }\n}\n\n# Cache محلی\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.redis.RedisCache\",\n        \"LOCATION\": os.environ.get(\"REDIS_URL\", \"redis://localhost:6379/0\"),\n    }\n}\n\n# CORS باز\nCORS_ALLOW_ALL_ORIGINS = True\n\n# Browsable API فعال\nREST_FRAMEWORK[\"DEFAULT_RENDERER_CLASSES\"] = [\n    \"rest_framework.renderers.JSONRenderer\",\n    \"rest_framework.renderers.BrowsableAPIRenderer\",\n]\n\n# Schema برای همه\nSPECTACULAR_SETTINGS[\"SERVE_PERMISSIONS\"] = []\n\n# Debug toolbar\nINSTALLED_APPS += [\"debug_toolbar\", \"silk\"]\nMIDDLEWARE.insert(0, \"debug_toolbar.middleware.DebugToolbarMiddleware\")\nMIDDLEWARE.append(\"silk.middleware.SilkyMiddleware\")\n\nINTERNAL_IPS = [\"127.0.0.1\"]\nDEBUG_TOOLBAR_CONFIG = {\"SHOW_TOOLBAR_CALLBACK\": lambda r: True}\n\n# Email در کنسول\nEMAIL_BACKEND = \"django.core.mail.backends.console.EmailBackend\"\n\n# Celery eager در توسعه (بدون نیاز به worker)\nCELERY_TASK_ALWAYS_EAGER = True\nCELERY_TASK_EAGER_PROPAGATES = True\n\n# Password validation ضعیف‌تر برای تست\nAUTH_PASSWORD_VALIDATORS = []" }
+      ]
+    },
+    {
+      "id": "prod-settings",
+      "title": "settings/prod.py — تولید",
+      "blocks": [
+        { "type": "code", "lang": "python", "filename": "settings/prod.py", "code": "from .base import *\n\nDEBUG = False\n\n# ALLOWED_HOSTS از env\nALLOWED_HOSTS = os.environ[\"ALLOWED_HOSTS\"].split(\",\")\n\n# --- امنیت ---\n# HTTPS\nSECURE_SSL_REDIRECT = True\nSECURE_PROXY_SSL_HEADER = (\"HTTP_X_FORWARDED_PROTO\", \"https\")\n\n# HSTS (HTTP Strict Transport Security)\nSECURE_HSTS_SECONDS = 31536000       # ۱ سال\nSECURE_HSTS_INCLUDE_SUBDOMAINS = True\nSECURE_HSTS_PRELOAD = True\n\n# Cookies\nSESSION_COOKIE_SECURE = True\nCSRF_COOKIE_SECURE = True\nSESSION_COOKIE_HTTPONLY = True\nSESSION_COOKIE_SAMESITE = \"Lax\"\nCSRF_COOKIE_SAMESITE = \"Lax\"\nSESSION_COOKIE_AGE = 60 * 60 * 24 * 7   # ۱ هفته\n\n# Headers امنیتی\nSECURE_CONTENT_TYPE_NOSNIFF = True\nX_FRAME_OPTIONS = \"DENY\"\nSECURE_REFERRER_POLICY = \"same-origin\"\nSECURE_CROSS_ORIGIN_OPENER_POLICY = \"same-origin\"\n\n# --- دیتابیس ---\nDATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": os.environ[\"DB_NAME\"],\n        \"USER\": os.environ[\"DB_USER\"],\n        \"PASSWORD\": os.environ[\"DB_PASSWORD\"],\n        \"HOST\": os.environ[\"DB_HOST\"],\n        \"PORT\": os.environ.get(\"DB_PORT\", \"5432\"),\n        \"CONN_MAX_AGE\": 60,\n        \"CONN_HEALTH_CHECKS\": True,\n        \"OPTIONS\": {\n            \"connect_timeout\": 5,\n            \"options\": \"-c statement_timeout=30000\",   # ۳۰ ثانیه\n        },\n    }\n}\n\n# --- Cache ---\nCACHES = {\n    \"default\": {\n        \"BACKEND\": \"django.core.cache.backends.redis.RedisCache\",\n        \"LOCATION\": os.environ[\"REDIS_URL\"],\n        \"KEY_PREFIX\": \"library\",\n        \"TIMEOUT\": 300,\n    },\n}\n\nSESSION_ENGINE = \"django.contrib.sessions.backends.cache\"\nSESSION_CACHE_ALIAS = \"default\"\n\n# --- Renderers: حذف Browsable در تولید ---\nREST_FRAMEWORK[\"DEFAULT_RENDERER_CLASSES\"] = [\n    \"rest_framework.renderers.JSONRenderer\",\n]\n\n# Schema فقط برای admin\nSPECTACULAR_SETTINGS = {\n    **SPECTACULAR_SETTINGS,\n    \"SERVE_PERMISSIONS\": [\"rest_framework.permissions.IsAdminUser\"],\n    \"SERVE_AUTHENTICATION\": [\n        \"rest_framework_simplejwt.authentication.JWTAuthentication\",\n    ],\n}\n\n# --- CORS محدود ---\nCORS_ALLOWED_ORIGINS = os.environ[\"CORS_ALLOWED_ORIGINS\"].split(\",\")\nCORS_ALLOW_CREDENTIALS = True\n\n# --- Email ---\nEMAIL_BACKEND = \"django.core.mail.backends.smtp.EmailBackend\"\nEMAIL_HOST = os.environ[\"EMAIL_HOST\"]\nEMAIL_PORT = int(os.environ.get(\"EMAIL_PORT\", 587))\nEMAIL_HOST_USER = os.environ[\"EMAIL_HOST_USER\"]\nEMAIL_HOST_PASSWORD = os.environ[\"EMAIL_HOST_PASSWORD\"]\nEMAIL_USE_TLS = True\nDEFAULT_FROM_EMAIL = os.environ.get(\"DEFAULT_FROM_EMAIL\", \"noreply@example.com\")\n\n# --- Static files ---\nSTATICFILES_STORAGE = \"django.contrib.staticfiles.storage.ManifestStaticFilesStorage\"\n\n# --- Sentry ---\nif SENTRY_DSN := os.environ.get(\"SENTRY_DSN\"):\n    import sentry_sdk\n    from sentry_sdk.integrations.django import DjangoIntegration\n    from sentry_sdk.integrations.celery import CeleryIntegration\n    from sentry_sdk.integrations.redis import RedisIntegration\n\n    sentry_sdk.init(\n        dsn=SENTRY_DSN,\n        integrations=[DjangoIntegration(), CeleryIntegration(), RedisIntegration()],\n        traces_sample_rate=0.1,\n        profiles_sample_rate=0.1,\n        send_default_pii=False,\n        environment=\"production\",\n        release=os.environ.get(\"GIT_SHA\", \"unknown\"),\n    )\n\n# --- Admin URL نامعلوم ---\nADMIN_URL = os.environ.get(\"ADMIN_URL\", \"secure-admin-panel/\")\n\n# --- Logging: سطح بالاتر ---\nLOGGING[\"root\"][\"level\"] = \"WARNING\"\nLOGGING[\"loggers\"][\"django.security\"] = {\n    \"handlers\": [\"console\"], \"level\": \"ERROR\", \"propagate\": False,\n}" }
+      ]
+    },
+    {
+      "id": "env-example",
+      "title": ".env نمونه",
+      "blocks": [
+        { "type": "bash", "filename": ".env.example", "code": "# Django\nDJANGO_ENV=prod\nDJANGO_SETTINGS_MODULE=library_system.settings\nSECRET_KEY=change-me-to-a-long-random-string-at-least-50-chars\nDEBUG=False\nALLOWED_HOSTS=api.example.com,www.example.com\nADMIN_URL=secret-admin-path-2024/\n\n# Database\nDB_NAME=library_db\nDB_USER=library_user\nDB_PASSWORD=very-strong-password\nDB_HOST=db\nDB_PORT=5432\n\n# Redis\nREDIS_URL=redis://redis:6379/0\nCELERY_BROKER_URL=redis://redis:6379/1\nCELERY_RESULT_BACKEND=redis://redis:6379/2\n\n# CORS\nCORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com\n\n# Email\nEMAIL_HOST=smtp.example.com\nEMAIL_PORT=587\nEMAIL_HOST_USER=noreply@example.com\nEMAIL_HOST_PASSWORD=email-password\nDEFAULT_FROM_EMAIL=noreply@example.com\n\n# Sentry\nSENTRY_DSN=https://...@sentry.io/...\n\n# Release\nGIT_SHA=abc123\n\n# Frontend (برای URLهای بازنشانی رمز)\nFRONTEND_URL=https://app.example.com" },
+        { "type": "note", "variant": "danger", "title": "هرگز .env را commit نکنید", "text": "`.env` را در `.gitignore` بگذارید. اگر به اشتباه commit شد، **فوراً** کلیدها را rotate کنید. حذف از history کافی نیست — کسی ممکن است clone کرده باشد." }
+      ]
+    },
+    {
+      "id": "security-headers",
+      "title": "هدرهای امنیتی در عمل",
+      "blocks": [
+        { "type": "paragraph", "text": "چرا هر هدر مهم است و چه چیزی را جلوگیری می‌کند:" },
+        { "type": "table", "headers": ["هدر", "مقدار", "جلوگیری از"], "rows": [
+          ["`Strict-Transport-Security`", "`max-age=31536000; includeSubDomains; preload`", "HTTP downgrade، MITM"],
+          ["`X-Content-Type-Options`", "`nosniff`", "MIME sniffing"],
+          ["`X-Frame-Options`", "`DENY`", "Clickjacking"],
+          ["`Referrer-Policy`", "`same-origin`", "افشای URL در referrer"],
+          ["`Content-Security-Policy`", "`default-src 'self'`", "XSS"],
+          ["`Permissions-Policy`", "`geolocation=(), microphone=()`", "دسترسی به APIهای مرورگر"],
+          ["`Cross-Origin-Opener-Policy`", "`same-origin`", "Spectre attacks"]
+        ]},
+        { "type": "code", "lang": "text", "filename": "headers در پاسخ", "code": "HTTP/2 200\nstrict-transport-security: max-age=31536000; includeSubDomains; preload\nx-content-type-options: nosniff\nx-frame-options: DENY\nreferrer-policy: same-origin\ncontent-security-policy: default-src 'self'\ncross-origin-opener-policy: same-origin" },
+        { "type": "note", "variant": "tip", "title": "بررسی هدرها", "text": "از [securityheaders.com](https://securityheaders.com/) استفاده کنید تا هدرهای سایت خود را چک کنید. هدف: درجه A یا A+." }
+      ]
+    },
+    {
+      "id": "gunicorn",
+      "title": "Gunicorn در عمل",
+      "blocks": [
+        { "type": "paragraph", "text": "Gunicorn جایگزین `runserver` است. `runserver` فقط برای توسعه طراحی شده و نمی‌تواند ترافیک واقعی را مدیریت کند." },
+        { "type": "bash", "code": "pip install gunicorn" },
+        { "type": "python", "filename": "gunicorn.conf.py", "code": "import multiprocessing\nimport os\n\n# اتصال\nbind = os.environ.get(\"GUNICORN_BIND\", \"0.0.0.0:8000\")\n\n# Worker\nworkers = int(os.environ.get(\"GUNICORN_WORKERS\", multiprocessing.cpu_count() * 2 + 1))\nworker_class = \"gthread\"     # برای I/O-bound (DRF معمولی)\nthreads = int(os.environ.get(\"GUNICORN_THREADS\", 4))\n\n# Timeout\ntimeout = 60\ngraceful_timeout = 30\nkeepalive = 5\n\n# Recycling (جلوگیری از memory leak)\nmax_requests = 1000\nmax_requests_jitter = 100\n\n# Logging\naccesslog = \"-\"\nerrorlog = \"-\"\nloglevel = \"info\"\naccess_log_format = '%(h)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\" %(L)s'\n\n# Security\nforwarded_allow_ips = \"*\"\nproxy_allow_ips = \"*\"\nlimit_request_line = 8190\nlimit_request_fields = 100\nlimit_request_field_size = 8190\n\n# Server hooks\ndef on_starting(server):\n    print(\"Gunicorn starting...\")\n\ndef worker_int(worker):\n    print(f\"Worker {worker.pid} interrupted\")\n\ndef on_exit(server):\n    print(\"Gunicorn stopped\")" },
+        { "type": "table", "headers": ["worker_class", "مناسب برای", "Concurrency"], "rows": [
+          ["`sync`", "CPU-bound، ساده", "۱ درخواست per worker"],
+          ["`gthread`", "I/O-bound (DB، HTTP)", "threads × workers"],
+          ["`gevent`", "I/O-bound سنگین", "بالا (greenlets)"],
+          ["`uvicorn.workers.UvicornWorker`", "async views", "بالا (asyncio)"]
+        ]},
+        { "type": "callout-level",
+          "basic": "workers = 4 (حدس)",
+          "better": "workers = cpu_count * 2 + 1",
+          "production": "benchmark + tuning بر اساس memory و latency. مانیتورینگ memory worker."
+        },
+        { "type": "bash", "code": "# اجرا\ngunicorn -c gunicorn.conf.py library_system.wsgi:application\n\n# Reload بدون downtime\nkill -HUP $(cat /run/gunicorn.pid)\n\n# بررسی وضعیت\nps aux | grep gunicorn\ncat /proc/$(cat /run/gunicorn.pid)/status" }
+      ]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx — Reverse Proxy",
+      "blocks": [
+        { "type": "paragraph", "text": "Nginx جلوی Gunicorn قرار می‌گیرد و کارهای زیر را انجام می‌دهد: SSL termination، static files، buffering، rate limiting." },
+        { "type": "bash", "filename": "/etc/nginx/sites-available/library-api", "code": "# Upstream برای Gunicorn\nupstream api_backend {\n    server 127.0.0.1:8000 fail_timeout=0;\n    keepalive 32;\n}\n\n# HTTP → HTTPS redirect\nserver {\n    listen 80;\n    listen [::]:80;\n    server_name api.example.com;\n\n    # ACME challenge برای Let's Encrypt\n    location /.well-known/acme-challenge/ {\n        root /var/www/certbot;\n    }\n\n    location / {\n        return 301 https://$host$request_uri;\n    }\n}\n\n# HTTPS\nserver {\n    listen 443 ssl http2;\n    listen [::]:443 ssl http2;\n    server_name api.example.com;\n\n    # SSL\n    ssl_certificate /etc/letsencrypt/live/api.example.com/fullchain.pem;\n    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;\n    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers HIGH:!aNULL:!MD5;\n    ssl_prefer_server_ciphers on;\n    ssl_session_cache shared:SSL:10m;\n    ssl_session_timeout 1d;\n    ssl_session_tickets off;\n    ssl_stapling on;\n    ssl_stapling_verify on;\n\n    # Security headers (backup — Django هم می‌فرستد)\n    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\" always;\n    add_header X-Content-Type-Options \"nosniff\" always;\n    add_header X-Frame-Options \"DENY\" always;\n\n    # Client body size (برای آپلود فایل)\n    client_max_body_size 20M;\n    client_body_buffer_size 128k;\n\n    # Timeouts\n    client_body_timeout 60s;\n    client_header_timeout 60s;\n    send_timeout 60s;\n\n    # Static files\n    location /static/ {\n        alias /var/www/library-api/staticfiles/;\n        expires 30d;\n        add_header Cache-Control \"public, immutable\";\n        access_log off;\n    }\n\n    # Media files\n    location /media/ {\n        alias /var/www/library-api/media/;\n        expires 7d;\n        add_header Cache-Control \"public\";\n    }\n\n    # Health check (بدون log)\n    location /health/ {\n        proxy_pass http://api_backend;\n        access_log off;\n    }\n\n    # API\n    location / {\n        # Rate limiting\n        limit_req zone=api_limit burst=20 nodelay;\n\n        # Proxy\n        proxy_pass http://api_backend;\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Connection \"\";\n\n        # Timeouts\n        proxy_connect_timeout 10s;\n        proxy_send_timeout 60s;\n        proxy_read_timeout 60s;\n\n        # Buffering\n        proxy_buffering off;\n        proxy_request_buffering off;\n\n        # Retry\n        proxy_next_upstream error timeout http_502 http_503 http_504;\n    }\n}" },
+        { "type": "bash", "filename": "/etc/nginx/nginx.conf (excerpt)", "code": "# Rate limiting zone\nhttp {\n    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=100r/s;\n    limit_req_status 429;\n\n    # Gzip\n    gzip on;\n    gzip_vary on;\n    gzip_min_length 1024;\n    gzip_types application/json application/javascript text/css text/plain;\n}" }
+      ]
+    },
+    {
+      "id": "health",
+      "title": "Health Check کامل",
+      "blocks": [
+        { "type": "paragraph", "text": "سه نوع health check داریم که نقش‌های متفاوتی دارند:" },
+        { "type": "table", "headers": ["نوع", "پرسش", "کاربرد"], "rows": [
+          ["**Liveness**", "پروسه زنده است؟", "Kubernetes restart می‌کند اگر نه"],
+          ["**Readiness**", "آماده دریافت ترافیک؟", "Load balancer تصمیم می‌گیرد"],
+          ["**Health**", "همه وابستگی‌ها سالم؟", "مانیتورینگ و دیباگ"]
+        ]},
+        { "type": "python", "filename": "common/views.py", "code": "import time\nfrom django.db import connection\nfrom django.core.cache import cache\nfrom django.conf import settings\nfrom rest_framework.decorators import api_view, permission_classes\nfrom rest_framework.permissions import AllowAny\nfrom rest_framework.response import Response\nfrom rest_framework import status\n\n\nSTART_TIME = time.time()\n\n\n@api_view([\"GET\"])\n@permission_classes([AllowAny])\ndef liveness(request):\n    \"\"\"\n    آیا پروسه زنده است؟\n    سریع، بدون بررسی وابستگی.\n    \"\"\"\n    return Response({\"status\": \"alive\"})\n\n\n@api_view([\"GET\"])\n@permission_classes([AllowAny])\ndef readiness(request):\n    \"\"\"\n    آیا آماده دریافت ترافیک است؟\n    بررسی سریع دیتابیس و cache.\n    \"\"\"\n    try:\n        with connection.cursor() as cursor:\n            cursor.execute(\"SELECT 1\")\n    except Exception:\n        return Response(\n            {\"status\": \"not_ready\", \"reason\": \"database\"},\n            status=status.HTTP_503_SERVICE_UNAVAILABLE,\n        )\n\n    try:\n        cache.set(\"health_check\", \"ok\", timeout=5)\n    except Exception:\n        return Response(\n            {\"status\": \"not_ready\", \"reason\": \"cache\"},\n            status=status.HTTP_503_SERVICE_UNAVAILABLE,\n        )\n\n    return Response({\"status\": \"ready\"})\n\n\n@api_view([\"GET\"])\n@permission_classes([AllowAny])\ndef health(request):\n    \"\"\"\n    گزارش کامل سلامت با جزئیات.\n    \"\"\"\n    checks = {}\n    overall_healthy = True\n\n    # Database\n    try:\n        start = time.time()\n        with connection.cursor() as cursor:\n            cursor.execute(\"SELECT 1\")\n        checks[\"database\"] = {\n            \"status\": \"ok\",\n            \"latency_ms\": round((time.time() - start) * 1000, 2),\n        }\n    except Exception as e:\n        checks[\"database\"] = {\"status\": \"error\", \"error\": str(e)}\n        overall_healthy = False\n\n    # Cache\n    try:\n        start = time.time()\n        cache.set(\"health\", \"ok\", timeout=5)\n        assert cache.get(\"health\") == \"ok\"\n        checks[\"cache\"] = {\n            \"status\": \"ok\",\n            \"latency_ms\": round((time.time() - start) * 1000, 2),\n        }\n    except Exception as e:\n        checks[\"cache\"] = {\"status\": \"error\", \"error\": str(e)}\n        overall_healthy = False\n\n    # Celery (اختیاری — به broker نگاه می‌کند)\n    try:\n        from library_system.celery import app as celery_app\n        inspect = celery_app.control.inspect(timeout=2)\n        stats = inspect.stats()\n        if stats:\n            checks[\"celery\"] = {\"status\": \"ok\", \"workers\": len(stats)}\n        else:\n            checks[\"celery\"] = {\"status\": \"no_workers\"}\n    except Exception as e:\n        checks[\"celery\"] = {\"status\": \"error\", \"error\": str(e)}\n\n    # Disk space\n    import shutil\n    try:\n        total, used, free = shutil.disk_usage(\"/\")\n        free_percent = (free / total) * 100\n        checks[\"disk\"] = {\n            \"status\": \"ok\" if free_percent > 10 else \"warning\",\n            \"free_percent\": round(free_percent, 1),\n        }\n        if free_percent < 5:\n            overall_healthy = False\n    except Exception as e:\n        checks[\"disk\"] = {\"status\": \"error\", \"error\": str(e)}\n\n    response_status = status.HTTP_200_OK if overall_healthy else status.HTTP_503_SERVICE_UNAVAILABLE\n    return Response({\n        \"status\": \"healthy\" if overall_healthy else \"degraded\",\n        \"uptime_seconds\": int(time.time() - START_TIME),\n        \"version\": getattr(settings, \"GIT_SHA\", \"unknown\"),\n        \"checks\": checks,\n    }, status=response_status)" },
+        { "type": "bash", "code": "# Kubernetes livenessProbe\nlivenessProbe:\n  httpGet:\n    path: /live/\n    port: 8000\n  initialDelaySeconds: 10\n  periodSeconds: 10\n  timeoutSeconds: 3\n  failureThreshold: 3\n\n# Kubernetes readinessProbe\nreadinessProbe:\n  httpGet:\n    path: /ready/\n    port: 8000\n  initialDelaySeconds: 5\n  periodSeconds: 5\n  timeoutSeconds: 3\n  failureThreshold: 3" }
+      ]
+    },
+    {
+      "id": "backup",
+      "title": "Backup خودکار",
+      "blocks": [
+        { "type": "bash", "filename": "scripts/backup.sh", "code": "#!/bin/bash\nset -euo pipefail\n\nTIMESTAMP=$(date +%Y%m%d_%H%M%S)\nBACKUP_DIR=/var/backups/library-api\nS3_BUCKET=s3://my-backups/library-api\nRETENTION_DAYS=30\n\nmkdir -p $BACKUP_DIR\n\n# --- Database backup ---\necho \"[$(date)] Starting database backup...\"\nPGPASSWORD=$DB_PASSWORD pg_dump \\\n    -h $DB_HOST \\\n    -U $DB_USER \\\n    -d $DB_NAME \\\n    --format=custom \\\n    --compress=9 \\\n    --file=$BACKUP_DIR/db_$TIMESTAMP.dump\n\n# --- Media backup ---\necho \"[$(date)] Starting media backup...\"\ntar -czf $BACKUP_DIR/media_$TIMESTAMP.tar.gz -C /var/www/library-api media/\n\n# --- Upload to S3 ---\necho \"[$(date)] Uploading to S3...\"\naws s3 cp $BACKUP_DIR/db_$TIMESTAMP.dump $S3_BUCKET/db/ --storage-class STANDARD_IA\naws s3 cp $BACKUP_DIR/media_$TIMESTAMP.tar.gz $S3_BUCKET/media/ --storage-class STANDARD_IA\n\n# --- Clean local (فقط آخرین ۲ روز) ---\nfind $BACKUP_DIR -type f -mtime +2 -delete\n\n# --- Clean S3 (بیشتر از RETENTION_DAYS) ---\naws s3 ls $S3_BUCKET/db/ | while read -r line; do\n    file_date=$(echo $line | awk '{print $1\" \"$2}')\n    file_name=$(echo $line | awk '{print $4}')\n    if [[ $(date -d \"$file_date\" +%s) -lt $(date -d \"-$RETENTION_DAYS days\" +%s) ]]; then\n        aws s3 rm $S3_BUCKET/db/$file_name\n    fi\ndone\n\necho \"[$(date)] Backup complete: db_$TIMESTAMP.dump\"\n\n# --- Verify backup ---\nPGPASSWORD=$DB_PASSWORD pg_restore --list $BACKUP_DIR/db_$TIMESTAMP.dump > /dev/null\nif [ $? -eq 0 ]; then\n    echo \"[$(date)] Backup verified OK\"\nelse\n    echo \"[$(date)] BACKUP VERIFICATION FAILED\" >&2\n    exit 1\nfi" },
+        { "type": "bash", "filename": "crontab", "code": "# هر روز ساعت ۳ صبح\n0 3 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1\n\n# backup هفتگی به آرشیو سرد\n0 4 * * 0 /usr/local/bin/backup-weekly.sh >> /var/log/backup.log 2>&1" },
+        { "type": "callout-level",
+          "basic": "backup دستی گاهی",
+          "better": "cron روزانه + S3",
+          "production": "backup روزانه + S3 + تست بازیابی ماهانه + آرشیو سرد + monitoring شکست backup"
+        },
+        { "type": "note", "variant": "danger", "title": "backup تست‌نشده = backup ندارد", "text": "هر ماه یک بار، backup را روی یک محیط جدا بازیابی کنید. اگر بازیابی کار نمی‌کند، backup شما بی‌ارزش است." }
+      ]
+    },
+    {
+      "id": "deployment",
+      "title": "Deployment Zero-Downtime",
+      "blocks": [
+        { "type": "bash", "filename": "scripts/deploy.sh", "code": "#!/bin/bash\nset -euo pipefail\n\nAPP_DIR=/var/www/library-api\ncd $APP_DIR\n\necho \"[$(date)] Starting deployment...\"\n\n# --- ۱. فعال‌سازی venv ---\nsource .venv/bin/activate\n\n# --- ۲. آپدیت کد ---\ngit fetch origin\ngit reset --hard origin/main\n\n# --- ۳. نصب پکیج‌ها ---\npip install --no-cache-dir -r requirements.txt\n\n# --- ۴. بررسی تغییرات migration ---\npython manage.py makemigrations --check --dry-run || {\n    echo \"ERROR: Uncommitted migrations detected\"\n    exit 1\n}\n\n# --- ۵. Migrations ---\npython manage.py migrate --noinput\n\n# --- ۶. Static files ---\npython manage.py collectstatic --noinput --clear\n\n# --- ۷. Reload Gunicorn (graceful) ---\nif [ -f /run/gunicorn.pid ]; then\n    kill -HUP $(cat /run/gunicorn.pid)\n    echo \"[$(date)] Gunicorn reloaded (graceful)\"\nelse\n    echo \"[$(date)] Starting Gunicorn...\"\n    gunicorn -c gunicorn.conf.py library_system.wsgi:application --daemon\nfi\n\n# --- ۸. Reload Celery workers ---\nif [ -f /run/celery.pid ]; then\n    kill -HUP $(cat /run/celery.pid)\nfi\n\n# --- ۹. Reload Nginx ---\nsudo nginx -s reload\n\n# --- ۱۰. Health check ---\nsleep 3\nif curl -f http://localhost:8000/health/ > /dev/null 2>&1; then\n    echo \"[$(date)] Deployment successful\"\nelse\n    echo \"[$(date)] HEALTH CHECK FAILED — rolling back...\"\n    git reset --hard HEAD@{1}\n    kill -HUP $(cat /run/gunicorn.pid)\n    exit 1\nfi" },
+        { "type": "note", "variant": "tip", "title": "Graceful reload", "text": "`kill -HUP` به Gunicorn می‌گوید: workerهای قدیمی را تا اتمام درخواست‌های فعلی نگه دار، workerهای جدید با کد جدید spawn کن. نتیجه: صفر downtime." }
+      ]
+    },
+    {
+      "id": "security-hardening",
+      "title": "سخت‌سازی سرور",
+      "blocks": [
+        { "type": "bash", "code": "# --- SSH ---\n# /etc/ssh/sshd_config\nPermitRootLogin no\nPasswordAuthentication no\nPubkeyAuthentication yes\nPort 2222   # پورت غیرپیش‌فرض\nAllowUsers deploy\n\n# --- Firewall (UFW) ---\nsudo ufw default deny incoming\nsudo ufw default allow outgoing\nsudo ufw allow 2222/tcp   # SSH\nsudo ufw allow 80/tcp\nsudo ufw allow 443/tcp\nsudo ufw enable\n\n# --- fail2ban ---\nsudo apt install fail2ban\n# /etc/fail2ban/jail.local\n# [sshd]\n# maxretry = 3\n# bantime = 3600\n\n# --- بروزرسانی خودکار امنیتی ---\nsudo apt install unattended-upgrades\ndpkg-reconfigure --priority=low unattended-upgrades\n\n# --- PostgreSQL فقط localhost ---\n# /etc/postgresql/16/main/postgresql.conf\nlisten_addresses = 'localhost'" }
+      ]
+    },
+    {
+      "id": "anti-patterns",
+      "title": "ضدالگوها",
+      "blocks": [
+        { "type": "anti-pattern",
+          "title": "DEBUG=True در تولید",
+          "why": "افشای stack trace کامل، SQL queryها، تنظیمات، مسیر فایل‌ها. این بزرگ‌ترین اشتباه ممکن است.",
+          "when": "وقتی فراموش می‌کنید تنظیمات محیطی را.",
+          "fix": "`prod.py` جدا + بررسی در CI (`assert not settings.DEBUG` در تست)."
+        },
+        { "type": "anti-pattern",
+          "title": "SQLite در تولید",
+          "why": "بدون concurrent writes، بدون replication، بدون Full-Text Search واقعی. با ۱۰ کاربر کار می‌کند، با ۱۰۰۰ نه.",
+          "when": "در پروژه‌های کوچک برای راحتی.",
+          "fix": "PostgreSQL از روز اول."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون HTTPS",
+          "why": "رمز، توکن، اطلاعات شخصی همه در شبکه خوانده می‌شوند. حتی در شبکه داخلی.",
+          "when": "برای راحتی توسعه.",
+          "fix": "Let's Encrypt + redirect 301 + HSTS."
+        },
+        { "type": "anti-pattern",
+          "title": "Secret در کد یا Git",
+          "why": "هر کسی با دسترسی به repo، به production دسترسی دارد. اگر repo عمومی شود، فاجعه.",
+          "when": "برای راحتی اولیه.",
+          "fix": "متغیرهای محیطی + `.env` در `.gitignore`. اگر لو رفت، فوراً rotate کنید."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون health check",
+          "why": "Load balancer نمی‌داند کدام سرور سالم است. سرور مرده ترافیک می‌گیرد و کاربر خطا می‌بیند.",
+          "when": "وقتی تک سرور دارید.",
+          "fix": "سه Endpoint: live، ready، health."
+        },
+        { "type": "anti-pattern",
+          "title": "بدون backup یا backup تست‌نشده",
+          "why": "در فاجعه، همه چیز از دست می‌رود.",
+          "when": "وقتی فکر می‌کنید اتفاق نمی‌افتد.",
+          "fix": "backup روزانه + آفلاین + تست بازیابی ماهانه."
+        },
+        { "type": "anti-pattern",
+          "title": "اجرای Gunicorn بدون Nginx",
+          "why": "بدون SSL termination، static files کند، بدون rate limiting، بدون buffering.",
+          "when": "برای سادگی.",
+          "fix": "Nginx همیشه جلوی Gunicorn."
+        },
+        { "type": "anti-pattern",
+          "title": "workers خیلی زیاد",
+          "why": "Context switching زیاد، memory بالا، کندی.",
+          "when": "وقتی ساده فکر می‌کنید «بیشتر بهتر».",
+          "fix": "`cpu_count * 2 + 1` به‌عنوان شروع، بعد benchmark."
+        },
+        { "type": "anti-pattern",
+          "title": "لاگ بدون چرخش",
+          "why": "دیسک پر می‌شود، سرور crash می‌کند.",
+          "when": "وقتی خوش‌شانس هستید.",
+          "fix": "`RotatingFileHandler` یا `logrotate`."
+        },
+        { "type": "anti-pattern",
+          "title": "کنترل panel عمومی (Admin URL پیش‌فرض)",
+          "why": "بات‌ها `/admin/` را اسکن می‌کنند و login page را پیدا می‌کنند.",
+          "when": "در همه پروژه‌ها.",
+          "fix": "URL admin را به چیز غیرقابل حدس تغییر دهید + IP restriction + 2FA."
+        }
+      ]
+    }
+  ],
+  "quiz": [
+    {
+      "id": "ch-074-q1",
+      "tag": "کوییز",
+      "question": "چرا SQLite برای تولید مناسب نیست؟",
+      "options": [
+        { "text": "چون کند است.", "correct": false },
+        { "text": "چون بدون concurrent writes، replication و Full-Text Search واقعی است.", "correct": true, "explanation": "SQLite برای توسعه و پروژه‌های کوچک خوب است اما در تولید با ترافیک واقعی مشکل دارد." },
+        { "text": "چون Django پشتیبانی نمی‌کند.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-074-q2",
+      "tag": "کوییز",
+      "question": "تفاوت Liveness و Readiness probe چیست؟",
+      "options": [
+        { "text": "هیچ تفاوتی ندارند.", "correct": false },
+        { "text": "Liveness: پروسه زنده است؟ Readiness: آماده دریافت ترافیک؟", "correct": true, "explanation": "Liveness باعث restart می‌شود، Readiness باعث حذف از load balancing." },
+        { "text": "Liveness برای HTTP و Readiness برای TCP.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-074-q3",
+      "tag": "کوییز",
+      "question": "چرا `.env` را نباید commit کنیم؟",
+      "options": [
+        { "text": "چون حجم زیادی دارد.", "correct": false },
+        { "text": "چون شامل SECRET_KEY، رمز دیتابیس و سایر اطلاعات حساس است.", "correct": true, "explanation": "اگر commit شود، در history Git باقی می‌ماند." },
+        { "text": "چون Django اجازه نمی‌دهد.", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-074-q4",
+      "tag": "کوییز",
+      "question": "کدام worker_class برای DRF معمولی (I/O-bound) مناسب‌تر است؟",
+      "options": [
+        { "text": "sync", "correct": false },
+        { "text": "gthread", "correct": true, "explanation": "برای I/O-bound (کوئری دیتابیس، HTTP) بهتر عمل می‌کند." },
+        { "text": "gevent", "correct": false }
+      ]
+    },
+    {
+      "id": "ch-074-q5",
+      "tag": "کوییز",
+      "question": "کدام هدر امنیتی از Clickjacking جلوگیری می‌کند؟",
+      "options": [
+        { "text": "Strict-Transport-Security", "correct": false },
+        { "text": "X-Frame-Options", "correct": true, "explanation": "جلوگیری از قرار گرفتن سایت در iframe." },
+        { "text": "Referrer-Policy", "correct": false }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ch-074-ex1",
+      "title": "تمرین — ساخت env کامل",
+      "problem": "یک فایل `.env.example` بسازید که همه متغیرهای لازم برای یک پروژه DRF واقعی را داشته باشد: Django، Database، Redis، Celery، Email، Sentry، CORS، Admin URL.",
+      "hints": [
+        "هر متغیر را با کامنت توضیح دهید.",
+        "مقادیر حساس را placeholder بگذارید.",
+        "متغیرهای اختیاری را از الزامی تفکیک کنید."
+      ],
+      "solution": "```bash\n# =============================================\n# Django Core\n# =============================================\nDJANGO_ENV=prod\nSECRET_KEY=change-me-to-a-long-random-string-at-least-50-chars\nDEBUG=False\nALLOWED_HOSTS=api.example.com,www.example.com\nADMIN_URL=secret-admin-panel-2024/\n\n# =============================================\n# Database (PostgreSQL)\n# =============================================\nDB_NAME=library_db\nDB_USER=library_user\nDB_PASSWORD=very-strong-password-here\nDB_HOST=db\nDB_PORT=5432\n\n# =============================================\n# Redis (Cache + Celery)\n# =============================================\nREDIS_URL=redis://redis:6379/0\nCELERY_BROKER_URL=redis://redis:6379/1\nCELERY_RESULT_BACKEND=redis://redis:6379/2\n\n# =============================================\n# CORS — دامنه‌های مجاز فرانت‌اند\n# =============================================\nCORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com\n\n# =============================================\n# Email (SMTP)\n# =============================================\nEMAIL_HOST=smtp.example.com\nEMAIL_PORT=587\nEMAIL_HOST_USER=noreply@example.com\nEMAIL_HOST_PASSWORD=email-password\nDEFAULT_FROM_EMAIL=noreply@example.com\n\n# =============================================\n# Sentry (اختیاری — برای production)\n# =============================================\nSENTRY_DSN=\n\n# =============================================\n# Release\n# =============================================\nGIT_SHA=unknown\n\n# =============================================\n# Frontend URL (برای لینک‌های بازنشانی رمز)\n# =============================================\nFRONTEND_URL=https://app.example.com\n```",
+      "explanation": "این الگو برای همه پروژه‌های DRF در تولید استفاده می‌شود. متغیرهای حساس همیشه در `.env` می‌مانند، نه در کد."
+    },
+    {
+      "id": "ch-074-ex2",
+      "title": "تمرین — تفکیک settings",
+      "problem": "یک پروژه با settings چندفایلی بسازید: base.py، dev.py و prod.py. dev برای توسعه با SQLite، prod برای تولید با PostgreSQL و امنیت کامل.",
+      "hints": [
+        "base مشترک، dev و prod تفاوت‌ها.",
+        "از `from .base import *` استفاده کنید.",
+        "در prod همه امنیت‌ها فعال."
+      ],
+      "solution": "```python\n# settings/__init__.py\nimport os\nENV = os.environ.get(\"DJANGO_ENV\", \"dev\")\nif ENV == \"prod\":\n    from .prod import *\nelif ENV == \"staging\":\n    from .staging import *\nelse:\n    from .dev import *\n\n# settings/base.py\nfrom pathlib import Path\nimport os\nBASE_DIR = Path(__file__).resolve().parent.parent.parent\nSECRET_KEY = os.environ[\"SECRET_KEY\"]\nDEBUG = False\nALLOWED_HOSTS = []\nINSTALLED_APPS = [\n    \"django.contrib.admin\",\n    \"django.contrib.auth\",\n    \"django.contrib.contenttypes\",\n    \"django.contrib.sessions\",\n    \"django.contrib.messages\",\n    \"django.contrib.staticfiles\",\n    \"rest_framework\",\n    \"rest_framework_simplejwt\",\n]\n# ... بقیه تنظیمات مشترک\n\n# settings/dev.py\nfrom .base import *\nDEBUG = True\nALLOWED_HOSTS = [\"*\"]\nDATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.sqlite3\",\n        \"NAME\": BASE_DIR / \"db.sqlite3\",\n    }\n}\nEMAIL_BACKEND = \"django.core.mail.backends.console.EmailBackend\"\nREST_FRAMEWORK[\"DEFAULT_RENDERER_CLASSES\"] = [\n    \"rest_framework.renderers.JSONRenderer\",\n    \"rest_framework.renderers.BrowsableAPIRenderer\",\n]\n\n# settings/prod.py\nfrom .base import *\nDEBUG = False\nALLOWED_HOSTS = os.environ[\"ALLOWED_HOSTS\"].split(\",\")\nSECURE_SSL_REDIRECT = True\nSECURE_HSTS_SECONDS = 31536000\nSECURE_HSTS_INCLUDE_SUBDOMAINS = True\nSECURE_HSTS_PRELOAD = True\nSESSION_COOKIE_SECURE = True\nCSRF_COOKIE_SECURE = True\nSESSION_COOKIE_HTTPONLY = True\nSECURE_CONTENT_TYPE_NOSNIFF = True\nX_FRAME_OPTIONS = \"DENY\"\nDATABASES = {\n    \"default\": {\n        \"ENGINE\": \"django.db.backends.postgresql\",\n        \"NAME\": os.environ[\"DB_NAME\"],\n        \"USER\": os.environ[\"DB_USER\"],\n        \"PASSWORD\": os.environ[\"DB_PASSWORD\"],\n        \"HOST\": os.environ[\"DB_HOST\"],\n        \"PORT\": os.environ.get(\"DB_PORT\", \"5432\"),\n        \"CONN_MAX_AGE\": 60,\n    }\n}\nREST_FRAMEWORK[\"DEFAULT_RENDERER_CLASSES\"] = [\n    \"rest_framework.renderers.JSONRenderer\",\n]\n```",
+      "explanation": "این الگو، محیط‌های مختلف را از هم جدا می‌کند. یک باگ در dev، در prod به‌طور متفاوت رفتار می‌کند."
+    },
+    {
+      "id": "ch-074-ex3",
+      "title": "تمرین — Health check کامل",
+      "problem": "یک Endpoint `/health/` بسازید که بررسی کند: دیتابیس، Redis، فضای دیسک و Celery. اگر همه سالم بودند، ۲۰۰؛ اگر نه، ۵۰۳ برگرداند.",
+      "hints": [
+        "از `connection.cursor()` برای دیتابیس.",
+        "از `cache.set/get` برای Redis.",
+        "از `shutil.disk_usage` برای دیسک.",
+        "از `celery.control.inspect` برای Celery."
+      ],
+      "solution": "همان کد `common/views.py` در بخش Health Check این فصل.",
+      "explanation": "این Endpoint به Load Balancer و Kubernetes کمک می‌کند تا سرورهای سالم را تشخیص دهند."
+    }
+  ],
+  "summary": [
+    "**چک‌لیست تولید** ۱۸ مورد کلیدی: DEBUG، SECRET_KEY، HTTPS، PostgreSQL، Redis، Celery، Nginx، Sentry، Backup، Health.",
+    "**تفکیک settings** به base/dev/prod با استفاده از env.",
+    "**هدرهای امنیتی** HSTS، X-Frame-Options، CSP و... .",
+    "**Gunicorn** با `gthread` برای I/O، `cpu * 2 + 1` workers.",
+    "**Nginx** جلوی Gunicorn: SSL، static، rate limiting، buffering.",
+    "**سه health check:** liveness، readiness، health کامل.",
+    "**Backup** روزانه + S3 + تست بازیابی ماهانه.",
+    "**Deployment Zero-Downtime** با `kill -HUP` + health check + rollback.",
+    "**سخت‌سازی سرور:** SSH، UFW، fail2ban، PostgreSQL localhost.",
+    "**ضدالگوها:** DEBUG=True، SQLite، بدون HTTPS، Secret در Git، بدون health، backup تست‌نشده."
+  ],
+  "resources": [
+    { "title": "Django — Deployment checklist", "url": "https://docs.djangoproject.com/en/stable/howto/deployment/checklist/", "official": true },
+    { "title": "Django — Security", "url": "https://docs.djangoproject.com/en/stable/topics/security/", "official": true },
+    { "title": "Gunicorn Documentation", "url": "https://docs.gunicorn.org/", "official": true },
+    { "title": "Nginx Documentation", "url": "https://nginx.org/en/docs/", "official": true },
+    { "title": "OWASP — Secure Headers", "url": "https://owasp.org/www-project-secure-headers/", "official": true },
+    { "title": "securityheaders.com", "url": "https://securityheaders.com/", "official": false }
+  ]
+}
